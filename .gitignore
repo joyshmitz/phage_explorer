@@ -9,6 +9,9 @@ out/
 .next/
 *.tsbuildinfo
 
+# Generated database
+phage.db
+
 # Logs and coverage
 npm-debug.log*
 yarn-debug.log*
@@ -24,17 +27,29 @@ coverage/
 !.env.example
 !.env.*.example
 
-# Python tooling (uv + venv)
-.venv/
-__pycache__/
-*.pyc
-.mypy_cache/
-.ruff_cache/
-.pytest_cache/
-
 # IDE/editor
 .DS_Store
+Thumbs.db
 .idea/
 .vscode/
 .fleet/
+*.swp
+*.swo
+*~
 
+# Lock files
+*.lock
+!bun.lockb
+
+# Test artifacts
+test-output/
+*.test-output
+
+# OS files
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# Installer lock
+/tmp/phage-explorer-install.lock

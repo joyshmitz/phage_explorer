@@ -10,11 +10,7 @@
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
     "resolveJsonModule": true,
-    "declaration": true,
-    "declarationMap": true,
-    "composite": true,
-    "outDir": "dist",
-    "rootDir": ".",
+    "noEmit": true,
     "baseUrl": ".",
     "paths": {
       "@phage-explorer/core": ["packages/core/src"],
@@ -26,13 +22,13 @@
       "@phage-explorer/tui": ["packages/tui/src"]
     }
   },
-  "references": [
-    { "path": "packages/core" },
-    { "path": "packages/db-schema" },
-    { "path": "packages/db-runtime" },
-    { "path": "packages/state" },
-    { "path": "packages/renderer-3d" },
-    { "path": "packages/data-pipeline" },
-    { "path": "packages/tui" }
+  "include": [
+    "packages/*/src/**/*.ts",
+    "packages/*/src/**/*.tsx"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "**/dist"
   ]
 }
