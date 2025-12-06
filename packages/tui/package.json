@@ -1,0 +1,18 @@
+{
+  "name": "@phage-explorer/tui",
+  "version": "1.0.0",
+  "private": true,
+  "main": "src/index.tsx",
+  "types": "src/index.tsx",
+  "exports": {
+    ".": "./src/index.tsx"
+  },
+  "dependencies": {
+    "@phage-explorer/core": "workspace:*",
+    "@phage-explorer/db-runtime": "workspace:*",
+    "@phage-explorer/state": "workspace:*",
+    "@phage-explorer/renderer-3d": "workspace:*",
+    "ink": "^5.1.0",
+    "react": "^18.3.1"
+  }
+}

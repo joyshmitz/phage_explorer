@@ -1,0 +1,19 @@
+{
+  "name": "phage-explorer",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "bun run packages/tui/src/index.tsx",
+    "build:db": "bun run packages/data-pipeline/src/build-db.ts",
+    "ingest": "bun run packages/data-pipeline/src/ingest.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.1.14",
+    "@types/react": "^18.3.12",
+    "typescript": "^5.7.2"
+  }
+}

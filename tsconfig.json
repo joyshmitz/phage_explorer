@@ -1,0 +1,38 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "lib": ["ES2022"],
+    "jsx": "react-jsx",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "declaration": true,
+    "declarationMap": true,
+    "composite": true,
+    "outDir": "dist",
+    "rootDir": ".",
+    "baseUrl": ".",
+    "paths": {
+      "@phage-explorer/core": ["packages/core/src"],
+      "@phage-explorer/db-schema": ["packages/db-schema/src"],
+      "@phage-explorer/db-runtime": ["packages/db-runtime/src"],
+      "@phage-explorer/state": ["packages/state/src"],
+      "@phage-explorer/renderer-3d": ["packages/renderer-3d/src"],
+      "@phage-explorer/data-pipeline": ["packages/data-pipeline/src"],
+      "@phage-explorer/tui": ["packages/tui/src"]
+    }
+  },
+  "references": [
+    { "path": "packages/core" },
+    { "path": "packages/db-schema" },
+    { "path": "packages/db-runtime" },
+    { "path": "packages/state" },
+    { "path": "packages/renderer-3d" },
+    { "path": "packages/data-pipeline" },
+    { "path": "packages/tui" }
+  ]
+}

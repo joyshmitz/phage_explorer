@@ -1,0 +1,15 @@
+{
+  "name": "@phage-explorer/data-pipeline",
+  "version": "1.0.0",
+  "private": true,
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@phage-explorer/db-schema": "workspace:*",
+    "@phage-explorer/core": "workspace:*",
+    "drizzle-orm": "^0.38.2"
+  }
+}
