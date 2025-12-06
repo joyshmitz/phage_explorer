@@ -1,22 +1,31 @@
 // ASCII 3D Renderer
-// Renders 3D models to ASCII art with shading
+// Renders 3D models to ASCII art with high-quality shading
 
-import type { Vector3, Matrix4 } from './math';
+import type { Vector3 } from './math';
 import type { Model3D } from './models';
-import { rotation, transform, project, normalize, sub, dot, vec3 } from './math';
+import { rotation, transform, project } from './math';
 
-// ASCII character ramp for shading (from dark to bright)
-const SHADE_CHARS = ' .:-=+*#%@';
-const SHADE_CHARS_LIGHT = ' .:+#@';
+// Standard 70-character ASCII gradient from darkest to brightest
+// This is the industry-standard gradient used in high-quality ASCII art
+const ASCII_GRADIENT_70 = " .'`^\",:;Il!i><~+_-?][}{1)(|\\/tfjrxnuvczXYUJCLQ0OZmwqpdbkhao*#MW&8%B@$";
 
-// Braille-style dense characters for higher resolution
-const BRAILLE_CHARS = ' ⠁⠃⠇⠏⠟⠿⡿⣿';
+// Shorter gradients for different quality levels
+const ASCII_GRADIENT_10 = ' .:-=+*#%@';
+const ASCII_GRADIENT_16 = ' .,:;!|+*%#&@$MW';
+
+// Block characters for smooth shading (Unicode)
+const BLOCK_GRADIENT = ' ░▒▓█';
+const BLOCK_GRADIENT_DETAILED = ' ·░▒▓▆▇█';
+
+export type RenderQuality = 'low' | 'medium' | 'high' | 'ultra';
 
 export interface RenderConfig {
   width: number;
   height: number;
   useColor?: boolean;
   useBraille?: boolean;
+  useBlocks?: boolean;
+  quality?: RenderQuality;
   lightDirection?: Vector3;
 }
 
@@ -32,15 +41,31 @@ interface ZBufferCell {
   brightness: number;
 }
 
+// Select gradient based on quality and mode
+function selectGradient(config: RenderConfig): string {
+  const { useBlocks = false, quality = 'medium' } = config;
+
+  if (useBlocks) {
+    return quality === 'ultra' ? BLOCK_GRADIENT_DETAILED : BLOCK_GRADIENT;
+  }
+
+  switch (quality) {
+    case 'low': return ASCII_GRADIENT_10;
+    case 'medium': return ASCII_GRADIENT_16;
+    case 'high': return ASCII_GRADIENT_70;
+    case 'ultra': return ASCII_GRADIENT_70;
+    default: return ASCII_GRADIENT_16;
+  }
+}
+
 // Render a 3D model to ASCII
 export function renderModel(
   model: Model3D,
   rotationAngles: { rx: number; ry: number; rz: number },
   config: RenderConfig
 ): RenderedFrame {
-  const { width, height, useBraille = false } = config;
-  const lightDir = config.lightDirection ?? normalize(vec3(0.5, 1, 0.5));
-  const chars = useBraille ? BRAILLE_CHARS : SHADE_CHARS;
+  const { width, height } = config;
+  const chars = selectGradient(config);
 
   // Initialize z-buffer
   const zBuffer: (ZBufferCell | null)[][] = [];
@@ -56,11 +81,9 @@ export function renderModel(
 
   // Transform and project all vertices
   const projectedVertices: { x: number; y: number; z: number }[] = [];
-  const transformedVertices: Vector3[] = [];
 
   for (const vertex of model.vertices) {
     const transformed = transform(vertex, rotMatrix);
-    transformedVertices.push(transformed);
     projectedVertices.push(project(transformed, width, height, 1.5, 3));
   }
 
@@ -86,8 +109,10 @@ export function renderModel(
     if (x >= 0 && x < width && y >= 0 && y < height) {
       const cell = zBuffer[y][x];
       if (!cell || p.z < cell.z) {
-        // Calculate brightness based on z-depth
-        const brightness = Math.max(0.3, 1 - (p.z - 2) * 0.3);
+        // Vertices are brighter than edges - use full brightness range
+        // z typically ranges from ~1.5 to ~4.5, normalize to 0-1 brightness
+        const depthFactor = Math.max(0, Math.min(1, (4.5 - p.z) / 3));
+        const brightness = 0.5 + depthFactor * 0.5; // Range: 0.5 to 1.0
         zBuffer[y][x] = { z: p.z, brightness };
       }
     }
@@ -100,10 +125,10 @@ export function renderModel(
     for (let x = 0; x < width; x++) {
       const cell = zBuffer[y][x];
       if (cell) {
-        const charIndex = Math.min(
+        const charIndex = Math.max(0, Math.min(
           chars.length - 1,
           Math.floor(cell.brightness * (chars.length - 1))
-        );
+        ));
         line += chars[charIndex];
       } else {
         line += ' ';
@@ -131,14 +156,15 @@ function drawLine(
   const steps = Math.max(dx, dy);
   const dz = steps > 0 ? (z1 - z0) / steps : 0;
   let z = z0;
-  let step = 0;
 
   while (true) {
     if (x0 >= 0 && x0 < width && y0 >= 0 && y0 < height) {
       const cell = zBuffer[y0][x0];
       if (!cell || z < cell.z) {
-        // Brightness based on depth (closer = brighter)
-        const brightness = Math.max(0.2, Math.min(0.7, 1 - (z - 2) * 0.25));
+        // Edges are slightly dimmer than vertices
+        // z typically ranges from ~1.5 to ~4.5, normalize to brightness
+        const depthFactor = Math.max(0, Math.min(1, (4.5 - z) / 3));
+        const brightness = 0.2 + depthFactor * 0.5; // Range: 0.2 to 0.7 (dimmer than vertices)
         zBuffer[y0][x0] = { z, brightness };
       }
     }
@@ -155,7 +181,6 @@ function drawLine(
       y0 += sy;
     }
     z += dz;
-    step++;
   }
 }
 
