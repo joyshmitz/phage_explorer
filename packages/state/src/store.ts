@@ -12,6 +12,15 @@ import { CLASSIC_THEME, getNextTheme, getThemeById } from '@phage-explorer/core'
 // Overlay states
 export type OverlayType = 'help' | 'search' | 'goto' | 'aaKey' | null;
 
+// Mouse hover info for amino acids
+export interface HoveredAminoAcid {
+  letter: string;
+  name: string;
+  threeCode: string;
+  property: string;
+  position: number; // position in sequence
+}
+
 // Store state interface
 export interface PhageExplorerState {
   // Phage data
@@ -37,6 +46,11 @@ export interface PhageExplorerState {
   show3DModel: boolean;
   model3DPaused: boolean;
   model3DSpeed: number;
+
+  // Mouse hover
+  mouseX: number;
+  mouseY: number;
+  hoveredAminoAcid: HoveredAminoAcid | null;
 
   // Overlays
   activeOverlay: OverlayType;
@@ -93,6 +107,10 @@ export interface PhageExplorerActions {
   // Terminal
   setTerminalSize: (cols: number, rows: number) => void;
 
+  // Mouse
+  setMousePosition: (x: number, y: number) => void;
+  setHoveredAminoAcid: (aa: HoveredAminoAcid | null) => void;
+
   // Error
   setError: (error: string | null) => void;
 
@@ -119,6 +137,9 @@ const initialState: PhageExplorerState = {
   show3DModel: true,
   model3DPaused: false,
   model3DSpeed: 1,
+  mouseX: 0,
+  mouseY: 0,
+  hoveredAminoAcid: null,
   activeOverlay: null,
   searchQuery: '',
   searchResults: [],
@@ -271,6 +292,10 @@ export const usePhageStore = create<PhageExplorerStore>((set, get) => ({
 
   // Terminal
   setTerminalSize: (cols, rows) => set({ terminalCols: cols, terminalRows: rows }),
+
+  // Mouse
+  setMousePosition: (x, y) => set({ mouseX: x, mouseY: y }),
+  setHoveredAminoAcid: (aa) => set({ hoveredAminoAcid: aa }),
 
   // Error
   setError: (error) => set({ error }),
