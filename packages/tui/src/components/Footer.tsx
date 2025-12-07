@@ -6,6 +6,15 @@ export function Footer(): React.ReactElement {
   const theme = usePhageStore(s => s.currentTheme);
   const viewMode = usePhageStore(s => s.viewMode);
   const overlays = usePhageStore(s => s.overlays);
+  const modal = (() => {
+    for (let i = overlays.length - 1; i >= 0; i--) {
+      const o = overlays[i];
+      if (o === 'analysisMenu' || o === 'simulationHub' || o === 'commandPalette' || o === 'comparison') {
+        return o;
+      }
+    }
+    return null;
+  })();
   const colors = theme.colors;
 
   const keyHints = [
@@ -50,6 +59,14 @@ export function Footer(): React.ReactElement {
             if (o === 'repeats') return 'R';
             return o;
           }).join(' ') || 'none'}
+        </Text>
+        <Text color={colors.textDim}>
+          Modal: {modal ? (
+            modal === 'analysisMenu' ? 'Analysis' :
+            modal === 'simulationHub' ? 'Simulation' :
+            modal === 'commandPalette' ? 'Palette' :
+            modal === 'comparison' ? 'Comparison' : modal
+          ) : 'none'}
         </Text>
         <Text color={colors.textDim}>[Q] quit</Text>
       </Box>

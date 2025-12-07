@@ -29,12 +29,12 @@ export function HelpOverlay(): React.ReactElement {
   const viewMode = usePhageStore(s => s.viewMode);
   const readingFrame = usePhageStore(s => s.readingFrame);
   const diffEnabled = usePhageStore(s => s.diffEnabled);
-  const model3DFullscreen = usePhageStore(s => s.model3DFullscreen);
   const helpDetail = usePhageStore(s => s.helpDetail);
   const overlays = usePhageStore(s => s.overlays);
+  const model3DFullscreen = usePhageStore(s => s.model3DFullscreen);
+  const experienceLevel = usePhageStore(s => s.experienceLevel);
   const setHelpDetail = usePhageStore(s => s.setHelpDetail);
   const closeOverlay = usePhageStore(s => s.closeOverlay);
-  const experienceLevel = usePhageStore(s => s.experienceLevel);
   const colors = theme.colors;
 
   useInput((input, key) => {
@@ -47,7 +47,7 @@ export function HelpOverlay(): React.ReactElement {
     }
   });
 
-  const overlayRowsAll: HelpRow[] = [
+  const overlayRows: HelpRow[] = [
     { key: 'X', desc: 'Sequence complexity (entropy)', note: 'HGT / repeats' },
     { key: 'G', desc: 'GC skew overlay', note: 'origin / terminus' },
     { key: 'B', desc: 'DNA bendability (AT proxy)' },
@@ -57,17 +57,6 @@ export function HelpOverlay(): React.ReactElement {
     { key: 'W', desc: 'Comparison overlay', note: 'pairwise' },
     { key: ': / Ctrl+P', desc: 'Command palette', note: 'Fuzzy commands' },
   ];
-
-  const overlayRows = useMemo(() => {
-    if (experienceLevel === 'power') return overlayRowsAll;
-    if (experienceLevel === 'intermediate') {
-      return overlayRowsAll.filter(row => row.key !== ': / Ctrl+P');
-    }
-    // novice: only core overlays
-    return overlayRowsAll.filter(row =>
-      ['X', 'G', 'W', 'K'].includes(row.key)
-    );
-  }, [experienceLevel]);
 
   const essential = useMemo(() => {
     return {
@@ -89,6 +78,7 @@ export function HelpOverlay(): React.ReactElement {
             { key: 'T', desc: 'Cycle theme' },
             { key: 'D', desc: `Diff mode (${diffEnabled ? 'on' : 'off'})` },
             { key: 'M', desc: 'Toggle 3D model' },
+            { key: 'O', desc: 'Pause/resume 3D model' },
           ],
         },
       ],
@@ -127,9 +117,8 @@ export function HelpOverlay(): React.ReactElement {
         rows: [
           { key: 'Mode', desc: viewMode === 'aa' ? 'Amino acids (translated)' : 'DNA (nucleotides)' },
           { key: 'Diff', desc: diffEnabled ? 'Comparing vs reference' : 'Single genome view' },
-          { key: '3D', desc: model3DFullscreen ? 'Fullscreen: Z exit, O/P pause, R quality' : 'M toggles, O pause, Z fullscreen' },
+          { key: '3D', desc: 'M toggles, O pause/resume, Z fullscreen, R quality (fullscreen)' },
           { key: 'Overlays', desc: overlays.join(', ') || 'None' },
-          { key: 'Experience', desc: experienceLevel },
         ],
       },
     ];
@@ -150,9 +139,9 @@ export function HelpOverlay(): React.ReactElement {
         title: '3D & model controls',
         rows: [
           { key: 'M', desc: 'Toggle 3D model' },
-          { key: 'P', desc: 'Pause/resume model' },
+          { key: 'O', desc: 'Pause/resume model' },
           { key: 'Z', desc: 'Fullscreen model' },
-          { key: 'R', desc: 'Cycle model quality' },
+          { key: 'R', desc: 'Cycle model quality (fullscreen)' },
         ],
       },
       {
@@ -178,9 +167,7 @@ export function HelpOverlay(): React.ReactElement {
         <Text color={colors.accent} bold>
           HELP {helpDetail === 'essential' ? '(essentials)' : '(detailed)'}
         </Text>
-        <Text color={colors.textDim}>
-          {`Tier: ${experienceLevel}`} · ?: expand/close · Esc: close
-        </Text>
+        <Text color={colors.textDim}>?: expand/close · Esc: close</Text>
       </Box>
 
       <Box gap={4}>

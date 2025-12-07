@@ -107,7 +107,7 @@ export function CommandPalette({ onClose }: CommandPaletteProps): React.ReactEle
       { id: 'repeats', label: 'Repeats / palindromes', description: 'Detect short palindromic repeats', keywords: ['repeat', 'palindrome'], action: () => toggleOverlay('repeats') },
       { id: 'comparison', label: 'Genome comparison', description: 'Open comparison overlay', keywords: ['compare', 'genome'], action: openComparison },
       { id: 'model-toggle', label: 'Toggle 3D model', description: 'Show/hide 3D model', keywords: ['3d', 'model'], action: toggle3DModel },
-      { id: 'model-pause', label: 'Pause/resume 3D model', description: 'Pause/resume rotation', keywords: ['3d', 'pause'], action: toggle3DModelPause },
+      { id: 'model-pause', label: 'Pause/resume 3D model', description: 'Pause/resume rotation (O key)', keywords: ['3d', 'pause'], action: toggle3DModelPause },
       { id: 'model-fullscreen', label: 'Fullscreen 3D model', description: 'Enter/exit fullscreen', keywords: ['3d', 'fullscreen'], action: toggle3DModelFullscreen },
       { id: 'model-quality', label: 'Cycle 3D quality', description: 'Change shading quality', keywords: ['3d', 'quality'], action: cycle3DModelQuality },
     ]);

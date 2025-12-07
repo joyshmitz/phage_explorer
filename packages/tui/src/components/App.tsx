@@ -42,6 +42,7 @@ interface AppProps {
 export function App({ repository }: AppProps): React.ReactElement {
   const { exit } = useApp();
   const { stdout } = useStdout();
+  const overlayCacheRef = React.useRef<Map<number, { length: number; data: ReturnType<typeof computeAllOverlays> }>>(new Map());
 
   // Store state
   const phages = usePhageStore(s => s.phages);
@@ -132,8 +133,15 @@ export function App({ repository }: AppProps): React.ReactElement {
           const length = await repository.getFullGenomeLength(phage.id);
           const seq = await repository.getSequenceWindow(phage.id, 0, length);
           setSequence(seq);
-          // Precompute overlay data for quick toggles
-          setOverlayData(computeAllOverlays(seq));
+          // Use cache if available, else compute and store
+          const cache = overlayCacheRef.current.get(phage.id);
+          if (cache && cache.length === length) {
+            setOverlayData(cache.data);
+          } else {
+            const data = computeAllOverlays(seq);
+            overlayCacheRef.current.set(phage.id, { length, data });
+            setOverlayData(data);
+          }
         }
 
         // Prefetch nearby phages
@@ -256,7 +264,7 @@ export function App({ repository }: AppProps): React.ReactElement {
       toggle3DModel();
     } else if (input === 'z' || input === 'Z') {
       toggle3DModelFullscreen();
-    } else if (input === 'r' || input === 'R') {
+    } else if (input === 'q' || input === 'Q') {
       cycle3DModelQuality();
     } else if (input === 'b' || input === 'B') {
       promote('intermediate');
@@ -266,8 +274,6 @@ export function App({ repository }: AppProps): React.ReactElement {
       toggleOverlay(PROMOTER_ID);
     } else if (input === 'v' || input === 'V') {
       toggle3DModelPause();
-    } else if (input === 'y' || input === 'Y') {
-      // reserved
     } else if (input === 'r' || input === 'R') {
       promote('intermediate');
       toggleOverlay(REPEAT_ID);
@@ -413,13 +419,13 @@ export function App({ repository }: AppProps): React.ReactElement {
         </Box>
       )}
 
-      {(activeOverlay === SIMULATION_MENU_ID || activeOverlay === 'simulationHub') && (
+      {activeOverlay === SIMULATION_MENU_ID && (
         <Box
           position="absolute"
-          marginLeft={Math.floor((terminalCols - 70) / 2)}
-          marginTop={Math.floor((terminalRows - 20) / 2)}
+          marginLeft={Math.floor((terminalCols - 80) / 2)}
+          marginTop={Math.floor((terminalRows - 24) / 2)}
         >
-          <SimulationMenuOverlay onClose={() => closeOverlay(SIMULATION_MENU_ID)} />
+          <SimulationHubOverlay onClose={() => closeOverlay(SIMULATION_MENU_ID)} />
         </Box>
       )}
 
@@ -495,6 +501,16 @@ export function App({ repository }: AppProps): React.ReactElement {
           marginTop={Math.floor((terminalRows - 35) / 2)}
         >
           <ComparisonOverlay repository={repository} />
+        </Box>
+      )}
+
+      {activeOverlay === SIMULATION_VIEW_ID && (
+        <Box
+          position="absolute"
+          marginLeft={Math.floor((terminalCols - 90) / 2)}
+          marginTop={Math.floor((terminalRows - 24) / 2)}
+        >
+          <SimulationView onClose={() => closeOverlay(SIMULATION_VIEW_ID)} />
         </Box>
       )}
     </Box>
