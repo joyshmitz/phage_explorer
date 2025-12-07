@@ -210,6 +210,15 @@ export function MiniSparkline({
   colors: HudTheme;
   style?: SparklineStyle;
 }): React.ReactElement {
+  // Handle empty array case
+  if (!values || values.length === 0) {
+    return (
+      <Box>
+        <Text color={colors.textMuted}>{'─'.repeat(width)}</Text>
+      </Box>
+    );
+  }
+
   const chars = getChars(style);
   const min = Math.min(...values);
   const max = Math.max(...values);

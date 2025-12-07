@@ -91,7 +91,7 @@ export function SearchOverlay({ repository }: SearchOverlayProps): React.ReactEl
 
       {/* Search input */}
       <Box marginBottom={1} gap={1}>
-        <Text color={colors.info}>🔍</Text>
+        <Text color={colors.info}>◎</Text>
         <Text color={colors.textDim}>Query:</Text>
         <Box borderStyle="single" borderColor={colors.border} paddingX={1}>
           <TextInput
