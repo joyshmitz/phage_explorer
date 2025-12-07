@@ -39,10 +39,23 @@ export function GeneMap({ width = 80 }: GeneMapProps): React.ReactElement {
       const startPos = Math.floor((gene.startPos / genomeLength) * barWidth);
       const endPos = Math.floor((gene.endPos / genomeLength) * barWidth);
 
-      for (let i = startPos; i <= endPos && i < barWidth; i++) {
+      // endPos in DB is exclusive, but for rendering pixels we want to include up to the pixel representing the end.
+      // However, if endPos falls exactly on a pixel boundary, we shouldn't paint the next pixel.
+      // Simple approximation: loop i from startPos to endPos - 1
+      // But we are mapping large coords to small bar.
+      // Let's stick to the previous logic but adjust for 0-based exclusive.
+      
+      // If endPos calculation rounds down, it might miss the last partial pixel. 
+      // But typically we fill from start to end.
+      
+      for (let i = startPos; i < endPos && i < barWidth; i++) {
         if (i >= 0) {
           bar[i] = '█';
         }
+      }
+      // Ensure at least one pixel is drawn for small genes
+      if (startPos === endPos && startPos < barWidth) {
+         bar[startPos] = '█';
       }
     }
 
@@ -118,7 +131,8 @@ export function GeneMap({ width = 80 }: GeneMapProps): React.ReactElement {
   // Find current gene
   const currentGene = useMemo(() => {
     const effectivePos = viewMode === 'aa' ? scrollPosition * 3 : scrollPosition;
-    return genes.find(g => effectivePos >= g.startPos && effectivePos <= g.endPos);
+    // 0-based coordinates, end is exclusive
+    return genes.find(g => effectivePos >= g.startPos && effectivePos < g.endPos);
   }, [genes, scrollPosition, viewMode]);
 
   return (
