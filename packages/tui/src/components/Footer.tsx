@@ -27,9 +27,11 @@ export function Footer(): React.ReactElement {
     { key: 'D', action: 'diff' },
     { key: 'W', action: 'compare' },
     { key: 'M', action: '3D' },
-    { key: 'V', action: '3D pause' },
+    { key: 'O', action: '3D pause' },
+    { key: 'Z', action: '3D fullscreen' },
     { key: 'R', action: '3D quality' },
     ...(experienceLevel === 'novice' ? [] : [
+      { key: 'V', action: 'Pressure gauge' },
       { key: 'G', action: 'GC skew' },
       { key: 'X', action: 'complexity' },
       { key: 'J', action: 'k-mer anomaly' },
@@ -58,7 +60,7 @@ export function Footer(): React.ReactElement {
       <Box gap={2} alignItems="center">
         <Text color={colors.textDim}>
           Overlays: {overlays.filter(o =>
-            o === 'gcSkew' || o === 'complexity' || o === 'bendability' || o === 'promoter' || o === 'repeats' || o === 'kmerAnomaly' || o === 'modules'
+            o === 'gcSkew' || o === 'complexity' || o === 'bendability' || o === 'promoter' || o === 'repeats' || o === 'kmerAnomaly' || o === 'modules' || o === 'pressure'
           ).map(o => {
             if (o === 'gcSkew') return 'G';
             if (o === 'complexity') return 'X';
@@ -67,6 +69,7 @@ export function Footer(): React.ReactElement {
             if (o === 'modules') return 'L';
             if (o === 'promoter') return 'P';
             if (o === 'repeats') return 'R';
+            if (o === 'pressure') return 'V';
             return o;
           }).join(' ') || 'none'}
         </Text>

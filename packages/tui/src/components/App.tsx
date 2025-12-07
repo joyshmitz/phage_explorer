@@ -22,6 +22,7 @@ import { BendabilityOverlay } from './BendabilityOverlay';
 import { PromoterOverlay } from './PromoterOverlay';
 import { RepeatOverlay } from './RepeatOverlay';
 import { PackagingPressureOverlay } from './PackagingPressureOverlay';
+import { TranscriptionFlowOverlay } from './TranscriptionFlowOverlay';
 import { computeAllOverlays } from '../overlay-computations';
 import { SimulationHubOverlay } from './SimulationHubOverlay';
 import { SimulationView } from './SimulationView';
@@ -31,7 +32,6 @@ import { ModuleOverlay } from './ModuleOverlay';
 import { FoldQuickview } from './FoldQuickview';
 import type { FoldEmbedding } from '@phage-explorer/core';
 import type { OverlayId, ExperienceLevel } from '@phage-explorer/state';
-import { PackagingPressureOverlay } from './PackagingPressureOverlay';
 
 const ANALYSIS_MENU_ID: OverlayId = 'analysisMenu';
 const SIMULATION_MENU_ID: OverlayId = 'simulationHub';
@@ -41,10 +41,11 @@ const GC_SKEW_ID: OverlayId = 'gcSkew';
 const BENDABILITY_ID: OverlayId = 'bendability';
 const PROMOTER_ID: OverlayId = 'promoter';
 const REPEAT_ID: OverlayId = 'repeats';
-const PRESSURE_ID: OverlayId = 'pressure';
 const KMER_ID: OverlayId = 'kmerAnomaly';
 const MODULES_ID: OverlayId = 'modules';
 const PRESSURE_ID: OverlayId = 'pressure';
+const TRANSCRIPTION_ID: OverlayId = 'transcriptionFlow';
+const TRANSCRIPTION_ID: OverlayId = 'transcriptionFlow';
 
 interface AppProps {
   repository: PhageRepository;
@@ -313,10 +314,12 @@ export function App({ repository, foldEmbeddings = [] }: AppProps): React.ReactE
         }
         promote('intermediate');
         toggleOverlay(MODULES_ID);
-      } else if (input === 'm' || input === 'M') {
+    } else if (input === 'm' || input === 'M') {
       toggle3DModel();
     } else if (input === 'z' || input === 'Z') {
       toggle3DModelFullscreen();
+    } else if (input === 'v' || input === 'V') {
+      toggleOverlay(PRESSURE_ID);
     } else if (input === 'b' || input === 'B') {
       if (!isIntermediate) {
         setError('Bendability overlay unlocks after ~5 minutes or once promoted.');
@@ -347,6 +350,9 @@ export function App({ repository, foldEmbeddings = [] }: AppProps): React.ReactE
       }
       promote('intermediate');
       toggleOverlay(REPEAT_ID);
+    } else if (input === 'v' || input === 'V') {
+      promote('intermediate');
+      toggleOverlay(PRESSURE_ID);
     }
 
     // Overlays (we already returned early if overlay is active, so just open)
