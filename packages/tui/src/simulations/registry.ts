@@ -1,5 +1,4 @@
 import type {
-  PhageFull,
   Simulation,
   SimulationRegistry,
   SimulationId,
@@ -220,6 +219,7 @@ function makePlaqueSimulation(): Simulation<PlaqueAutomataState> {
       const merged = { ...base, ...(params ?? {}) } as Record<string, number | boolean | string>;
       const size = Number(merged.grid ?? 30);
       const cells = new Uint8Array(size * size);
+      const ages = new Float32Array(size * size);
       cells[Math.floor(size * size / 2)] = 4; // seed phage at center
       return {
         type: 'plaque-automata',
@@ -229,16 +229,22 @@ function makePlaqueSimulation(): Simulation<PlaqueAutomataState> {
         params: merged,
         gridSize: size,
         grid: cells,
+        infectionTimes: ages,
         phageCount: 1,
         bacteriaCount: size * size - 1,
         infectionCount: 0,
       };
     },
     step: (state: PlaqueAutomataState, dt: number): PlaqueAutomataState => {
-      const grid = state.grid.slice();
-      let phage = state.phageCount;
-      let bacteria = state.bacteriaCount;
-      let infected = state.infectionCount;
+      // Double buffering to prevent sequential update artifacts
+      const currentGrid = state.grid;
+      const nextGrid = new Uint8Array(currentGrid); // Start with copy
+      const nextAges = new Float32Array(state.infectionTimes); // Copy ages
+
+      let phage = 0;
+      let bacteria = 0;
+      let infected = 0;
+
       const size = state.gridSize;
       const burst = Number(state.params.burst ?? 80);
       const latent = Number(state.params.latent ?? 12);
@@ -246,68 +252,89 @@ function makePlaqueSimulation(): Simulation<PlaqueAutomataState> {
       const adsorption = Number(state.params.adsorption ?? 0.2);
       const lysogeny = Number(state.params.lysogeny ?? 0.0);
 
-      // Track infection ages per index
-      const ages: Record<number, number> = {};
+      // We iterate over the CURRENT grid to determine actions
+      for (let i = 0; i < currentGrid.length; i++) {
+        const stateVal = currentGrid[i];
 
-      for (let i = 0; i < grid.length; i++) {
-        const stateVal = grid[i];
-        if (stateVal === 4) {
-          // Free phage: diffuse randomly and attempt adsorption
+        if (stateVal === 4) { // Free phage
+          // Diffuse randomly
           if (Math.random() < diffusion * dt) {
             const neighbor = randomNeighbor(i, size);
-            if (neighbor !== null && grid[neighbor] === 1 && Math.random() < adsorption) {
-              // infection event
-              grid[neighbor] = 2;
-              ages[neighbor] = 0;
-              phage = Math.max(0, phage - 1);
-              infected += 1;
-            } else {
-              // drift without adsorption
-              grid[i] = 0;
-              grid[neighbor ?? i] = 4;
-            }
-          }
-        } else if (stateVal === 2) {
-          // Infected cell ages, then lyses or lysogenizes
-          const age = (ages[i] ?? 0) + dt;
-          ages[i] = age;
-          if (age >= latent) {
-            // Decide lysis vs lysogeny
-            const becomesLysogen = Math.random() < lysogeny;
-            if (becomesLysogen) {
-              grid[i] = 5; // lysogen state
-            } else {
-              grid[i] = 3; // lysed
-              infected = Math.max(0, infected - 1);
-              // burst
-              const burstCount = Math.max(1, Math.floor(burst));
-              for (let b = 0; b < burstCount; b++) {
-                const nb = randomNeighbor(i, size);
-                if (nb !== null && grid[nb] === 0) {
-                  grid[nb] = 4;
-                  phage += 1;
+            // Check if neighbor is valid and what resides there in CURRENT state
+            if (neighbor !== null) {
+              const targetState = currentGrid[neighbor];
+              
+              if (targetState === 1 && Math.random() < adsorption) {
+                // Infect bacteria
+                // Check if already infected in NEXT grid by another phage this tick
+                if (nextGrid[neighbor] !== 2 && nextGrid[neighbor] !== 5) {
+                   nextGrid[neighbor] = 2;
+                   nextAges[neighbor] = 0;
+                   // Remove self from old spot (unless replaced by something else in nextGrid? assume 0)
+                   // But what if another phage moved into 'i'?
+                   // If we write 0, we might kill a phage that just arrived.
+                   // Priority: Arrival > Departure? 
+                   // Simplification: We enforce empty.
+                   if (nextGrid[i] === 4) nextGrid[i] = 0; 
+                }
+              } else if (targetState === 0) {
+                // Move to empty space
+                // Only move if target spot in NEXT grid is not occupied by higher priority (Infection/Bacteria)
+                // We allow stacking (overwriting 4 with 4)
+                if (nextGrid[neighbor] === 0 || nextGrid[neighbor] === 4) {
+                   nextGrid[neighbor] = 4;
+                   if (nextGrid[i] === 4) nextGrid[i] = 0;
                 }
               }
             }
           }
-        } else if (stateVal === 0) {
-          // Empty -> bacteria regrowth
+        } else if (stateVal === 2) { // Infected
+          // Age the infection
+          nextAges[i] += dt;
+          if (nextAges[i] >= latent) {
+            // Decision: Lysis vs Lysogeny
+            if (Math.random() < lysogeny) {
+               nextGrid[i] = 5; // Lysogen
+            } else {
+               nextGrid[i] = 3; // Lysed
+               // Burst: scatter phages
+               const burstCount = Math.max(1, Math.floor(burst));
+               for (let b = 0; b < burstCount; b++) {
+                 const nb = randomNeighbor(i, size);
+                 // Can only place phage in empty or on top of other phages
+                 if (nb !== null && (nextGrid[nb] === 0 || nextGrid[nb] === 4)) {
+                   nextGrid[nb] = 4;
+                 }
+               }
+            }
+          }
+        } else if (stateVal === 0) { // Empty
+          // Regrowth
           if (Math.random() < 0.01 * dt) {
-            grid[i] = 1;
-            bacteria += 1;
+            // Only grow if not already claimed by a phage in this tick
+            if (nextGrid[i] === 0) {
+              nextGrid[i] = 1;
+            }
           }
         }
       }
-      // convert lysogen marker (5) to 1 for display consistency
-      for (let i = 0; i < grid.length; i++) {
-        if (grid[i] === 5) {
-          grid[i] = 1;
-        }
+
+      // Count stats for next frame
+      for (let i = 0; i < nextGrid.length; i++) {
+        const val = nextGrid[i];
+        if (val === 1 || val === 5) bacteria++; // Lysogens count as bacteria
+        if (val === 2) infected++;
+        if (val === 4) phage++;
+        // Normalize lysogens to bacteria for display if desired, 
+        // but keeping 5 allows distinctive behavior later.
+        if (val === 5) nextGrid[i] = 1; // Visual simplification
       }
+
       return {
         ...state,
         time: state.time + dt,
-        grid,
+        grid: nextGrid,
+        infectionTimes: nextAges,
         phageCount: phage,
         bacteriaCount: bacteria,
         infectionCount: infected,
@@ -321,13 +348,21 @@ function makeEvolutionSimulation(): Simulation<EvolutionReplayState> {
   return {
     id: 'evolution-replay',
     name: 'Evolution Replay',
-    description: 'Accumulate random mutations and fitness.',
+    description: 'Molecular clock-ish replay: mutations, fitness, Ne drift.',
     controls: STANDARD_CONTROLS,
     parameters: [
       { id: 'mutRate', label: 'Mutation rate', type: 'number', min: 0, max: 0.2, step: 0.01, defaultValue: 0.05 },
+      { id: 'popSize', label: 'Effective population (Ne)', type: 'number', min: 1e3, max: 1e7, step: 1e3, defaultValue: 1e5 },
+      { id: 'selMean', label: 'Selection mean s', type: 'number', min: -0.1, max: 0.1, step: 0.01, defaultValue: 0.0 },
+      { id: 'selSd', label: 'Selection sd', type: 'number', min: 0, max: 0.1, step: 0.01, defaultValue: 0.02 },
     ],
     init: (_phage, params): EvolutionReplayState => {
-      const base = getDefaultParams([{ id: 'mutRate', label: '', type: 'number', defaultValue: 0.05 }]);
+      const base = getDefaultParams([
+        { id: 'mutRate', label: '', type: 'number', defaultValue: 0.05 },
+        { id: 'popSize', label: '', type: 'number', defaultValue: 1e5 },
+        { id: 'selMean', label: '', type: 'number', defaultValue: 0.0 },
+        { id: 'selSd', label: '', type: 'number', defaultValue: 0.02 },
+      ]);
       const merged = { ...base, ...(params ?? {}) } as Record<string, number | boolean | string>;
       return {
         type: 'evolution-replay',
@@ -338,27 +373,47 @@ function makeEvolutionSimulation(): Simulation<EvolutionReplayState> {
         generation: 0,
         mutations: [],
         fitnessHistory: [1],
+        neHistory: [Number(merged.popSize ?? 1e5)],
       };
     },
     step: (state: EvolutionReplayState, dt: number): EvolutionReplayState => {
       const mutRate = Number(state.params.mutRate ?? 0.05);
+      const popSize = Number(state.params.popSize ?? 1e5);
+      const selMean = Number(state.params.selMean ?? 0.0);
+      const selSd = Number(state.params.selSd ?? 0.02);
+
       const newMutations = [...state.mutations];
-      if (Math.random() < mutRate * dt) {
+      const mutsThisGen = Math.max(0, Math.round(mutRate * 3 * dt)); // approximate
+      for (let i = 0; i < mutsThisGen; i++) {
+        const s = selMean + selSd * (Math.random() * 2 - 1);
         newMutations.push({
           position: Math.floor(Math.random() * 50000),
           from: 'A',
           to: 'G',
           generation: state.generation + 1,
-        });
+          s,
+        } as any);
       }
-      const nextFitness = clamp(state.fitnessHistory[state.fitnessHistory.length - 1] + (Math.random() - 0.4) * 0.05, 0.7, 1.3);
-      const nextHistory = [...state.fitnessHistory, nextFitness].slice(-100);
+
+      const lastFitness = state.fitnessHistory[state.fitnessHistory.length - 1] ?? 1;
+      const meanS = newMutations.slice(-10).reduce((a, m: any) => a + (m.s ?? 0), 0) / Math.max(1, Math.min(10, newMutations.length));
+      const drift = (Math.random() - 0.5) * 0.01;
+      const nextFitness = clamp(lastFitness * (1 + meanS + drift), 0.6, 1.5);
+      const nextHistory = [...state.fitnessHistory, nextFitness].slice(-200);
+
+      // Ne drift with weak noise
+      const lastNe = state.neHistory.at(-1) ?? popSize;
+      const neDrift = lastNe * (1 + (Math.random() - 0.5) * 0.05);
+      const nextNe = clamp(neDrift, popSize * 0.1, popSize * 10);
+      const neHistory = [...state.neHistory, nextNe].slice(-200);
+
       return {
         ...state,
         time: state.time + dt,
         generation: state.generation + 1,
         mutations: newMutations,
         fitnessHistory: nextHistory,
+        neHistory,
       };
     },
     getSummary: (state) => `gen=${state.generation} fitness=${state.fitnessHistory.at(-1)?.toFixed(2) ?? '1.00'} muts=${state.mutations.length}`,
