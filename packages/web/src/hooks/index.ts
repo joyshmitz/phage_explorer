@@ -13,3 +13,4 @@ export {
   useKeyboardActive,
 } from './useHotkey';
 export { useDatabase, type UseDatabaseOptions, type UseDatabaseResult } from './useDatabase';
+export { useSequenceGrid, type UseSequenceGridOptions, type UseSequenceGridResult } from './useSequenceGrid';
