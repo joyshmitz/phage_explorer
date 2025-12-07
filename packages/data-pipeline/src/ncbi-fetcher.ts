@@ -139,7 +139,27 @@ export function parseGenBank(genbank: string): NCBISequenceResult {
 
         // Parse new feature line
         const featurePart = line.substring(5, 21).trim();
-        const locationPart = line.substring(21).trim();
+        let locationPart = line.substring(21).trim();
+
+        // Handle multi-line locations
+        let nextLineIdx = i + 1;
+        while (nextLineIdx < lines.length) {
+          const nextLine = lines[nextLineIdx];
+          // Check if it's a continuation line (starts with spaces, no '/')
+          // It must NOT be a qualifier (start with /) and must NOT be a new feature (start at col 5)
+          // Location continuations are usually indented to col 21
+          if (
+            nextLine.match(/^\s{21}/) &&
+            !nextLine.trim().startsWith('/') &&
+            !nextLine.substring(5, 21).trim()
+          ) {
+            locationPart += nextLine.trim();
+            i++; // Advance main loop
+            nextLineIdx++;
+          } else {
+            break;
+          }
+        }
 
         currentFeature = {
           type: featurePart,

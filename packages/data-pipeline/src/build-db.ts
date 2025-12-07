@@ -4,7 +4,6 @@
 
 import { Database } from 'bun:sqlite';
 import { drizzle } from 'drizzle-orm/bun-sqlite';
-import { sql } from 'drizzle-orm';
 import {
   phages,
   sequences,
