@@ -34,6 +34,7 @@ export function HelpOverlay(): React.ReactElement {
   const overlays = usePhageStore(s => s.overlays);
   const setHelpDetail = usePhageStore(s => s.setHelpDetail);
   const closeOverlay = usePhageStore(s => s.closeOverlay);
+  const experienceLevel = usePhageStore(s => s.experienceLevel);
   const colors = theme.colors;
 
   useInput((input, key) => {
@@ -46,7 +47,7 @@ export function HelpOverlay(): React.ReactElement {
     }
   });
 
-  const overlayRows: HelpRow[] = [
+  const overlayRowsAll: HelpRow[] = [
     { key: 'X', desc: 'Sequence complexity (entropy)', note: 'HGT / repeats' },
     { key: 'G', desc: 'GC skew overlay', note: 'origin / terminus' },
     { key: 'B', desc: 'DNA bendability (AT proxy)' },
@@ -54,7 +55,19 @@ export function HelpOverlay(): React.ReactElement {
     { key: 'R', desc: 'Repeats / palindromes' },
     { key: 'K', desc: 'AA legend (AA view)', note: 'AA only' },
     { key: 'W', desc: 'Comparison overlay', note: 'pairwise' },
+    { key: ': / Ctrl+P', desc: 'Command palette', note: 'Fuzzy commands' },
   ];
+
+  const overlayRows = useMemo(() => {
+    if (experienceLevel === 'power') return overlayRowsAll;
+    if (experienceLevel === 'intermediate') {
+      return overlayRowsAll.filter(row => row.key !== ': / Ctrl+P');
+    }
+    // novice: only core overlays
+    return overlayRowsAll.filter(row =>
+      ['X', 'G', 'W', 'K'].includes(row.key)
+    );
+  }, [experienceLevel]);
 
   const essential = useMemo(() => {
     return {
@@ -90,6 +103,7 @@ export function HelpOverlay(): React.ReactElement {
             { key: 'R', desc: 'Repeats / palindromes' },
             { key: 'W', desc: 'Comparison overlay' },
             { key: 'K', desc: 'AA legend (AA view)' },
+            { key: ': / Ctrl+P', desc: 'Command palette (fuzzy commands)' },
           ],
         },
         {
@@ -113,8 +127,9 @@ export function HelpOverlay(): React.ReactElement {
         rows: [
           { key: 'Mode', desc: viewMode === 'aa' ? 'Amino acids (translated)' : 'DNA (nucleotides)' },
           { key: 'Diff', desc: diffEnabled ? 'Comparing vs reference' : 'Single genome view' },
-          { key: '3D', desc: model3DFullscreen ? 'Fullscreen: Z exit, P pause, R quality' : 'M toggles, Z fullscreen' },
+          { key: '3D', desc: model3DFullscreen ? 'Fullscreen: Z exit, O/P pause, R quality' : 'M toggles, O pause, Z fullscreen' },
           { key: 'Overlays', desc: overlays.join(', ') || 'None' },
+          { key: 'Experience', desc: experienceLevel },
         ],
       },
     ];
@@ -163,7 +178,9 @@ export function HelpOverlay(): React.ReactElement {
         <Text color={colors.accent} bold>
           HELP {helpDetail === 'essential' ? '(essentials)' : '(detailed)'}
         </Text>
-        <Text color={colors.textDim}>?: expand/close · Esc: close</Text>
+        <Text color={colors.textDim}>
+          {`Tier: ${experienceLevel}`} · ?: expand/close · Esc: close
+        </Text>
       </Box>
 
       <Box gap={4}>

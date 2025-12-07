@@ -14,7 +14,7 @@ import { AAKeyOverlay } from './AAKeyOverlay';
 import { SearchOverlay } from './SearchOverlay';
 import { ComparisonOverlay } from './ComparisonOverlay';
 import { AALegend } from './AALegend';
-import { AnalysisMenuOverlay, SimulationMenuOverlay } from './MenuOverlays';
+import { AnalysisMenuOverlay } from './MenuOverlays';
 import { GCOverlay } from './GCOverlay';
 import { CommandPalette } from './CommandPalette';
 import { SequenceComplexityOverlay } from './SequenceComplexityOverlay';
@@ -22,10 +22,13 @@ import { BendabilityOverlay } from './BendabilityOverlay';
 import { PromoterOverlay } from './PromoterOverlay';
 import { RepeatOverlay } from './RepeatOverlay';
 import { computeAllOverlays } from '../overlay-computations';
-import type { OverlayId } from '@phage-explorer/state';
+import { SimulationHubOverlay } from './SimulationHubOverlay';
+import { SimulationView } from './SimulationView';
+import type { OverlayId, ExperienceLevel } from '@phage-explorer/state';
 
 const ANALYSIS_MENU_ID: OverlayId = 'analysisMenu';
 const SIMULATION_MENU_ID: OverlayId = 'simulationHub';
+const SIMULATION_VIEW_ID: OverlayId = 'simulationView';
 const COMPLEXITY_ID: OverlayId = 'complexity';
 const GC_SKEW_ID: OverlayId = 'gcSkew';
 const BENDABILITY_ID: OverlayId = 'bendability';
@@ -78,10 +81,13 @@ export function App({ repository }: AppProps): React.ReactElement {
   const openComparison = usePhageStore(s => s.openComparison);
   const helpDetail = usePhageStore(s => s.helpDetail);
   const setHelpDetail = usePhageStore(s => s.setHelpDetail);
+  const experienceLevel = usePhageStore(s => s.experienceLevel);
+  const promoteExperienceLevel = usePhageStore(s => s.promoteExperienceLevel);
   const currentPhage = usePhageStore(s => s.currentPhage);
 
   // Sequence state
   const [sequence, setSequence] = useState<string>('');
+  const [experienceTimerId, setExperienceTimerId] = useState<NodeJS.Timeout | null>(null);
 
   // Update terminal size
   useEffect(() => {
@@ -142,6 +148,18 @@ export function App({ repository }: AppProps): React.ReactElement {
     loadPhage();
   }, [repository, phages, currentPhageIndex, setCurrentPhage, setLoadingPhage, setError]);
 
+  // Progressive disclosure: auto-promote after time in app
+  useEffect(() => {
+    if (experienceTimerId) {
+      clearTimeout(experienceTimerId);
+    }
+    const timer = setTimeout(() => {
+      promoteExperienceLevel('intermediate' as ExperienceLevel);
+    }, 5 * 60 * 1000); // 5 minutes
+    setExperienceTimerId(timer);
+    return () => clearTimeout(timer);
+  }, [promoteExperienceLevel]);
+
   // Layout constants
   const sidebarWidth = 32;
   const gridWidth = Math.max(40, terminalCols - sidebarWidth - 4);
@@ -169,7 +187,7 @@ export function App({ repository }: AppProps): React.ReactElement {
     if (model3DFullscreen) {
       if (input === 'z' || input === 'Z') {
         toggle3DModelFullscreen();
-      } else if (input === 'p' || input === 'P') {
+      } else if (input === 'p' || input === 'P' || input === 'o' || input === 'O') {
         toggle3DModelPause();
       } else if (input === 'r' || input === 'R') {
         cycle3DModelQuality();
@@ -177,6 +195,8 @@ export function App({ repository }: AppProps): React.ReactElement {
       // Ignore all other keys in fullscreen mode
       return;
     }
+
+    const promote = (level: ExperienceLevel) => promoteExperienceLevel(level);
 
     // If overlay is active, don't process other keys (comparison/search/menus handle their own input)
     if (activeOverlay) {
@@ -230,16 +250,26 @@ export function App({ repository }: AppProps): React.ReactElement {
     } else if (input === 'd' || input === 'D') {
       toggleDiff();
     } else if (input === 'g' || input === 'G') {
+      promote('intermediate');
       toggleOverlay(GC_SKEW_ID);
     } else if (input === 'm' || input === 'M') {
       toggle3DModel();
     } else if (input === 'z' || input === 'Z') {
       toggle3DModelFullscreen();
+    } else if (input === 'r' || input === 'R') {
+      cycle3DModelQuality();
     } else if (input === 'b' || input === 'B') {
+      promote('intermediate');
       toggleOverlay(BENDABILITY_ID);
     } else if (input === 'p' || input === 'P') {
+      promote('intermediate');
       toggleOverlay(PROMOTER_ID);
+    } else if (input === 'v' || input === 'V') {
+      toggle3DModelPause();
+    } else if (input === 'y' || input === 'Y') {
+      // reserved
     } else if (input === 'r' || input === 'R') {
+      promote('intermediate');
       toggleOverlay(REPEAT_ID);
     }
 
@@ -249,10 +279,13 @@ export function App({ repository }: AppProps): React.ReactElement {
     } else if (input === 'k' || input === 'K') {
       toggleOverlay('aaKey');
     } else if (key.shift && input === 'S') {
+      promote('power');
       openOverlay(SIMULATION_MENU_ID);
     } else if (input === 'a' || input === 'A') {
+      promote('intermediate');
       openOverlay(ANALYSIS_MENU_ID);
     } else if (input === 'x' || input === 'X') {
+      promote('intermediate');
       toggleOverlay(COMPLEXITY_ID);
     } else if (input === 's' || input === '/') {
       openOverlay('search');
@@ -298,7 +331,7 @@ export function App({ repository }: AppProps): React.ReactElement {
         />
         <Box paddingX={1}>
           <Text color={colors.textDim}>
-            Z: Exit Fullscreen  P: Pause  R: Quality  Q: Quit
+            Z: Exit Fullscreen  O/P: Pause  R: Quality  Q: Quit
           </Text>
         </Box>
       </Box>
@@ -380,7 +413,7 @@ export function App({ repository }: AppProps): React.ReactElement {
         </Box>
       )}
 
-      {activeOverlay === SIMULATION_MENU_ID && (
+      {(activeOverlay === SIMULATION_MENU_ID || activeOverlay === 'simulationHub') && (
         <Box
           position="absolute"
           marginLeft={Math.floor((terminalCols - 70) / 2)}
