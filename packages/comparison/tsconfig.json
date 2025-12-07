@@ -8,8 +8,7 @@
   },
   "include": ["src/**/*"],
   "references": [
-    { "path": "../core" },
-    { "path": "../db-runtime" },
-    { "path": "../comparison" }
+    { "path": "../core" }
   ]
 }
+
