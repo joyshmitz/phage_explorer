@@ -31,8 +31,11 @@ import { KmerAnomalyOverlay } from './KmerAnomalyOverlay';
 import type { KmerAnomalyOverlay as KmerOverlayType } from '../overlay-computations';
 import { ModuleOverlay } from './ModuleOverlay';
 import { FoldQuickview } from './FoldQuickview';
+import { HGTOverlay } from './HGTOverlay';
+import { analyzeHGTProvenance } from '@phage-explorer/comparison';
 import type { FoldEmbedding } from '@phage-explorer/core';
 import type { OverlayId, ExperienceLevel } from '@phage-explorer/state';
+import { BiasDecompositionOverlay } from './BiasDecompositionOverlay';
 
 const ANALYSIS_MENU_ID: OverlayId = 'analysisMenu';
 const SIMULATION_MENU_ID: OverlayId = 'simulationHub';
@@ -46,6 +49,8 @@ const KMER_ID: OverlayId = 'kmerAnomaly';
 const MODULES_ID: OverlayId = 'modules';
 const PRESSURE_ID: OverlayId = 'pressure';
 const TRANSCRIPTION_ID: OverlayId = 'transcriptionFlow';
+const BIAS_ID: OverlayId = 'biasDecomposition';
+const HGT_ID: OverlayId = 'hgt';
 
 interface AppProps {
   repository: PhageRepository;
@@ -155,17 +160,20 @@ export function App({ repository, foldEmbeddings = [] }: AppProps): React.ReactE
         // Load sequence
         if (phage) {
           const length = await repository.getFullGenomeLength(phage.id);
-          const seq = await repository.getSequenceWindow(phage.id, 0, length);
-          setSequence(seq);
-          // Use cache if available, else compute and store
-          const seqHash = hashSeq(seq);
-          const cache = overlayCacheRef.current.get(phage.id);
-          if (cache && cache.length === length && cache.hash === seqHash) {
-            setOverlayData(cache.data);
-          } else {
-            const data = computeAllOverlays(seq);
-            overlayCacheRef.current.set(phage.id, { length, hash: seqHash, data });
-            setOverlayData(data);
+         const seq = await repository.getSequenceWindow(phage.id, 0, length);
+         setSequence(seq);
+         // Use cache if available, else compute and store
+         const seqHash = hashSeq(seq);
+         const cache = overlayCacheRef.current.get(phage.id);
+         if (cache && cache.length === length && cache.hash === seqHash) {
+           setOverlayData(cache.data);
+         } else {
+           const data = computeAllOverlays(seq);
+            // Attach HGT analysis (lightweight defaults to k-mer donor inference with empty refs)
+            const hgt = analyzeHGTProvenance(seq, phage.genes ?? [], {});
+            const enriched = { ...data, hgt };
+            overlayCacheRef.current.set(phage.id, { length, hash: seqHash, data: enriched });
+            setOverlayData(enriched);
           }
         }
 
@@ -235,7 +243,7 @@ export function App({ repository, foldEmbeddings = [] }: AppProps): React.ReactE
     // If overlay is active, don't process other keys (comparison/search/menus handle their own input)
     if (activeOverlay) {
       if (activeOverlay === 'help') {
-        if (input === '?' || input === 'h' || input === 'H') {
+        if (input === '?') {
           setHelpDetail(helpDetail === 'essential' ? 'detailed' : 'essential');
         }
         return;
@@ -243,7 +251,7 @@ export function App({ repository, foldEmbeddings = [] }: AppProps): React.ReactE
 
       if (activeOverlay !== 'search' && activeOverlay !== 'comparison') {
         if (
-          input === '?' || input === 'h' || input === 'H' || input === 'k' || input === 'K'
+          input === '?' || input === 'k' || input === 'K'
         ) {
           closeOverlay(activeOverlay);
         } else if (activeOverlay === 'complexity' && (input === 'x' || input === 'X')) {
@@ -304,20 +312,27 @@ export function App({ repository, foldEmbeddings = [] }: AppProps): React.ReactE
       }
       promote('intermediate');
       toggleOverlay(PRESSURE_ID);
-      } else if (input === 'j' || input === 'J') {
-        if (!isIntermediate) {
-          setError('K-mer anomaly unlocks after ~5 minutes or once promoted.');
-          return;
-        }
-        promote('intermediate');
-        toggleOverlay(KMER_ID);
-      } else if (input === 'l' || input === 'L') {
-        if (!isIntermediate) {
-          setError('Module coherence unlocks after ~5 minutes or once promoted.');
-          return;
-        }
-        promote('intermediate');
-        toggleOverlay(MODULES_ID);
+    } else if (input === 'j' || input === 'J') {
+      if (!isIntermediate) {
+        setError('K-mer anomaly unlocks after ~5 minutes or once promoted.');
+        return;
+      }
+      promote('intermediate');
+      toggleOverlay(KMER_ID);
+    } else if (input === 'l' || input === 'L') {
+      if (!isIntermediate) {
+        setError('Module coherence unlocks after ~5 minutes or once promoted.');
+        return;
+      }
+      promote('intermediate');
+      toggleOverlay(MODULES_ID);
+    } else if (input === 'h' || input === 'H') {
+      if (!isIntermediate) {
+        setError('HGT overlay unlocks after ~5 minutes or once promoted.');
+        return;
+      }
+      promote('intermediate');
+      toggleOverlay(HGT_ID);
     } else if (input === 'm' || input === 'M') {
       toggle3DModel();
     } else if (input === 'z' || input === 'Z') {
@@ -343,12 +358,6 @@ export function App({ repository, foldEmbeddings = [] }: AppProps): React.ReactE
       }
       promote('intermediate');
       toggleOverlay(PROMOTER_ID);
-    } else if (input === 'j' || input === 'J') {
-      promote('intermediate');
-      toggleOverlay(KMER_ID);
-    } else if (input === 'l' || input === 'L') {
-      promote('intermediate');
-      toggleOverlay(MODULES_ID);
     } else if (key.ctrl && (input === 'f' || input === 'F')) {
       promote('power');
       openOverlay('foldQuickview');
@@ -359,13 +368,10 @@ export function App({ repository, foldEmbeddings = [] }: AppProps): React.ReactE
       }
       promote('intermediate');
       toggleOverlay(REPEAT_ID);
-    } else if (input === 'v' || input === 'V') {
-      promote('intermediate');
-      toggleOverlay(PRESSURE_ID);
     }
 
     // Overlays (we already returned early if overlay is active, so just open)
-    else if (input === '?' || input === 'h' || input === 'H') {
+    else if (input === '?') {
       toggleOverlay('help');
     } else if (input === 'k' || input === 'K') {
       toggleOverlay('aaKey');
@@ -602,6 +608,26 @@ export function App({ repository, foldEmbeddings = [] }: AppProps): React.ReactE
           marginTop={Math.floor((terminalRows - 18) / 2)}
         >
           <ModuleOverlay />
+        </Box>
+      )}
+
+      {activeOverlay === 'hgt' && (
+        <Box
+          position="absolute"
+          marginLeft={Math.floor((terminalCols - 92) / 2)}
+          marginTop={Math.floor((terminalRows - 24) / 2)}
+        >
+          <HGTOverlay />
+        </Box>
+      )}
+
+      {activeOverlay === BIAS_ID && (
+        <Box
+          position="absolute"
+          marginLeft={Math.floor((terminalCols - 96) / 2)}
+          marginTop={Math.floor((terminalRows - 24) / 2)}
+        >
+          <BiasDecompositionOverlay repository={repository} />
         </Box>
       )}
 
