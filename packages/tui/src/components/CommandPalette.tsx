@@ -83,6 +83,8 @@ export function CommandPalette({ onClose }: CommandPaletteProps): React.ReactEle
   const openOverlay = usePhageStore(s => s.openOverlay);
   const toggleOverlay = usePhageStore(s => s.toggleOverlay);
   const openComparison = usePhageStore(s => s.openComparison);
+  const setError = usePhageStore(s => s.setError);
+  const experienceLevel = usePhageStore(s => s.experienceLevel);
   const toggle3DModel = usePhageStore(s => s.toggle3DModel);
   const toggle3DModelPause = usePhageStore(s => s.toggle3DModelPause);
   const toggle3DModelFullscreen = usePhageStore(s => s.toggle3DModelFullscreen);
@@ -90,7 +92,7 @@ export function CommandPalette({ onClose }: CommandPaletteProps): React.ReactEle
 
   // Seed commands each render (lightweight)
   useEffect(() => {
-    setCommands([
+    const baseCommands = [
       { id: 'nav-next', label: 'Next phage', description: 'Move down the list', keywords: ['arrow', 'down'], action: nextPhage },
       { id: 'nav-prev', label: 'Previous phage', description: 'Move up the list', keywords: ['arrow', 'up'], action: prevPhage },
       { id: 'view-toggle', label: 'Toggle DNA / AA view', description: 'Switch sequence mode', keywords: ['mode', 'view'], action: toggleViewMode },
@@ -98,19 +100,50 @@ export function CommandPalette({ onClose }: CommandPaletteProps): React.ReactEle
       { id: 'theme-cycle', label: 'Cycle theme', description: 'Rotate color themes', keywords: ['colors'], action: cycleTheme },
       { id: 'diff-toggle', label: 'Toggle diff', description: 'Diff vs reference', keywords: ['compare'], action: toggleDiff },
       { id: 'search', label: 'Search phages', description: 'Open search overlay', keywords: ['find'], action: () => openOverlay('search') },
-      { id: 'analysis-menu', label: 'Analysis menu', description: 'Open analysis menu', keywords: ['menu', 'analysis'], action: () => openOverlay('analysisMenu') },
-      { id: 'simulation-menu', label: 'Simulation hub', description: 'Open simulation menu', keywords: ['menu', 'simulation'], action: () => openOverlay('simulationHub') },
-      { id: 'complexity', label: 'Sequence complexity', description: 'Open complexity overlay', keywords: ['entropy', 'complexity'], action: () => toggleOverlay('complexity') },
-      { id: 'gc-skew', label: 'GC skew', description: 'Open GC skew overlay', keywords: ['gc'], action: () => toggleOverlay('gcSkew') },
-      { id: 'bendability', label: 'Bendability', description: 'AT-rich bendability proxy overlay', keywords: ['bend', 'at'], action: () => toggleOverlay('bendability') },
-      { id: 'promoter', label: 'Promoter/RBS motifs', description: 'Scan for -10/-35 and Shine-Dalgarno', keywords: ['promoter', 'rbs'], action: () => toggleOverlay('promoter') },
-      { id: 'repeats', label: 'Repeats / palindromes', description: 'Detect short palindromic repeats', keywords: ['repeat', 'palindrome'], action: () => toggleOverlay('repeats') },
       { id: 'comparison', label: 'Genome comparison', description: 'Open comparison overlay', keywords: ['compare', 'genome'], action: openComparison },
       { id: 'model-toggle', label: 'Toggle 3D model', description: 'Show/hide 3D model', keywords: ['3d', 'model'], action: toggle3DModel },
       { id: 'model-pause', label: 'Pause/resume 3D model', description: 'Pause/resume rotation (O key)', keywords: ['3d', 'pause'], action: toggle3DModelPause },
       { id: 'model-fullscreen', label: 'Fullscreen 3D model', description: 'Enter/exit fullscreen', keywords: ['3d', 'fullscreen'], action: toggle3DModelFullscreen },
       { id: 'model-quality', label: 'Cycle 3D quality', description: 'Change shading quality', keywords: ['3d', 'quality'], action: cycle3DModelQuality },
-    ]);
+    ];
+
+    const advancedCommands =
+      experienceLevel === 'novice'
+        ? []
+        : [
+            { id: 'analysis-menu', label: 'Analysis menu', description: 'Open analysis menu', keywords: ['menu', 'analysis'], action: () => openOverlay('analysisMenu') },
+            { id: 'complexity', label: 'Sequence complexity', description: 'Open complexity overlay', keywords: ['entropy', 'complexity'], action: () => toggleOverlay('complexity') },
+            { id: 'gc-skew', label: 'GC skew', description: 'Open GC skew overlay', keywords: ['gc'], action: () => toggleOverlay('gcSkew') },
+            { id: 'bendability', label: 'Bendability', description: 'AT-rich bendability proxy overlay', keywords: ['bend', 'at'], action: () => toggleOverlay('bendability') },
+            { id: 'promoter', label: 'Promoter/RBS motifs', description: 'Scan for -10/-35 and Shine-Dalgarno', keywords: ['promoter', 'rbs'], action: () => toggleOverlay('promoter') },
+            { id: 'repeats', label: 'Repeats / palindromes', description: 'Detect short palindromic repeats', keywords: ['repeat', 'palindrome'], action: () => toggleOverlay('repeats') },
+            { id: 'kmer', label: 'K-mer anomaly', description: 'Highlight composition shifts', keywords: ['kmer', 'anomaly'], action: () => toggleOverlay('kmerAnomaly') },
+            { id: 'modules', label: 'Module coherence', description: 'Capsid/tail/lysis module view', keywords: ['module', 'stoichiometry'], action: () => toggleOverlay('modules') },
+          ];
+
+    const powerCommands =
+      experienceLevel === 'power'
+        ? [
+            { id: 'command-palette', label: 'Command palette', description: 'Fuzzy commands (Ctrl+P / :)', keywords: ['palette', 'commands'], action: () => openOverlay('commandPalette') },
+            { id: 'fold-quickview', label: 'Fold quickview', description: 'View fold embeddings (Ctrl+F)', keywords: ['fold', 'structure'], action: () => openOverlay('foldQuickview') },
+            { id: 'simulation-hub', label: 'Simulation hub', description: 'Open simulation hub', keywords: ['simulation', 'hub'], action: () => openOverlay('simulationHub') },
+          ]
+        : [];
+
+    const noviceHints =
+      experienceLevel === 'novice'
+        ? [
+            {
+              id: 'unlock-advanced',
+              label: 'Unlock advanced overlays',
+              description: 'Promote experience to access advanced tools',
+              keywords: ['unlock', 'advanced', 'promote'],
+              action: () => setError('Advanced overlays unlock automatically after time; ask to promote to power.'),
+            },
+          ]
+        : [];
+
+    setCommands([...baseCommands, ...advancedCommands, ...powerCommands, ...noviceHints]);
   }, [
     nextPhage,
     prevPhage,
@@ -125,6 +158,8 @@ export function CommandPalette({ onClose }: CommandPaletteProps): React.ReactEle
     toggle3DModelPause,
     toggle3DModelFullscreen,
     cycle3DModelQuality,
+    setError,
+    experienceLevel,
   ]);
 
   const commands = getCommands();

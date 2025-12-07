@@ -288,12 +288,24 @@ export function App({ repository, foldEmbeddings = [] }: AppProps): React.ReactE
       }
       promote('intermediate');
       toggleOverlay(GC_SKEW_ID);
+    } else if (input === 'j' || input === 'J') {
+      if (!isIntermediate) {
+        setError('K-mer anomaly unlocks after ~5 minutes or once promoted.');
+        return;
+      }
+      promote('intermediate');
+      toggleOverlay(KMER_ID);
+    } else if (input === 'l' || input === 'L') {
+      if (!isIntermediate) {
+        setError('Module coherence unlocks after ~5 minutes or once promoted.');
+        return;
+      }
+      promote('intermediate');
+      toggleOverlay(MODULES_ID);
     } else if (input === 'm' || input === 'M') {
       toggle3DModel();
     } else if (input === 'z' || input === 'Z') {
       toggle3DModelFullscreen();
-    } else if (input === 'q' || input === 'Q') {
-      cycle3DModelQuality();
     } else if (input === 'b' || input === 'B') {
       if (!isIntermediate) {
         setError('Bendability overlay unlocks after ~5 minutes or once promoted.');
