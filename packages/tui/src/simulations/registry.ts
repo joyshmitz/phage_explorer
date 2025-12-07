@@ -10,7 +10,7 @@ import type {
   EvolutionReplayState,
   PackagingMotorState,
 } from '@phage-explorer/core';
-import { getDefaultParams } from '@phage-explorer/core';
+import { getDefaultParams, STANDARD_CONTROLS } from '@phage-explorer/core';
 
 // Simple helper to clamp numbers
 const clamp = (v: number, min: number, max: number) => Math.min(max, Math.max(min, v));
@@ -19,16 +19,24 @@ function makeLysogenySimulation(): Simulation<LysogenyCircuitState> {
   return {
     id: 'lysogeny-circuit',
     name: 'Lysogeny Decision Circuit',
-    description: 'Toy ODE of CI/Cro balance; UV tips decision.',
+    description: 'Bistable CI/Cro toggle; MOI and UV tip the switch.',
+    controls: STANDARD_CONTROLS,
     parameters: [
       { id: 'moi', label: 'Multiplicity of infection', type: 'number', min: 0.1, max: 5, step: 0.1, defaultValue: 1 },
-      { id: 'uv', label: 'UV stress', type: 'number', min: 0, max: 1, step: 0.05, defaultValue: 0 },
+      { id: 'uv', label: 'UV / damage', type: 'number', min: 0, max: 1, step: 0.05, defaultValue: 0 },
+      { id: 'ciProd', label: 'CI synthesis', type: 'number', min: 0.1, max: 2, step: 0.05, defaultValue: 0.8 },
+      { id: 'croProd', label: 'Cro synthesis', type: 'number', min: 0.1, max: 2, step: 0.05, defaultValue: 0.6 },
+      { id: 'decay', label: 'Protein decay', type: 'number', min: 0.01, max: 0.3, step: 0.01, defaultValue: 0.05 },
+      { id: 'hill', label: 'Hill cooperativity', type: 'number', min: 1, max: 4, step: 0.2, defaultValue: 2 },
     ],
-    controls: [],
     init: (_phage, params): LysogenyCircuitState => {
       const base = getDefaultParams([
         { id: 'moi', label: '', type: 'number', defaultValue: 1 },
         { id: 'uv', label: '', type: 'number', defaultValue: 0 },
+        { id: 'ciProd', label: '', type: 'number', defaultValue: 0.8 },
+        { id: 'croProd', label: '', type: 'number', defaultValue: 0.6 },
+        { id: 'decay', label: '', type: 'number', defaultValue: 0.05 },
+        { id: 'hill', label: '', type: 'number', defaultValue: 2 },
       ]);
       const merged = { ...base, ...(params ?? {}) } as Record<string, number | boolean | string>;
       return {
@@ -37,20 +45,33 @@ function makeLysogenySimulation(): Simulation<LysogenyCircuitState> {
         running: true,
         speed: 1,
         params: merged,
-        ci: 0.6,
-        cro: 0.4,
-        n: 0.2,
+        ci: 0.4,
+        cro: 0.3,
+        n: 0.05,
         phase: 'undecided',
-        history: [] as Array<{ time: number; ci: number; cro: number }>,
+        history: [] as Array<{ time: number; ci: number; cro: number; phase: string }>,
       };
     },
     step: (state: LysogenyCircuitState, dt: number): LysogenyCircuitState => {
       const uv = Number(state.params.uv ?? 0);
       const moi = Number(state.params.moi ?? 1);
-      const ciNext = clamp(state.ci + (0.4 * moi - 0.3 * uv - state.cro) * 0.1 * dt, 0, 1.5);
-      const croNext = clamp(state.cro + (0.3 * uv + 0.2 - state.ci) * 0.1 * dt, 0, 1.5);
-      const phase = ciNext - croNext > 0.1 ? 'lysogenic' : croNext - ciNext > 0.1 ? 'lytic' : 'undecided';
-      const history = [...state.history, { time: state.time + dt, ci: ciNext, cro: croNext }].slice(-50);
+      const ciProd = Number(state.params.ciProd ?? 0.8);
+      const croProd = Number(state.params.croProd ?? 0.6);
+      const decay = Number(state.params.decay ?? 0.05);
+      const hill = Number(state.params.hill ?? 2);
+
+      // Hill repression: Cro represses CI, CI represses Cro
+      const ciRepr = 1 / (1 + Math.pow(state.cro / 0.5, hill));
+      const croRepr = 1 / (1 + Math.pow(state.ci / 0.5, hill));
+
+      const ciSynth = ciProd * moi * ciRepr;
+      const croSynth = croProd * croRepr + 0.12 * uv; // UV biases Cro
+
+      const ciNext = clamp(state.ci + (ciSynth - decay * state.ci - 0.2 * uv) * dt, 0, 3);
+      const croNext = clamp(state.cro + (croSynth - decay * state.cro + 0.05) * dt, 0, 3);
+
+      const phase = ciNext - croNext > 0.2 ? 'lysogenic' : croNext - ciNext > 0.2 ? 'lytic' : 'undecided';
+      const history = [...state.history, { time: state.time + dt, ci: ciNext, cro: croNext, phase }].slice(-120);
       return {
         ...state,
         time: state.time + dt,
@@ -60,7 +81,7 @@ function makeLysogenySimulation(): Simulation<LysogenyCircuitState> {
         history,
       };
     },
-    getSummary: (state) => `t=${state.time.toFixed(0)} CI=${state.ci.toFixed(2)} Cro=${state.cro.toFixed(2)} | ${state.phase}`,
+    getSummary: (state) => `t=${state.time.toFixed(0)} CI=${state.ci.toFixed(2)} Cro=${state.cro.toFixed(2)} · ${state.phase}`,
   };
 }
 
@@ -69,11 +90,11 @@ function makeRibosomeSimulation(): Simulation<RibosomeTrafficState> {
     id: 'ribosome-traffic',
     name: 'Ribosome Traffic',
     description: 'Toy TASEP along a transcript with stalls.',
+    controls: STANDARD_CONTROLS,
     parameters: [
       { id: 'length', label: 'mRNA length (codons)', type: 'number', min: 30, max: 300, step: 10, defaultValue: 120 },
       { id: 'stallRate', label: 'Stall rate', type: 'number', min: 0, max: 0.2, step: 0.01, defaultValue: 0.03 },
     ],
-    controls: [],
     init: (_phage, params): RibosomeTrafficState => {
       const base = getDefaultParams([
         { id: 'length', label: '', type: 'number', defaultValue: 120 },
@@ -120,10 +141,10 @@ function makePlaqueSimulation(): Simulation<PlaqueAutomataState> {
     id: 'plaque-automata',
     name: 'Plaque Automata',
     description: 'Cellular automaton of plaque spread.',
+    controls: STANDARD_CONTROLS,
     parameters: [
       { id: 'grid', label: 'Grid size', type: 'number', min: 10, max: 50, step: 5, defaultValue: 30 },
     ],
-    controls: [],
     init: (_phage, params): PlaqueAutomataState => {
       const base = getDefaultParams([{ id: 'grid', label: '', type: 'number', defaultValue: 30 }]);
       const merged = { ...base, ...(params ?? {}) } as Record<string, number | boolean | string>;
@@ -181,10 +202,10 @@ function makeEvolutionSimulation(): Simulation<EvolutionReplayState> {
     id: 'evolution-replay',
     name: 'Evolution Replay',
     description: 'Accumulate random mutations and fitness.',
+    controls: STANDARD_CONTROLS,
     parameters: [
       { id: 'mutRate', label: 'Mutation rate', type: 'number', min: 0, max: 0.2, step: 0.01, defaultValue: 0.05 },
     ],
-    controls: [],
     init: (_phage, params): EvolutionReplayState => {
       const base = getDefaultParams([{ id: 'mutRate', label: '', type: 'number', defaultValue: 0.05 }]);
       const merged = { ...base, ...(params ?? {}) } as Record<string, number | boolean | string>;
@@ -229,10 +250,10 @@ function makePackagingSimulation(): Simulation<PackagingMotorState> {
     id: 'packaging-motor',
     name: 'Packaging Motor',
     description: 'Fill fraction → pressure model.',
+    controls: STANDARD_CONTROLS,
     parameters: [
       { id: 'stall', label: 'Stall prob', type: 'number', min: 0, max: 0.2, step: 0.01, defaultValue: 0.02 },
     ],
-    controls: [],
     init: (_phage, params): PackagingMotorState => {
       const base = getDefaultParams([{ id: 'stall', label: '', type: 'number', defaultValue: 0.02 }]);
       const merged = { ...base, ...(params ?? {}) } as Record<string, number | boolean | string>;
@@ -279,7 +300,7 @@ export function getSimulationRegistry(): SimulationRegistry {
     makeEvolutionSimulation(),
     makePackagingSimulation(),
   ].map(sim => sim as unknown as Simulation<SimState>);
-  sims.forEach(sim => reg.set(sim.id as SimulationId, sim as Simulation));
+  sims.forEach(sim => reg.set(sim.id as SimulationId, sim));
   registryCache = reg;
   return reg;
 }

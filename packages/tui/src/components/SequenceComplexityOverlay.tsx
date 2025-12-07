@@ -28,6 +28,15 @@ function compressionRatio(seq: string): number {
   return compressed.length / seq.length;
 }
 
+function hashSeq(seq: string): string {
+  let h = 0;
+  const step = Math.max(1, Math.floor(seq.length / 5000));
+  for (let i = 0; i < seq.length; i += step) {
+    h = (h * 31 + seq.charCodeAt(i)) >>> 0;
+  }
+  return `${seq.length}:${h}`;
+}
+
 function toSparkline(values: number[], targetWidth = 80): string {
   if (values.length === 0) return '';
   const min = Math.min(...values);
@@ -122,7 +131,7 @@ export function SequenceComplexityOverlay({
   const STEP = 1500;
 
   const stats = useMemo(() => {
-    const cacheKey = `${phageName}-${sequence.length}`;
+    const cacheKey = `${phageName}-${hashSeq(sequence)}`;
     if (complexityCache.has(cacheKey)) {
       return complexityCache.get(cacheKey)!;
     }
@@ -147,7 +156,9 @@ export function SequenceComplexityOverlay({
     complexityCache.set(cacheKey, summary);
     if (complexityCache.size > MAX_COMPLEXITY_CACHE) {
       const firstKey = complexityCache.keys().next().value;
-      complexityCache.delete(firstKey);
+      if (firstKey) {
+        complexityCache.delete(firstKey);
+      }
     }
     return summary;
   }, [sequence, phageName]);
