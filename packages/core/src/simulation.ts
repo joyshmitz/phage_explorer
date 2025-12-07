@@ -88,6 +88,10 @@ export interface RibosomeTrafficState extends SimStateBase {
   proteinsProduced: number;
   /** Stall events */
   stallEvents: number;
+  /** History of active ribosome counts (for trends) */
+  densityHistory: number[];
+  /** History of cumulative protein output */
+  productionHistory: number[];
 }
 
 /**
