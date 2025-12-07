@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { Box, Text } from 'ink';
+import { Box, Text, useInput } from 'ink';
 import { gzip } from 'pako';
 import { calculateGCContent } from '@phage-explorer/core';
 import { usePhageStore } from '@phage-explorer/state';
@@ -19,6 +19,7 @@ interface WindowStat {
 }
 
 const SPARK = '▁▂▃▄▅▆▇█';
+const complexityCache = new Map<string, ReturnType<typeof summarize>>();
 
 function compressionRatio(seq: string): number {
   if (!seq.length) return 0;
@@ -26,14 +27,21 @@ function compressionRatio(seq: string): number {
   return compressed.length / seq.length;
 }
 
-function toSparkline(values: number[]): string {
+function toSparkline(values: number[], targetWidth = 80): string {
   if (values.length === 0) return '';
   const min = Math.min(...values);
   const max = Math.max(...values);
   if (max === min) {
-    return SPARK[0].repeat(values.length);
+    return SPARK[0].repeat(Math.min(values.length, targetWidth));
   }
-  return values
+  const width = Math.min(targetWidth, values.length);
+  const step = values.length / width;
+  const samples: number[] = [];
+  for (let i = 0; i < width; i++) {
+    const idx = Math.floor(i * step);
+    samples.push(values[idx]);
+  }
+  return samples
     .map(v => {
       const t = (v - min) / (max - min);
       const idx = Math.min(SPARK.length - 1, Math.max(0, Math.round(t * (SPARK.length - 1))));
@@ -113,10 +121,13 @@ export function SequenceComplexityOverlay({
   const STEP = 1500;
 
   const stats = useMemo(() => {
+    const cacheKey = `${phageName}-${sequence.length}`;
+    if (complexityCache.has(cacheKey)) {
+      return complexityCache.get(cacheKey)!;
+    }
     if (!sequence) {
       return summarize([]);
     }
-
     const windows: WindowStat[] = [];
     for (let start = 0; start < sequence.length; start += STEP) {
       const slice = sequence.slice(start, start + WINDOW_SIZE);
@@ -131,15 +142,23 @@ export function SequenceComplexityOverlay({
       });
     }
 
-    return summarize(windows);
-  }, [sequence]);
+    const summary = summarize(windows);
+    complexityCache.set(cacheKey, summary);
+    return summary;
+  }, [sequence, phageName]);
+
+  useInput((input, key) => {
+    if (key.escape || input === 'x' || input === 'X') {
+      onClose();
+    }
+  }, [onClose]);
 
   return (
     <Box
       flexDirection="column"
       borderStyle="double"
       borderColor={colors.accent}
-      width={90}
+      width={92}
       height={26}
       paddingX={2}
       paddingY={1}
@@ -161,7 +180,7 @@ export function SequenceComplexityOverlay({
           {/* Summary */}
           <Box flexDirection="column" marginBottom={1}>
             <Text color={colors.text}>
-              Genome length: {genomeLength.toLocaleString()} bp · Windows: {stats.sparkline.length}
+              Genome length: {genomeLength.toLocaleString()} bp · Windows: {Math.max(1, Math.ceil(sequence.length / STEP))} · Sparkline width: {stats.sparkline.length}
             </Text>
             <Text color={colors.textDim}>
               Mean compression ratio: {stats.meanRatio.toFixed(3)} (σ {stats.stdRatio.toFixed(3)}) ·
@@ -176,7 +195,7 @@ export function SequenceComplexityOverlay({
             </Text>
             <Text color={colors.text}>{stats.sparkline}</Text>
             <Text color={colors.textDim} dimColor>
-              Higher bars = more complex / less compressible. Lower = repeats/low complexity.
+              Higher bars = more complex / less compressible. Lower = repeats / low complexity.
             </Text>
           </Box>
 
@@ -239,4 +258,3 @@ export function SequenceComplexityOverlay({
     </Box>
   );
 }
-
