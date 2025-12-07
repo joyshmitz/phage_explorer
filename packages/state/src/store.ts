@@ -37,6 +37,7 @@ export type OverlayId =
   | 'commandPalette';
 
 export type HelpDetailLevel = 'essential' | 'detailed';
+export type ExperienceLevel = 'novice' | 'intermediate' | 'power';
 
 // Comparison view tab
 export type ComparisonTab = 'summary' | 'kmer' | 'information' | 'correlation' | 'biological' | 'genes';
@@ -89,6 +90,8 @@ export interface PhageExplorerState {
   searchQuery: string;
   searchResults: PhageSummary[];
   helpDetail: HelpDetailLevel;
+  experienceLevel: ExperienceLevel;
+  sessionStart: number;
 
   // Terminal dimensions
   terminalCols: number;
@@ -155,8 +158,9 @@ export interface PhageExplorerActions {
   setSearchQuery: (query: string) => void;
   setSearchResults: (results: PhageSummary[]) => void;
   setHelpDetail: (level: HelpDetailLevel) => void;
-  setOverlayData: (data: Partial<Record<'gcSkew' | 'complexity' | 'bendability' | 'promoter' | 'repeats', unknown>>) => void;
   setOverlayData: (data: OverlayData) => void;
+  setExperienceLevel: (level: ExperienceLevel) => void;
+  promoteExperienceLevel: (level: ExperienceLevel) => void;
 
   // Terminal
   setTerminalSize: (cols: number, rows: number) => void;
@@ -226,6 +230,8 @@ const initialState: PhageExplorerState = {
   searchQuery: '',
   searchResults: [],
   helpDetail: 'essential',
+  experienceLevel: 'novice',
+  sessionStart: Date.now(),
   terminalCols: 80,
   terminalRows: 24,
   error: null,
@@ -537,6 +543,18 @@ export const usePhageStore = create<PhageExplorerStore>((set, get) => ({
 
   setHelpDetail: (level) => set({ helpDetail: level }),
   setOverlayData: (data) => set({ overlayData: data }),
+  setExperienceLevel: (level) => set({ experienceLevel: level }),
+  promoteExperienceLevel: (level) => {
+    set(state => {
+      const order: ExperienceLevel[] = ['novice', 'intermediate', 'power'];
+      const currentIdx = order.indexOf(state.experienceLevel);
+      const nextIdx = order.indexOf(level);
+      if (nextIdx > currentIdx) {
+        return { experienceLevel: level };
+      }
+      return {};
+    });
+  },
 
   // Simulation controls
   launchSimulation: (simId, initialState) => {
