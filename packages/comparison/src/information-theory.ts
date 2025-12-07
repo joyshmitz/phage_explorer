@@ -294,8 +294,24 @@ export function analyzeInformationTheory(
   // Create aligned probability arrays over union of k-mers
   const allKmers = new Set([...freqsA.keys(), ...freqsB.keys()]);
   const kmerArray = Array.from(allKmers);
-  const pA = kmerArray.map(k => (freqsA.get(k) ?? 0) / totalA);
-  const pB = kmerArray.map(k => (freqsB.get(k) ?? 0) / totalB);
+
+  // Guard against division by zero
+  if (totalA === 0 || totalB === 0) {
+    return {
+      entropyA,
+      entropyB,
+      jointEntropy: 0,
+      mutualInformation: 0,
+      normalizedMI: 0,
+      jensenShannonDivergence: 0,
+      kullbackLeiblerAtoB: 0,
+      kullbackLeiblerBtoA: 0,
+      relativeEntropy: 0,
+    };
+  }
+
+  const pA = kmerArray.map(kmer => (freqsA.get(kmer) ?? 0) / totalA);
+  const pB = kmerArray.map(kmer => (freqsB.get(kmer) ?? 0) / totalB);
 
   // Compute divergences
   const jsd = jensenShannonDivergence(pA, pB);
