@@ -57,6 +57,22 @@ export interface HudTheme {
   // Overlay effects
   shadow: string;             // For pseudo-shadow effects
   highlight: string;          // Bright highlight for selections
+
+  // Enhanced visual elements
+  sparklineGradient: string[];  // Extended gradient for sparklines (5+ colors)
+  glow: string;                 // Glow effect color for focused elements
+  badge: string;                // Badge/tag background
+  badgeText: string;            // Badge/tag text
+  separator: string;            // Visual separator color
+
+  // Unicode decorations
+  iconPrimary: string;          // Primary icon color
+  iconSecondary: string;        // Secondary icon color
+
+  // Panel styling
+  panelHeader: string;          // Panel header background
+  panelBorder: string;          // Panel border (distinct from main border)
+  panelShadow: string;          // Panel shadow (darker)
 }
 
 // Complete theme definition
@@ -157,6 +173,22 @@ const classicHud: HudTheme = {
   // Effects
   shadow: '#0d0d1a',
   highlight: '#ffffff',
+
+  // Enhanced visual elements
+  sparklineGradient: ['#1a535c', '#2a9d8f', '#e9c46a', '#f4a261', '#e76f51'],
+  glow: '#5cb85c',
+  badge: '#3d3d5c',
+  badgeText: '#e0e0e0',
+  separator: '#4d4d66',
+
+  // Unicode decorations
+  iconPrimary: '#5cb85c',
+  iconSecondary: '#0275d8',
+
+  // Panel styling
+  panelHeader: '#2a2a42',
+  panelBorder: '#4d4d6c',
+  panelShadow: '#0a0a15',
 };
 
 export const CLASSIC_THEME: Theme = {
@@ -244,6 +276,22 @@ const oceanHud: HudTheme = {
   // Effects
   shadow: '#050d14',
   highlight: '#ffffff',
+
+  // Enhanced visual elements
+  sparklineGradient: ['#0a2342', '#1a535c', '#2a9d8f', '#48cae4', '#ffe66d'],
+  glow: '#4ecdc4',
+  badge: '#264653',
+  badgeText: '#e0f7fa',
+  separator: '#3d5a6d',
+
+  // Unicode decorations
+  iconPrimary: '#4ecdc4',
+  iconSecondary: '#ffe66d',
+
+  // Panel styling
+  panelHeader: '#1a3342',
+  panelBorder: '#264653',
+  panelShadow: '#030810',
 };
 
 export const OCEAN_THEME: Theme = {
@@ -331,6 +379,22 @@ const matrixHud: HudTheme = {
   // Effects
   shadow: '#000000',
   highlight: '#33ff33',
+
+  // Enhanced visual elements
+  sparklineGradient: ['#001a00', '#003300', '#006600', '#00aa00', '#00ff00'],
+  glow: '#00ff00',
+  badge: '#003300',
+  badgeText: '#00ff00',
+  separator: '#005500',
+
+  // Unicode decorations
+  iconPrimary: '#00ff00',
+  iconSecondary: '#00ff66',
+
+  // Panel styling
+  panelHeader: '#0a1a0a',
+  panelBorder: '#004400',
+  panelShadow: '#000000',
 };
 
 export const MATRIX_THEME: Theme = {
@@ -418,6 +482,22 @@ const sunsetHud: HudTheme = {
   // Effects
   shadow: '#0f0f1a',
   highlight: '#ffffff',
+
+  // Enhanced visual elements
+  sparklineGradient: ['#2d1b30', '#6b2737', '#d62246', '#ff6b35', '#ffd166'],
+  glow: '#ff6b35',
+  badge: '#4a4e69',
+  badgeText: '#fefae0',
+  separator: '#6a5a68',
+
+  // Unicode decorations
+  iconPrimary: '#ff6b35',
+  iconSecondary: '#efa00b',
+
+  // Panel styling
+  panelHeader: '#2a2a42',
+  panelBorder: '#5a4e69',
+  panelShadow: '#0a0a12',
 };
 
 export const SUNSET_THEME: Theme = {
@@ -505,6 +585,22 @@ const forestHud: HudTheme = {
   // Effects
   shadow: '#061008',
   highlight: '#b7e4c7',
+
+  // Enhanced visual elements
+  sparklineGradient: ['#1b4332', '#2d6a4f', '#40916c', '#74c69d', '#b7e4c7'],
+  glow: '#40916c',
+  badge: '#344e41',
+  badgeText: '#d8f3dc',
+  separator: '#4a5c4d',
+
+  // Unicode decorations
+  iconPrimary: '#40916c',
+  iconSecondary: '#95d5b2',
+
+  // Panel styling
+  panelHeader: '#1a2e1f',
+  panelBorder: '#344e41',
+  panelShadow: '#030805',
 };
 
 export const FOREST_THEME: Theme = {
