@@ -36,6 +36,7 @@ import { analyzeHGTProvenance } from '@phage-explorer/comparison';
 import type { FoldEmbedding } from '@phage-explorer/core';
 import type { OverlayId, ExperienceLevel } from '@phage-explorer/state';
 import { BiasDecompositionOverlay } from './BiasDecompositionOverlay';
+import { CRISPROverlay } from './CRISPROverlay';
 
 const ANALYSIS_MENU_ID: OverlayId = 'analysisMenu';
 const SIMULATION_MENU_ID: OverlayId = 'simulationHub';
@@ -51,6 +52,7 @@ const PRESSURE_ID: OverlayId = 'pressure';
 const TRANSCRIPTION_ID: OverlayId = 'transcriptionFlow';
 const BIAS_ID: OverlayId = 'biasDecomposition';
 const HGT_ID: OverlayId = 'hgt';
+const CRISPR_ID: OverlayId = 'crispr';
 
 interface AppProps {
   repository: PhageRepository;
@@ -60,7 +62,11 @@ interface AppProps {
 export function App({ repository, foldEmbeddings = [] }: AppProps): React.ReactElement {
   const { exit } = useApp();
   const { stdout } = useStdout();
-  const overlayCacheRef = React.useRef<Map<number, { length: number; hash: number; data: ReturnType<typeof computeAllOverlays> }>>(new Map());
+  const overlayCacheRef = React.useRef<
+    Map<number, { length: number; hash: number; refVersion: number; data: ReturnType<typeof computeAllOverlays> }>
+  >(new Map());
+  const referenceSketchesRef = React.useRef<Record<string, string>>({});
+  const referenceVersionRef = React.useRef(0);
 
   const hashSeq = React.useCallback((seq: string): number => {
     let h = 0;
@@ -89,6 +95,7 @@ export function App({ repository, foldEmbeddings = [] }: AppProps): React.ReactE
   const error = usePhageStore(s => s.error);
   const setError = usePhageStore(s => s.setError);
   const overlayData = usePhageStore(s => s.overlayData);
+  const currentError = usePhageStore(s => s.error);
 
   // Actions
   const nextPhage = usePhageStore(s => s.nextPhage);
@@ -147,6 +154,35 @@ export function App({ repository, foldEmbeddings = [] }: AppProps): React.ReactE
     loadPhages();
   }, [repository, setPhages, setError]);
 
+  // Preload reference sketches (full genomes) for donor inference in HGT tracer
+  useEffect(() => {
+    if (phages.length === 0) return;
+    if (Object.keys(referenceSketchesRef.current).length > 0) return;
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const sketches: Record<string, string> = {};
+        for (const p of phages) {
+          const len = await repository.getFullGenomeLength(p.id);
+          const seq = await repository.getSequenceWindow(p.id, 0, len);
+          sketches[p.name ?? `phage-${p.id}`] = seq;
+        }
+        if (!cancelled) {
+          referenceSketchesRef.current = sketches;
+          referenceVersionRef.current += 1;
+        }
+      } catch (err) {
+        if (!cancelled && !currentError) {
+          setError(`Failed to preload donor sketches: ${err}`);
+        }
+      }
+    };
+    load();
+    return () => {
+      cancelled = true;
+    };
+  }, [phages, repository, setError, currentError]);
+
   // Load current phage data when index changes
   useEffect(() => {
     if (phages.length === 0) return;
@@ -165,14 +201,13 @@ export function App({ repository, foldEmbeddings = [] }: AppProps): React.ReactE
          // Use cache if available, else compute and store
          const seqHash = hashSeq(seq);
          const cache = overlayCacheRef.current.get(phage.id);
-         if (cache && cache.length === length && cache.hash === seqHash) {
+         if (cache && cache.length === length && cache.hash === seqHash && cache.refVersion === referenceVersionRef.current) {
            setOverlayData(cache.data);
          } else {
            const data = computeAllOverlays(seq);
-            // Attach HGT analysis (lightweight defaults to k-mer donor inference with empty refs)
-            const hgt = analyzeHGTProvenance(seq, phage.genes ?? [], {});
+            const hgt = analyzeHGTProvenance(seq, phage.genes ?? [], referenceSketchesRef.current);
             const enriched = { ...data, hgt };
-            overlayCacheRef.current.set(phage.id, { length, hash: seqHash, data: enriched });
+            overlayCacheRef.current.set(phage.id, { length, hash: seqHash, refVersion: referenceVersionRef.current, data: enriched });
             setOverlayData(enriched);
           }
         }
@@ -368,6 +403,13 @@ export function App({ repository, foldEmbeddings = [] }: AppProps): React.ReactE
       }
       promote('intermediate');
       toggleOverlay(REPEAT_ID);
+    } else if (input === 'i' || input === 'I') {
+      if (!isIntermediate) {
+        setError('CRISPR overlay unlocks after ~5 minutes or once promoted.');
+        return;
+      }
+      promote('intermediate');
+      toggleOverlay(CRISPR_ID);
     }
 
     // Overlays (we already returned early if overlay is active, so just open)
@@ -618,6 +660,16 @@ export function App({ repository, foldEmbeddings = [] }: AppProps): React.ReactE
           marginTop={Math.floor((terminalRows - 24) / 2)}
         >
           <HGTOverlay />
+        </Box>
+      )}
+
+      {activeOverlay === CRISPR_ID && (
+        <Box
+          position="absolute"
+          marginLeft={Math.floor((terminalCols - 90) / 2)}
+          marginTop={Math.floor((terminalRows - 22) / 2)}
+        >
+          <CRISPROverlay sequence={sequence} genes={currentPhage?.genes ?? []} />
         </Box>
       )}
 

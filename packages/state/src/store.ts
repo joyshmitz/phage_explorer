@@ -15,7 +15,7 @@ import {
   nextSpeed,
   prevSpeed,
 } from '@phage-explorer/core';
-import type { GenomeComparisonResult, HGTAnalysis } from '@phage-explorer/comparison';
+import type { GenomeComparisonResult } from '@phage-explorer/comparison';
 
 type OverlayData = Partial<Record<'gcSkew' | 'complexity' | 'bendability' | 'promoter' | 'repeats' | 'kmerAnomaly' | 'hgt', unknown>>;
 
@@ -42,7 +42,8 @@ export type OverlayId =
   | 'foldQuickview'
   | 'commandPalette'
   | 'phasePortrait'
-  | 'biasDecomposition';
+  | 'biasDecomposition'
+  | 'crispr';
 
 export type HelpDetailLevel = 'essential' | 'detailed';
 export type ExperienceLevel = 'novice' | 'intermediate' | 'power';
