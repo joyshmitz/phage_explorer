@@ -26,7 +26,6 @@ export type OverlayId =
   | 'aaKey'
   | 'comparison'
   | 'analysisMenu'
-  | 'simulationMenu'
   | 'simulationHub'
   | 'simulationView'
   | 'complexity'
