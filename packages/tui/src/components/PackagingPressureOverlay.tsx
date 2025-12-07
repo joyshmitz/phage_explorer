@@ -39,7 +39,7 @@ export function PackagingPressureOverlay(): React.ReactElement {
       atp: atpConsumed,
       packedLengthNm,
     };
-  }, [genomeLength, scroll]);
+  }, [genomeLength, scroll, viewMode]);
 
   useInput((input, key) => {
     if (key.escape || input === 'v' || input === 'V') {
@@ -68,7 +68,7 @@ export function PackagingPressureOverlay(): React.ReactElement {
       ) : (
         <>
           <Text color={colors.text}>
-            Position: {scroll.toLocaleString()} / {genomeLength.toLocaleString()} bp · Fill {(fill * 100).toFixed(1)}%
+            Position: {(viewMode === 'aa' ? scroll * 3 : scroll).toLocaleString()} / {genomeLength.toLocaleString()} bp · Fill {(fill * 100).toFixed(1)}%
           </Text>
           <Text color={colors.text}>
             Force: {force.toFixed(1)} pN · Pressure: {pressure.toFixed(1)} atm · ATP consumed: {atp.toLocaleString()}
