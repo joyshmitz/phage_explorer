@@ -78,6 +78,14 @@ export function AnalysisMenuOverlay({ onClose }: MenuOverlayProps): React.ReactE
             action: () => openOverlay('complexity'),
           },
           {
+            id: 'analysis-transcription',
+            label: 'Transcription Flow Overlay',
+            description: 'Heuristic flow from promoters/terminators (Y)',
+            icon: '🧪',
+            shortcut: 'Y',
+            action: () => openOverlay('transcriptionFlow'),
+          },
+          {
             id: 'analysis-pressure',
             label: 'Packaging Pressure Gauge',
             description: 'Packaging motor pressure vs fill fraction (V)',

@@ -20720,33 +20720,249 @@ export function renderCRISPRPressureBar(
 
 ---
 
----
-
 ## 48) Dinucleotide & Codon Bias Tensor Decomposition
 
 ### Concept
-Decompose joint di-/tri-nucleotide and codon-usage patterns across phages into latent “bias modes” (e.g., replication strategy, host clade) and position each genome in that space.
+Decompose joint di-/tri-nucleotide and codon-usage patterns across phages into latent "bias modes" (e.g., replication strategy, host clade) and position each genome in that space.
 
-### How to Build
-- **Tensor build**: For each phage, compute dinuc/codon frequency vectors; stack into matrix/tensor.
-- **Decomposition**: NMF/PCA in Rust+WASM (ndarray + linfa) for speed; store loadings per phage and per-feature.
-- **Annotation**: Correlate components with metadata (host, lifecycle, genome type).
-- **Per-gene projection**: Optional per-gene loadings to localize bias shifts.
+### Extended Concept
 
-### Why It’s Good
-Exposes hidden biases tied to biology (replication enzymes, host context); aids clustering and anomaly detection.
+Phage genomes carry hidden compositional "fingerprints" that reflect their evolutionary history, host adaptation, and replication strategies. This feature uses **tensor decomposition** to extract these latent bias patterns:
 
-### Novelty
-Medium—bias decompositions exist, but in-terminal, interactive latent-space navigation is rare.
+1. **Feature matrix construction**: Build a matrix where rows are phages and columns are dinucleotide/codon frequencies
+2. **Dimensionality reduction**: Apply NMF (Non-negative Matrix Factorization) or PCA to extract latent components
+3. **Biological interpretation**: Correlate components with known metadata (host, lifecycle, genome type)
+4. **Anomaly detection**: Identify phages with unusual compositional profiles that deviate from expected patterns
 
-### Pedagogical Value
-Shows factorization methods and biological interpretation of compositional bias.
+### Mathematical Foundations
 
-### Wow / TUI Visualization
-2D latent map with phages as points; hover shows metadata correlations; bar chart of top contributing k-mers for the selected component.
+**Dinucleotide/Codon Frequency Vector**:
 
-### Implementation Stack
-Rust+WASM NMF/PCA; TS UI for scatter + bars; SQLite for loadings and component metadata correlations.
+```
+For phage p, construct feature vector:
+
+F_p = [f(AA), f(AC), ..., f(TT), f(AAA), ..., f(TTT), ...]
+
+where f(XY) = count(XY) / (L - 1) for dinucleotides
+      f(XYZ) = count(XYZ) / (L - 2) for trinucleotides
+```
+
+**Non-Negative Matrix Factorization**:
+
+```
+Given matrix V (n_phages × n_features):
+
+V ≈ W × H
+
+where:
+- W (n_phages × k): Phage loadings on k latent components
+- H (k × n_features): Component feature weights
+
+Minimize: ||V - WH||² subject to W ≥ 0, H ≥ 0
+```
+
+**Component Interpretation via Correlation**:
+
+```
+For component c and metadata m:
+
+ρ(c, m) = corr(W[:, c], metadata[:, m])
+
+High |ρ| suggests component c captures variation related to metadata m
+```
+
+### TypeScript Implementation
+
+```typescript
+import type { PhageFull } from '@phage-explorer/core';
+
+interface BiasComponent {
+  id: number;
+  explainedVariance: number;
+  topFeatures: { feature: string; weight: number }[];
+  metadataCorrelations: { metadata: string; correlation: number }[];
+}
+
+interface PhageProjection {
+  phageId: number;
+  phageName: string;
+  coordinates: number[];  // k-dimensional
+  dominantComponent: number;
+}
+
+interface TensorDecomposition {
+  components: BiasComponent[];
+  projections: PhageProjection[];
+  reconstructionError: number;
+}
+
+const DINUCLEOTIDES = ['AA', 'AC', 'AG', 'AT', 'CA', 'CC', 'CG', 'CT',
+                       'GA', 'GC', 'GG', 'GT', 'TA', 'TC', 'TG', 'TT'];
+
+function computeDinucleotideFrequencies(sequence: string): number[] {
+  const counts = new Map<string, number>();
+  DINUCLEOTIDES.forEach(dn => counts.set(dn, 0));
+
+  const seq = sequence.toUpperCase();
+  for (let i = 0; i < seq.length - 1; i++) {
+    const dn = seq.substring(i, i + 2);
+    if (counts.has(dn)) counts.set(dn, (counts.get(dn) ?? 0) + 1);
+  }
+
+  const total = seq.length - 1;
+  return DINUCLEOTIDES.map(dn => (counts.get(dn) ?? 0) / total);
+}
+
+// Simplified NMF via multiplicative update
+function nmf(V: number[][], k: number, iterations: number = 100): { W: number[][]; H: number[][] } {
+  const n = V.length;
+  const m = V[0].length;
+
+  // Random initialization
+  let W = Array(n).fill(0).map(() => Array(k).fill(0).map(() => Math.random() + 0.1));
+  let H = Array(k).fill(0).map(() => Array(m).fill(0).map(() => Math.random() + 0.1));
+
+  for (let iter = 0; iter < iterations; iter++) {
+    // Update H
+    for (let i = 0; i < k; i++) {
+      for (let j = 0; j < m; j++) {
+        let num = 0, den = 0;
+        for (let p = 0; p < n; p++) {
+          let wh = 0;
+          for (let q = 0; q < k; q++) wh += W[p][q] * H[q][j];
+          num += W[p][i] * V[p][j];
+          den += W[p][i] * wh;
+        }
+        H[i][j] *= den > 0 ? num / den : 1;
+      }
+    }
+
+    // Update W
+    for (let i = 0; i < n; i++) {
+      for (let j = 0; j < k; j++) {
+        let num = 0, den = 0;
+        for (let p = 0; p < m; p++) {
+          let wh = 0;
+          for (let q = 0; q < k; q++) wh += W[i][q] * H[q][p];
+          num += V[i][p] * H[j][p];
+          den += wh * H[j][p];
+        }
+        W[i][j] *= den > 0 ? num / den : 1;
+      }
+    }
+  }
+
+  return { W, H };
+}
+
+export function decomposeBiasPatterns(
+  phages: PhageFull[],
+  sequences: Map<number, string>,
+  numComponents: number = 5
+): TensorDecomposition {
+  // Build feature matrix
+  const featureMatrix: number[][] = [];
+  const phageOrder: PhageFull[] = [];
+
+  for (const phage of phages) {
+    const seq = sequences.get(phage.id);
+    if (seq) {
+      featureMatrix.push(computeDinucleotideFrequencies(seq));
+      phageOrder.push(phage);
+    }
+  }
+
+  // Perform NMF
+  const { W, H } = nmf(featureMatrix, numComponents);
+
+  // Extract components
+  const components: BiasComponent[] = [];
+  for (let c = 0; c < numComponents; c++) {
+    const topFeatures = DINUCLEOTIDES
+      .map((f, i) => ({ feature: f, weight: H[c][i] }))
+      .sort((a, b) => b.weight - a.weight)
+      .slice(0, 5);
+
+    components.push({
+      id: c,
+      explainedVariance: H[c].reduce((s, v) => s + v, 0),
+      topFeatures,
+      metadataCorrelations: []  // Would require metadata
+    });
+  }
+
+  // Create projections
+  const projections = phageOrder.map((phage, i) => ({
+    phageId: phage.id,
+    phageName: phage.name,
+    coordinates: W[i],
+    dominantComponent: W[i].indexOf(Math.max(...W[i]))
+  }));
+
+  return { components, projections, reconstructionError: 0 };
+}
+```
+
+### TUI Visualization
+
+```
+╭──────────────────────────────────────────────────────────────────────────────╮
+│ Dinucleotide & Codon Bias Tensor Decomposition                    [Shift+T] │
+├──────────────────────────────────────────────────────────────────────────────┤
+│ Components: 5                  Explained Variance: 87.3%                     │
+│                                                                              │
+│ ╭─ Latent Space Projection (PC1 vs PC2) ─────────────────────────────────╮  │
+│ │                                                                        │  │
+│ │    0.8 │                  ▲T7    ▲T4                                  │  │
+│ │        │       ▲Phi29                                                 │  │
+│ │    0.4 │                        ▲Lambda                               │  │
+│ │        │  ▲P22                                                        │  │
+│ │    0.0 │────────▲Mu────────────────────────────────                   │  │
+│ │        │              ▲PhiX174                                        │  │
+│ │   -0.4 │    ▲M13                    ▲MS2                              │  │
+│ │        │                        ▲Phi6                                 │  │
+│ │   -0.8 └──────────────────────────────────────────→                   │  │
+│ │       -0.8   -0.4    0.0    0.4    0.8    PC1 (45.2%)                │  │
+│ │                                                                        │  │
+│ │ Color: ● dsDNA  ○ ssDNA  △ dsRNA  PC2 explains 24.1%                 │  │
+│ │                                                                        │  │
+│ ╰────────────────────────────────────────────────────────────────────────╯  │
+│                                                                              │
+│ ╭─ Selected: Component 1 (45.2% variance) ───────────────────────────────╮  │
+│ │                                                                        │  │
+│ │ Top Contributing Features:                                             │  │
+│ │ CG ████████████████████ 0.342 (CpG suppression axis)                  │  │
+│ │ GC ████████████████░░░░ 0.289                                         │  │
+│ │ TA ██████████████░░░░░░ 0.234                                         │  │
+│ │ AT █████████████░░░░░░░ 0.198                                         │  │
+│ │ CC ███████████░░░░░░░░░ 0.156                                         │  │
+│ │                                                                        │  │
+│ │ Metadata Correlations:                                                 │  │
+│ │ Host GC%:        ρ = 0.78 ★★★                                         │  │
+│ │ Genome size:     ρ = 0.45 ★★                                          │  │
+│ │ Lysogenic:       ρ = 0.23 ★                                           │  │
+│ │                                                                        │  │
+│ │ Interpretation: This component captures host GC adaptation            │  │
+│ │                                                                        │  │
+│ ╰────────────────────────────────────────────────────────────────────────╯  │
+│                                                                              │
+├──────────────────────────────────────────────────────────────────────────────┤
+│ [1-5] Select component  [G] Per-gene view  [C] Cluster  [Esc] Close         │
+╰──────────────────────────────────────────────────────────────────────────────╯
+```
+
+### Why This Is a Good Idea
+
+1. **Hidden pattern discovery**: Reveals compositional biases invisible in individual genomes but clear across the collection
+2. **Host prediction**: GC/codon biases often reflect host compatibility, aiding host range prediction
+3. **Anomaly detection**: Phages with unusual projections may have novel adaptations or annotation errors
+4. **Evolutionary clustering**: Natural groupings emerge from composition alone, independent of sequence alignment
+5. **Educational value**: Teaches dimensionality reduction and how biology manifests in sequence statistics
+
+### Ratings
+- **Pedagogical Value**: 8/10 - Connects statistics to biology through interpretation
+- **Novelty**: 7/10 - Decomposition methods exist but interactive TUI navigation is fresh
+- **Wow Factor**: 7/10 - Latent space visualization reveals hidden structure
 
 ---
 
@@ -20755,54 +20971,427 @@ Rust+WASM NMF/PCA; TS UI for scatter + bars; SQLite for loadings and component m
 ### Concept
 Align gene order between phages using elastic warping on gene families/distances to reveal conserved modules vs shuffled blocks.
 
-### How to Build
-- **Gene families**: Cluster proteins via MMseqs2 offline; store family IDs per gene.
-- **Elastic alignment**: Rust+WASM dynamic time warping on family sequences with gap penalties reflecting distance; output matched blocks and breakpoints.
-- **Scores**: Synteny continuity score; module conservation metrics.
-- **Caching**: Precompute pairwise synteny summaries for the 12 core phages; on-demand for others.
+### Extended Concept
 
-### Why It’s Good
-Highlights modular genome architecture and rearrangements beyond sequence identity.
+Phage genomes are **modular** - genes that work together tend to stay together even as genomes rearrange. This feature uses **Dynamic Time Warping (DTW)** to align gene orders between phages, revealing:
 
-### Novelty
-Medium-high—elastic synteny with interactive inspection in a TUI is uncommon.
+1. **Conserved synteny blocks**: Regions where gene order is maintained across phages
+2. **Rearrangement breakpoints**: Positions where genome architecture has been shuffled
+3. **Module boundaries**: Where functional units begin and end
+4. **Elastic matching**: Allowing for insertions, deletions, and local duplications
 
-### Pedagogical Value
-Teaches genome modularity, rearrangement, and how function/position co-evolve.
+### Mathematical Foundations
 
-### Wow / TUI Visualization
-Dual gene bars with elastic “bands” linking orthologous modules; breakpoint markers; pressing `m` cycles modules; `s` shows continuity score.
+**Gene Family Encoding**:
 
-### Implementation Stack
-Rust+WASM DTW; TS/Ink dual-track view; SQLite caches for family IDs and synteny results.
+```
+For phage p with genes g1, g2, ..., gn:
+
+Encode as sequence of family IDs: S_p = [F(g1), F(g2), ..., F(gn)]
+
+where F(g) is the protein family ID from clustering (e.g., MMseqs2)
+```
+
+**Dynamic Time Warping**:
+
+```
+Given sequences A = [a1, ..., an] and B = [b1, ..., bm]:
+
+DTW(i, j) = d(ai, bj) + min(
+  DTW(i-1, j),    // deletion in A
+  DTW(i, j-1),    // deletion in B
+  DTW(i-1, j-1)   // match
+)
+
+where d(ai, bj) = 0 if ai == bj (same family), 1 otherwise
+```
+
+**Synteny Continuity Score**:
+
+```
+SCS = (matched_pairs_in_order) / max(|A|, |B|)
+
+Range: 0 (completely shuffled) to 1 (perfect synteny)
+```
+
+### TypeScript Implementation
+
+```typescript
+import type { GeneInfo } from '@phage-explorer/core';
+
+interface SyntenyBlock {
+  phageA: { start: number; end: number; genes: string[] };
+  phageB: { start: number; end: number; genes: string[] };
+  score: number;
+}
+
+interface SyntenyAnalysis {
+  phageA: string;
+  phageB: string;
+  dtwDistance: number;
+  syntenyScore: number;
+  conservedBlocks: SyntenyBlock[];
+  breakpoints: { positionA: number; positionB: number }[];
+}
+
+function dtw(seqA: string[], seqB: string[]): { distance: number; path: [number, number][] } {
+  const n = seqA.length;
+  const m = seqB.length;
+  const dp: number[][] = Array(n + 1).fill(0).map(() => Array(m + 1).fill(Infinity));
+
+  dp[0][0] = 0;
+
+  for (let i = 1; i <= n; i++) {
+    for (let j = 1; j <= m; j++) {
+      const cost = seqA[i-1] === seqB[j-1] ? 0 : 1;
+      dp[i][j] = cost + Math.min(
+        dp[i-1][j] + 0.5,     // gap in B
+        dp[i][j-1] + 0.5,     // gap in A
+        dp[i-1][j-1]          // match/mismatch
+      );
+    }
+  }
+
+  // Traceback
+  const path: [number, number][] = [];
+  let i = n, j = m;
+  while (i > 0 || j > 0) {
+    path.push([i, j]);
+    if (i === 0) { j--; continue; }
+    if (j === 0) { i--; continue; }
+
+    const min = Math.min(dp[i-1][j], dp[i][j-1], dp[i-1][j-1]);
+    if (dp[i-1][j-1] === min) { i--; j--; }
+    else if (dp[i-1][j] <= dp[i][j-1]) { i--; }
+    else { j--; }
+  }
+
+  return { distance: dp[n][m], path: path.reverse() };
+}
+
+export function alignSynteny(
+  genesA: GeneInfo[],
+  genesB: GeneInfo[],
+  familyMap: Map<string, string>
+): SyntenyAnalysis {
+  // Encode genes as family sequences
+  const seqA = genesA.map(g => familyMap.get(g.name ?? '') ?? 'unknown');
+  const seqB = genesB.map(g => familyMap.get(g.name ?? '') ?? 'unknown');
+
+  const { distance, path } = dtw(seqA, seqB);
+
+  // Extract conserved blocks
+  const blocks: SyntenyBlock[] = [];
+  let blockStart: [number, number] | null = null;
+
+  for (let k = 0; k < path.length; k++) {
+    const [i, j] = path[k];
+    if (i > 0 && j > 0 && seqA[i-1] === seqB[j-1] && seqA[i-1] !== 'unknown') {
+      if (!blockStart) blockStart = [i-1, j-1];
+    } else {
+      if (blockStart && path[k-1]) {
+        const [endI, endJ] = path[k-1];
+        if (endI - blockStart[0] >= 2) {  // Minimum block size
+          blocks.push({
+            phageA: {
+              start: blockStart[0],
+              end: endI - 1,
+              genes: seqA.slice(blockStart[0], endI)
+            },
+            phageB: {
+              start: blockStart[1],
+              end: endJ - 1,
+              genes: seqB.slice(blockStart[1], endJ)
+            },
+            score: (endI - blockStart[0]) / Math.max(seqA.length, seqB.length)
+          });
+        }
+      }
+      blockStart = null;
+    }
+  }
+
+  // Calculate synteny score
+  const matchedPairs = path.filter(([i, j]) =>
+    i > 0 && j > 0 && seqA[i-1] === seqB[j-1]
+  ).length;
+  const syntenyScore = matchedPairs / Math.max(seqA.length, seqB.length);
+
+  return {
+    phageA: 'PhageA',
+    phageB: 'PhageB',
+    dtwDistance: distance,
+    syntenyScore,
+    conservedBlocks: blocks,
+    breakpoints: []  // Would extract from path gaps
+  };
+}
+```
+
+### TUI Visualization
+
+```
+╭──────────────────────────────────────────────────────────────────────────────╮
+│ Functional Synteny Elastic Alignment                              [Shift+Y] │
+├──────────────────────────────────────────────────────────────────────────────┤
+│ Comparing: T4 (279 genes) vs T7 (56 genes)      Synteny Score: 0.34         │
+│                                                                              │
+│ ╭─ Gene Order Alignment ─────────────────────────────────────────────────╮  │
+│ │                                                                        │  │
+│ │ T4:  ▓▓▓▓▓▓▓███░░░░▓▓▓▓▓▓▓▓▓▓░░░░░███████░░░▓▓▓▓▓▓░░░░░████████░░░░ │  │
+│ │      │╲    │╱│              │╲     ╱│     │╲           ╱│             │  │
+│ │      │ ╲   ╱ │              │ ╲   ╱ │     │ ╲         ╱ │             │  │
+│ │      │  ╲ ╱  │              │  ╲ ╱  │     │  ╲       ╱  │             │  │
+│ │      │   ╳   │              │   ╳   │     │   ╲     ╱   │             │  │
+│ │      │  ╱ ╲  │              │  ╱ ╲  │     │    ╲   ╱    │             │  │
+│ │      │ ╱   ╲ │              │ ╱   ╲ │     │     ╲ ╱     │             │  │
+│ │      │╱     ╲│              │╱     ╲│     │      ╳      │             │  │
+│ │ T7:  ███░░░░░▓▓▓▓▓▓░░░░░░░░░███████░░░░░░░▓▓▓▓▓▓▓▓▓▓████░░░░░░░░░░ │  │
+│ │                                                                        │  │
+│ │ Legend: █ Conserved block  ▓ Matched genes  ░ Unmatched  ╳ Rearranged │  │
+│ │                                                                        │  │
+│ ╰────────────────────────────────────────────────────────────────────────╯  │
+│                                                                              │
+│ ╭─ Conserved Synteny Blocks ─────────────────────────────────────────────╮  │
+│ │                                                                        │  │
+│ │ Block   T4 Position      T7 Position      Genes   Module               │  │
+│ │ 1       12-28 (17)       1-15 (15)        12      DNA replication     │  │
+│ │ 2       45-62 (18)       20-35 (16)       14      Morphogenesis head  │  │
+│ │ 3       156-178 (23)     40-56 (17)       15      Tail assembly       │  │
+│ │                                                                        │  │
+│ │ Rearrangements detected: 2 major inversions, 5 insertions              │  │
+│ │                                                                        │  │
+│ ╰────────────────────────────────────────────────────────────────────────╯  │
+│                                                                              │
+├──────────────────────────────────────────────────────────────────────────────┤
+│ [B] Jump to block  [R] Show rearrangements  [M] Module view  [Esc] Close    │
+╰──────────────────────────────────────────────────────────────────────────────╯
+```
+
+### Why This Is a Good Idea
+
+1. **Beyond sequence similarity**: Reveals organizational conservation even when sequences diverge
+2. **Module discovery**: Identifies functional units that evolution keeps together
+3. **Rearrangement history**: Breakpoints indicate evolutionary events like inversions and translocations
+4. **Engineering guidance**: Shows which genes must stay together for function
+5. **Phylogenetic signal**: Synteny patterns can resolve relationships when sequences are too divergent
+
+### Ratings
+- **Pedagogical Value**: 9/10 - Clearly shows genome modularity and rearrangement
+- **Novelty**: 8/10 - Elastic synteny with interactive visualization is uncommon
+- **Wow Factor**: 8/10 - Visual bands linking genes across genomes is compelling
 
 ---
 
 ## 50) Regulatory Signal Constellations
 
 ### Concept
-Scan promoters/terminators/RBS/operators and render co-occurring regulatory motifs as “constellations” to reveal operons and control logic.
+Scan promoters/terminators/RBS/operators and render co-occurring regulatory motifs as "constellations" to reveal operons and control logic.
 
-### How to Build
-- **Motif scans**: PWMs for sigma factors, Rho-independent terminators, RBS; run in TS (fast) or Rust+WASM for batch; store hits with scores/phases.
-- **Co-occurrence graph**: Build small graph of motifs per region; detect motif “motifs” (e.g., promoter + operator + terminator spacing).
-- **Evidence score**: Combine spacing, orientation, and strength into an operon-likelihood.
-- **Link to genes**: Tie regions to downstream ORFs; annotate likely operons.
+### Extended Concept
 
-### Why It’s Good
-Surfaces regulatory architecture beyond coding genes; aids understanding of control.
+Gene expression in phages is tightly regulated through a network of **cis-regulatory elements**. This feature maps and visualizes the regulatory architecture:
 
-### Novelty
-Medium—motif scans are common, but co-occurrence constellations with spacing logic in a TUI are fresh.
+1. **Promoter detection**: σ70 and phage-specific promoter motifs
+2. **RBS scanning**: Shine-Dalgarno sequences for translation initiation
+3. **Terminator prediction**: Rho-independent terminators (hairpin + poly-U)
+4. **Operator identification**: Repressor binding sites for regulatory switches
 
-### Pedagogical Value
-Spacing/phase matters; shows how multiple motifs compose regulation.
+The "constellation" metaphor renders these elements as stars in a night sky, with connecting lines showing spatial relationships.
 
-### Wow / TUI Visualization
-Starfield strip above genes; motifs as glyphs; edges show spacing; hover shows PWM score; `o` toggles inferred operons highlighting ORF blocks.
+### Mathematical Foundations
 
-### Implementation Stack
-TS PWMs; optional Rust+WASM for speed; SQLite motif hit cache; Ink starfield rendering with braille.
+**Position Weight Matrix Scoring**:
+
+```
+For sequence S at position p, given PWM M:
+
+Score(p) = Σ_i M[S[p+i], i] - background_score
+
+where background_score = Σ_i max_j(M[j, i]) - log(4) per position
+```
+
+**Operon Probability**:
+
+```
+P(operon | genes g1, g2) = f(distance) × f(orientation) × f(promoter) × f(terminator)
+
+where:
+- f(distance) = exp(-d / 100) for intergenic distance d
+- f(orientation) = 1.0 if same strand, 0.1 if opposite
+- f(promoter) = 0.2 if internal promoter, 1.0 otherwise
+- f(terminator) = 0.1 if internal terminator, 1.0 otherwise
+```
+
+### TypeScript Implementation
+
+```typescript
+import type { GeneInfo } from '@phage-explorer/core';
+
+interface RegulatoryMotif {
+  type: 'promoter' | 'rbs' | 'terminator' | 'operator';
+  position: number;
+  strand: '+' | '-';
+  score: number;
+  sequence: string;
+  associatedGene?: string;
+}
+
+interface Operon {
+  genes: GeneInfo[];
+  promoter: RegulatoryMotif;
+  terminator?: RegulatoryMotif;
+  confidence: number;
+}
+
+// Sigma-70 promoter PWM (simplified -35 and -10 boxes)
+const SIGMA70_35: Record<string, number[]> = {
+  'T': [0.8, 0.9, 0.5, 0.4, 0.3, 0.4],
+  'G': [0.1, 0.0, 0.1, 0.4, 0.3, 0.2],
+  'A': [0.0, 0.0, 0.3, 0.1, 0.3, 0.3],
+  'C': [0.1, 0.1, 0.1, 0.1, 0.1, 0.1]
+};
+
+const SIGMA70_10: Record<string, number[]> = {
+  'T': [0.9, 0.5, 0.9, 0.5, 0.5, 0.9],
+  'A': [0.0, 0.3, 0.0, 0.4, 0.3, 0.0],
+  'G': [0.0, 0.1, 0.0, 0.0, 0.1, 0.0],
+  'C': [0.1, 0.1, 0.1, 0.1, 0.1, 0.1]
+};
+
+function scorePWM(sequence: string, pwm: Record<string, number[]>): number {
+  let score = 0;
+  for (let i = 0; i < sequence.length && i < pwm['A'].length; i++) {
+    const base = sequence[i].toUpperCase();
+    score += Math.log2((pwm[base]?.[i] ?? 0.25) / 0.25);
+  }
+  return score;
+}
+
+function findPromoters(sequence: string, threshold: number = 4): RegulatoryMotif[] {
+  const motifs: RegulatoryMotif[] = [];
+
+  for (let i = 0; i < sequence.length - 40; i++) {
+    const box35 = sequence.substring(i, i + 6);
+    const box10 = sequence.substring(i + 17, i + 23);
+
+    const score35 = scorePWM(box35, SIGMA70_35);
+    const score10 = scorePWM(box10, SIGMA70_10);
+    const totalScore = score35 + score10;
+
+    if (totalScore > threshold) {
+      motifs.push({
+        type: 'promoter',
+        position: i,
+        strand: '+',
+        score: totalScore,
+        sequence: `${box35}...${box10}`
+      });
+    }
+  }
+
+  return motifs;
+}
+
+function findTerminators(sequence: string): RegulatoryMotif[] {
+  const motifs: RegulatoryMotif[] = [];
+
+  // Look for hairpin + poly-U pattern
+  const hairpinPattern = /([ACGT]{5,10})([ACGT]{3,6})\1[T]{4,8}/gi;
+  let match;
+
+  while ((match = hairpinPattern.exec(sequence)) !== null) {
+    motifs.push({
+      type: 'terminator',
+      position: match.index,
+      strand: '+',
+      score: match[0].length / 30,  // Normalize
+      sequence: match[0].substring(0, 20)
+    });
+  }
+
+  return motifs;
+}
+
+export function analyzeRegulatorySignals(
+  sequence: string,
+  genes: GeneInfo[]
+): { motifs: RegulatoryMotif[]; operons: Operon[] } {
+  const promoters = findPromoters(sequence);
+  const terminators = findTerminators(sequence);
+
+  // Associate motifs with genes
+  for (const promoter of promoters) {
+    const downstream = genes.find(g =>
+      g.start > promoter.position && g.start < promoter.position + 500
+    );
+    if (downstream) promoter.associatedGene = downstream.name;
+  }
+
+  // Infer operons
+  const operons: Operon[] = [];
+  // ... operon inference logic
+
+  return {
+    motifs: [...promoters, ...terminators],
+    operons
+  };
+}
+```
+
+### TUI Visualization
+
+```
+╭──────────────────────────────────────────────────────────────────────────────╮
+│ Regulatory Signal Constellations                                  [Shift+O] │
+├──────────────────────────────────────────────────────────────────────────────┤
+│ Phage: Lambda                Motifs: 47 promoters, 23 terminators           │
+│                                                                              │
+│ ╭─ Regulatory Constellation ─────────────────────────────────────────────╮  │
+│ │                                                                        │  │
+│ │ Signals:  ★  ·  ★──────○  ·  ·  ★───★───○  ·  ★────────○  ★──○  ·  │  │
+│ │           P1    P2     T1     P3  P4  T2    P5        T3  P6 T4     │  │
+│ │                                                                        │  │
+│ │ Genes:    ▓▓▓▓  ▓▓▓▓▓▓▓▓▓▓▓▓▓  ▓▓▓▓  ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓  ▓▓▓▓▓▓▓▓▓    │  │
+│ │            N     cI   cro   cII    O  P  Q              S  R         │  │
+│ │                                                                        │  │
+│ │ Legend: ★ Promoter  ○ Terminator  ─ Operon span                       │  │
+│ │                                                                        │  │
+│ ╰────────────────────────────────────────────────────────────────────────╯  │
+│                                                                              │
+│ ╭─ Selected: PL Promoter (position 35,500) ──────────────────────────────╮  │
+│ │                                                                        │  │
+│ │ Type: σ70-dependent         Score: 8.7 (strong)                       │  │
+│ │                                                                        │  │
+│ │ -35 box: TTGACA (match: 5/6)    Spacer: 17 bp (optimal)               │  │
+│ │ -10 box: TATAAT (match: 6/6)    +1: A (consensus)                     │  │
+│ │                                                                        │  │
+│ │ Sequence:  5'-TTGACATTTTTAATCTATAAT-3'                                │  │
+│ │                ══════         ══════                                   │  │
+│ │                -35 box        -10 box                                  │  │
+│ │                                                                        │  │
+│ │ Downstream genes: N, cI, cro (early leftward operon)                  │  │
+│ │ Regulation: CI repressor binding at OL blocks transcription          │  │
+│ │                                                                        │  │
+│ ╰────────────────────────────────────────────────────────────────────────╯  │
+│                                                                              │
+├──────────────────────────────────────────────────────────────────────────────┤
+│ [←/→] Navigate motifs  [O] Show operons  [G] Jump to gene  [Esc] Close      │
+╰──────────────────────────────────────────────────────────────────────────────╯
+```
+
+### Why This Is a Good Idea
+
+1. **Regulatory architecture**: Reveals the control logic beyond just coding genes
+2. **Operon detection**: Identifies co-regulated gene clusters automatically
+3. **Temporal programs**: Phage infection proceeds through regulatory cascades; this makes them visible
+4. **Engineering applications**: Know where to insert/modify regulatory elements
+5. **Educational**: Teaches promoter structure, terminators, and transcriptional regulation
+
+### Ratings
+- **Pedagogical Value**: 9/10 - Clearly visualizes transcriptional logic
+- **Novelty**: 7/10 - Motif scanning exists but constellation visualization is fresh
+- **Wow Factor**: 8/10 - Star constellation metaphor is intuitive and beautiful
 
 ---
 
@@ -20811,25 +21400,231 @@ TS PWMs; optional Rust+WASM for speed; SQLite motif hit cache; Ink starfield ren
 ### Concept
 For dated accessions, build time-scaled trees and visualize rate shifts, skyline Ne, and rapidly evolving loci with selection signals.
 
-### How to Build
-- **Tree**: Use a lightweight BEAST-like approximation—rate-smoothed NJ or treetime-style root-to-tip regression in Rust+WASM; infer clock rate.
-- **Skyline**: Coalescent skyline via interval counts; compute Ne(t) with credible bands.
-- **Selection**: dN/dS per branch/window (FEL-like fast approximation) in Rust+WASM; map to genome positions.
-- **Data ingest**: Accession dates + sequences; cache alignments and trees in SQLite.
+### Extended Concept
 
-### Why It’s Good
-Shows evolutionary tempo, expansions, and hotspot loci—connects time to genome changes.
+Phage evolution happens in real time. This feature brings **phylodynamics** - the intersection of phylogenetics and population dynamics - to phage genomics:
 
-### Novelty
-High—phylodynamics with selection overlays in a TUI genome browser is rare.
+1. **Time-scaled phylogenies**: Using collection dates to calibrate molecular clocks
+2. **Skyline plots**: Estimating effective population size (Ne) through time
+3. **Rate variation**: Identifying genomic regions evolving faster or slower than average
+4. **Selection detection**: dN/dS analysis to find genes under positive or purifying selection
 
-### Pedagogical Value
-Teaches molecular clocks, skyline plots, and selection mapping.
+### Mathematical Foundations
 
-### Wow / TUI Visualization
-ASCII time-scaled tree; side skyline plot; genome heat strip for dN/dS; cursor on tree highlights corresponding loci.
+**Root-to-Tip Regression for Clock Rate**:
 
-### Implementation Stack
-Rust+WASM for clock/regression/selection; TS/Ink for tree + skyline rendering; SQLite caches for alignments/trees.
+```
+For each tip with collection date t and root-to-tip distance d:
+
+d = r × (t - t_root) + ε
+
+Linear regression yields:
+- r: substitution rate (subs/site/time)
+- t_root: inferred root date
+- R²: clock-likeness
+```
+
+**Skyline Ne Estimation**:
+
+```
+From coalescent intervals in a time-scaled tree:
+
+Ne(t) = (Σ k(k-1)/2 × Δt_k) / Σ coalescent_events_in_interval
+
+where k is the number of lineages in interval
+```
+
+**dN/dS Calculation**:
+
+```
+For a branch with observed substitutions:
+
+dN = nonsynonymous_subs / nonsynonymous_sites
+dS = synonymous_subs / synonymous_sites
+
+ω = dN / dS
+
+ω > 1: positive selection
+ω = 1: neutral evolution
+ω < 1: purifying selection
+```
+
+### TypeScript Implementation
+
+```typescript
+interface DatedSequence {
+  id: string;
+  sequence: string;
+  collectionDate: Date;
+}
+
+interface TreeNode {
+  id: string;
+  branchLength: number;
+  date?: number;
+  children: TreeNode[];
+  dnds?: number;
+}
+
+interface SkylinePoint {
+  time: number;
+  ne: number;
+  lower: number;
+  upper: number;
+}
+
+interface PhylodynamicAnalysis {
+  tree: TreeNode;
+  clockRate: number;
+  clockR2: number;
+  rootDate: number;
+  skyline: SkylinePoint[];
+  selectionHotspots: { gene: string; dnds: number; pvalue: number }[];
+}
+
+function computeRootToTipDistances(node: TreeNode, distance: number = 0): Map<string, number> {
+  const distances = new Map<string, number>();
+
+  if (node.children.length === 0) {
+    distances.set(node.id, distance);
+  } else {
+    for (const child of node.children) {
+      const childDists = computeRootToTipDistances(child, distance + child.branchLength);
+      childDists.forEach((d, id) => distances.set(id, d));
+    }
+  }
+
+  return distances;
+}
+
+function regressClock(
+  distances: Map<string, number>,
+  dates: Map<string, number>
+): { rate: number; r2: number; rootDate: number } {
+  const points: { x: number; y: number }[] = [];
+
+  distances.forEach((dist, id) => {
+    const date = dates.get(id);
+    if (date !== undefined) {
+      points.push({ x: date, y: dist });
+    }
+  });
+
+  // Simple linear regression
+  const n = points.length;
+  const sumX = points.reduce((s, p) => s + p.x, 0);
+  const sumY = points.reduce((s, p) => s + p.y, 0);
+  const sumXY = points.reduce((s, p) => s + p.x * p.y, 0);
+  const sumX2 = points.reduce((s, p) => s + p.x * p.x, 0);
+  const sumY2 = points.reduce((s, p) => s + p.y * p.y, 0);
+
+  const slope = (n * sumXY - sumX * sumY) / (n * sumX2 - sumX * sumX);
+  const intercept = (sumY - slope * sumX) / n;
+
+  // R-squared
+  const meanY = sumY / n;
+  const ssTotal = points.reduce((s, p) => s + (p.y - meanY) ** 2, 0);
+  const ssResid = points.reduce((s, p) => s + (p.y - (slope * p.x + intercept)) ** 2, 0);
+  const r2 = 1 - ssResid / ssTotal;
+
+  return {
+    rate: slope,
+    r2,
+    rootDate: -intercept / slope
+  };
+}
+
+export function analyzePhylodynamics(
+  tree: TreeNode,
+  dates: Map<string, number>
+): PhylodynamicAnalysis {
+  const distances = computeRootToTipDistances(tree);
+  const clock = regressClock(distances, dates);
+
+  // Simplified skyline (would need proper coalescent analysis)
+  const skyline: SkylinePoint[] = [];
+
+  return {
+    tree,
+    clockRate: clock.rate,
+    clockR2: clock.r2,
+    rootDate: clock.rootDate,
+    skyline,
+    selectionHotspots: []
+  };
+}
+```
+
+### TUI Visualization
+
+```
+╭──────────────────────────────────────────────────────────────────────────────╮
+│ Phylodynamic Trajectory Explorer                                  [Shift+D] │
+├──────────────────────────────────────────────────────────────────────────────┤
+│ Dataset: T4-like phages (23 sequences)    Clock Rate: 2.3×10⁻⁵ subs/site/yr │
+│ Root Date: 1952 ± 12 years               Clock R²: 0.87 (good)              │
+│                                                                              │
+│ ╭─ Time-Scaled Phylogeny ────────────────────────────────────────────────╮  │
+│ │                                                                        │  │
+│ │ 1950        1970        1990        2010        2024                  │  │
+│ │   │           │           │           │           │                    │  │
+│ │   ├──────────────┬────────────────────┬──────────• T4 (1944)          │  │
+│ │   │              │                    └─────────• RB49 (2002)         │  │
+│ │   │              └──────────┬─────────────────• RB69 (1998)           │  │
+│ │   │                        └──────────────• JS98 (2010)               │  │
+│ │   └───────────────────────────┬──────────────────• 44RR (2015)        │  │
+│ │                               └──────────────────• IME08 (2018)       │  │
+│ │                                                                        │  │
+│ ╰────────────────────────────────────────────────────────────────────────╯  │
+│                                                                              │
+│ ╭─ Population Size Skyline ──────────────────────────────────────────────╮  │
+│ │                                                                        │  │
+│ │ Ne     ┌─────┐                         ╭──────────╮                   │  │
+│ │ 10⁶  ──┤     └───────────╮            ╭╯          ╰───╮               │  │
+│ │        │                 ╰────────────╯                ╰──            │  │
+│ │ 10⁵  ──┤                                                              │  │
+│ │        └──────────────────────────────────────────────────→           │  │
+│ │       1950              1980              2000              2024      │  │
+│ │                                                                        │  │
+│ │ Expansion ~1970: coincides with phage therapy decline                 │  │
+│ │ Recent bottleneck: 2015-2020                                          │  │
+│ │                                                                        │  │
+│ ╰────────────────────────────────────────────────────────────────────────╯  │
+│                                                                              │
+│ ╭─ Selection Hotspots (dN/dS) ───────────────────────────────────────────╮  │
+│ │ Gene      dN/dS    Signal       Genome Position                       │  │
+│ │ gp37      2.34     ★★★ Positive  78,234 - 81,456 (tail fiber)        │  │
+│ │ gp23      0.12     ★★★ Purifying 46,123 - 47,890 (capsid)            │  │
+│ │ gp43      0.08     ★★★ Purifying 112,456 - 115,678 (polymerase)      │  │
+│ ╰────────────────────────────────────────────────────────────────────────╯  │
+│                                                                              │
+├──────────────────────────────────────────────────────────────────────────────┤
+│ [T] Tree view  [S] Skyline  [D] dN/dS genome map  [Esc] Close               │
+╰──────────────────────────────────────────────────────────────────────────────╯
+```
+
+### Why This Is a Good Idea
+
+1. **Temporal context**: See when phage lineages diversified and spread
+2. **Population history**: Skyline plots reveal bottlenecks, expansions, and epidemiological events
+3. **Adaptive evolution**: dN/dS highlights genes under selection - potential drug targets or resistance determinants
+4. **Clock dating**: Estimate origins and divergence times for phage lineages
+5. **Comparative dynamics**: Compare evolutionary tempo across phage groups
+
+### Ratings
+- **Pedagogical Value**: 10/10 - Integrates phylogenetics, population genetics, and molecular evolution
+- **Novelty**: 9/10 - Phylodynamics in a phage TUI browser is rare
+- **Wow Factor**: 9/10 - Time-scaled trees with skyline plots are visually powerful
+
+---
+
+## Document Complete
+
+All 51 features have been fully expanded with:
+- Extended Concepts
+- Mathematical Foundations
+- TypeScript Implementations
+- TUI Visualizations
+- Ratings (Pedagogical Value, Novelty, Wow Factor)
 
 ---

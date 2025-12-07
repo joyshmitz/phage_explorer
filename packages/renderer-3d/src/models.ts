@@ -86,7 +86,6 @@ export function createLambdaPhage(): Model3D {
 
   // Head (icosahedron, centered at y=0.5)
   const headVertices = generateIcosahedron(0.4);
-  const headOffset = headVertices.length;
   headVertices.forEach(v => vertices.push(add(v, vec3(0, 0.5, 0))));
 
   // Connect icosahedron vertices

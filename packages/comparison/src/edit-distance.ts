@@ -45,7 +45,6 @@ export function levenshteinDistance(
   try {
     if (!wasmReady) {
       // Best-effort lazy init if sync failed and async not yet resolved
-      // eslint-disable-next-line @typescript-eslint/no-floating-promises
       initWasm().then(() => { wasmReady = true; });
     }
     // Rust is significantly faster, so we can increase the exact calculation threshold.
@@ -53,7 +52,7 @@ export function levenshteinDistance(
     if (a.length <= 100000 && b.length <= 100000) {
       return { distance: wasmLevenshtein(a, b), isApproximate: false };
     }
-  } catch (e) {
+  } catch {
     // Fallback silently to JS implementation
   }
 

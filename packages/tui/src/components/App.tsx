@@ -45,7 +45,6 @@ const KMER_ID: OverlayId = 'kmerAnomaly';
 const MODULES_ID: OverlayId = 'modules';
 const PRESSURE_ID: OverlayId = 'pressure';
 const TRANSCRIPTION_ID: OverlayId = 'transcriptionFlow';
-const TRANSCRIPTION_ID: OverlayId = 'transcriptionFlow';
 
 interface AppProps {
   repository: PhageRepository;
@@ -293,6 +292,13 @@ export function App({ repository, foldEmbeddings = [] }: AppProps): React.ReactE
       }
       promote('intermediate');
       toggleOverlay(GC_SKEW_ID);
+    } else if (input === 'y' || input === 'Y') {
+      if (!isIntermediate) {
+        setError('Transcription flow unlocks after ~5 minutes or once promoted.');
+        return;
+      }
+      promote('intermediate');
+      toggleOverlay(TRANSCRIPTION_ID);
     } else if (input === 'v' || input === 'V') {
       if (!isIntermediate) {
         setError('Pressure gauge unlocks after ~5 minutes or once promoted.');
@@ -560,6 +566,19 @@ export function App({ repository, foldEmbeddings = [] }: AppProps): React.ReactE
           marginTop={Math.floor((terminalRows - 14) / 2)}
         >
           <PackagingPressureOverlay />
+        </Box>
+      )}
+
+      {activeOverlay === TRANSCRIPTION_ID && (
+        <Box
+          position="absolute"
+          marginLeft={Math.floor((terminalCols - 90) / 2)}
+          marginTop={Math.floor((terminalRows - 14) / 2)}
+        >
+          <TranscriptionFlowOverlay
+            sequence={sequence}
+            genomeLength={currentPhage?.genomeLength ?? sequence.length}
+          />
         </Box>
       )}
 
