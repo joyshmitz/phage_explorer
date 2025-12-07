@@ -6,6 +6,7 @@ export function Footer(): React.ReactElement {
   const theme = usePhageStore(s => s.currentTheme);
   const viewMode = usePhageStore(s => s.viewMode);
   const overlays = usePhageStore(s => s.overlays);
+  const experienceLevel = usePhageStore(s => s.experienceLevel);
   const modal = (() => {
     for (let i = overlays.length - 1; i >= 0; i--) {
       const o = overlays[i];
@@ -27,11 +28,13 @@ export function Footer(): React.ReactElement {
     { key: 'W', action: 'compare' },
     { key: 'M', action: '3D' },
     { key: 'V', action: '3D pause' },
-    { key: 'Q', action: '3D quality' },
-    { key: 'G', action: 'GC skew' },
-    { key: 'X', action: 'complexity' },
-    { key: 'J', action: 'k-mer anomaly' },
-    { key: 'L', action: 'modules' },
+    { key: 'R', action: '3D quality' },
+    ...(experienceLevel === 'novice' ? [] : [
+      { key: 'G', action: 'GC skew' },
+      { key: 'X', action: 'complexity' },
+      { key: 'J', action: 'k-mer anomaly' },
+      { key: 'L', action: 'modules' },
+    ]),
     { key: 'S / /', action: 'search' },
     { key: '?', action: 'help' },
   ];
