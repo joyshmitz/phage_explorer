@@ -48,6 +48,7 @@ curl -fsSL https://raw.githubusercontent.com/Dicklesworthstone/phage_explorer/ma
 - **5 Color Themes** — Classic, Ocean, Matrix, Sunset, Forest (cycle with `T`)
 - **3D ASCII Phage Models** — Rotating wireframe models of phage structures
 - **Gene Map Navigation** — Visual gene bar with position tracking and snap-to-gene
+- **Layer-1 Quick Overlays** — `G` GC skew, `X` complexity, `B` bendability, `P` promoter/RBS motifs, `R` repeats/palindromes
 - **Diff Mode** — Compare sequences between phages visually
 - **Search** — Fuzzy search by name, host, family, or accession
 - **12 Real Phages** — Lambda, T4, T7, PhiX174, MS2, M13, P22, Phi29, Mu, Phi6, SPbeta, T5

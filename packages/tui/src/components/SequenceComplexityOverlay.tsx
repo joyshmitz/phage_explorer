@@ -151,7 +151,7 @@ export function SequenceComplexityOverlay({
     if (key.escape || input === 'x' || input === 'X') {
       onClose();
     }
-  }, [onClose]);
+  });
 
   return (
     <Box
