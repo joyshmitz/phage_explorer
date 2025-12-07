@@ -8,6 +8,7 @@ import type {
   PlaqueAutomataState,
   EvolutionReplayState,
   PackagingMotorState,
+  InfectionKineticsState,
 } from '@phage-explorer/core';
 import { getDefaultParams, STANDARD_CONTROLS } from '@phage-explorer/core';
 
@@ -420,6 +421,76 @@ function makeEvolutionSimulation(): Simulation<EvolutionReplayState> {
   };
 }
 
+function makeInfectionSimulation(): Simulation<InfectionKineticsState> {
+  return {
+    id: 'infection-kinetics',
+    name: 'Burst Kinetics',
+    description: 'SIR-like infection ODE: adsorption, latent period, burst.',
+    controls: STANDARD_CONTROLS,
+    parameters: [
+      { id: 'b0', label: 'Bacteria (start)', type: 'number', min: 1e4, max: 1e9, step: 1e4, defaultValue: 1e6 },
+      { id: 'p0', label: 'Phage (start)', type: 'number', min: 1e2, max: 1e9, step: 1e2, defaultValue: 1e7 },
+      { id: 'k', label: 'Adsorption k (mL/min)', type: 'number', min: 1e-11, max: 1e-8, step: 1e-11, defaultValue: 2e-10 },
+      { id: 'latent', label: 'Latent period (min)', type: 'number', min: 5, max: 120, step: 1, defaultValue: 40 },
+      { id: 'burst', label: 'Burst size', type: 'number', min: 10, max: 500, step: 5, defaultValue: 120 },
+      { id: 'growth', label: 'Bacterial growth (μ)', type: 'number', min: 0, max: 2, step: 0.05, defaultValue: 0.5 },
+      { id: 'decay', label: 'Phage decay (δ)', type: 'number', min: 0, max: 0.5, step: 0.01, defaultValue: 0.02 },
+    ],
+    init: (_phage, params): InfectionKineticsState => {
+      const base = getDefaultParams([
+        { id: 'b0', label: '', type: 'number', defaultValue: 1e6 },
+        { id: 'p0', label: '', type: 'number', defaultValue: 1e7 },
+        { id: 'k', label: '', type: 'number', defaultValue: 2e-10 },
+        { id: 'latent', label: '', type: 'number', defaultValue: 40 },
+        { id: 'burst', label: '', type: 'number', defaultValue: 120 },
+        { id: 'growth', label: '', type: 'number', defaultValue: 0.5 },
+        { id: 'decay', label: '', type: 'number', defaultValue: 0.02 },
+      ]);
+      const merged = { ...base, ...(params ?? {}) } as Record<string, number | boolean | string>;
+      return {
+        type: 'infection-kinetics',
+        time: 0,
+        running: true,
+        speed: 1,
+        params: merged,
+        bacteria: Number(merged.b0 ?? 1e6),
+        infected: 0,
+        phage: Number(merged.p0 ?? 1e7),
+      };
+    },
+    step: (state: InfectionKineticsState, dt: number): InfectionKineticsState => {
+      const k = Number(state.params.k ?? 2e-10);
+      const latent = Number(state.params.latent ?? 40);
+      const burst = Number(state.params.burst ?? 120);
+      const growth = Number(state.params.growth ?? 0.5);
+      const decay = Number(state.params.decay ?? 0.02);
+
+      const B = state.bacteria;
+      const I = state.infected;
+      const P = state.phage;
+
+      const dB = (growth * B - k * B * P) * dt;
+      const dI = (k * B * P - I / Math.max(1, latent)) * dt;
+      const dP = ((burst / Math.max(1, latent)) * I - k * B * P - decay * P) * dt;
+
+      const nextB = clamp(B + dB, 0, 1e12);
+      const nextI = clamp(I + dI, 0, 1e12);
+      const nextP = clamp(P + dP, 0, 1e12);
+
+      return {
+        ...state,
+        time: state.time + dt,
+        bacteria: nextB,
+        infected: nextI,
+        phage: nextP,
+      };
+    },
+    getSummary: (state) => {
+      return `t=${state.time.toFixed(0)} B=${state.bacteria.toExponential(2)} I=${state.infected.toExponential(2)} P=${state.phage.toExponential(2)}`;
+    },
+  };
+}
+
 function makePackagingSimulation(): Simulation<PackagingMotorState> {
   return {
     id: 'packaging-motor',
@@ -503,6 +574,7 @@ export function getSimulationRegistry(): SimulationRegistry {
     makePlaqueSimulation(),
     makeEvolutionSimulation(),
     makePackagingSimulation(),
+    makeInfectionSimulation(),
   ].map(sim => sim as unknown as Simulation<SimState>);
   sims.forEach(sim => reg.set(sim.id as SimulationId, sim));
   registryCache = reg;

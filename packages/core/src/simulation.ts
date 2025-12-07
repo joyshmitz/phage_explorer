@@ -11,7 +11,8 @@ export type SimulationId =
   | 'ribosome-traffic'
   | 'plaque-automata'
   | 'evolution-replay'
-  | 'packaging-motor';
+  | 'packaging-motor'
+  | 'infection-kinetics';
 
 /**
  * Simulation parameter definition
@@ -129,6 +130,19 @@ export interface EvolutionReplayState extends SimStateBase {
 }
 
 /**
+ * Infection kinetics (burst/latency) state
+ */
+export interface InfectionKineticsState extends SimStateBase {
+  type: 'infection-kinetics';
+  /** Bacteria population (relative) */
+  bacteria: number;
+  /** Infected population */
+  infected: number;
+  /** Free phage population */
+  phage: number;
+}
+
+/**
  * Packaging Motor Pressure Gauge state
  */
 export interface PackagingMotorState extends SimStateBase {
@@ -151,6 +165,7 @@ export type SimState =
   | RibosomeTrafficState
   | PlaqueAutomataState
   | EvolutionReplayState
+  | InfectionKineticsState
   | PackagingMotorState;
 
 /**
@@ -314,5 +329,14 @@ export const SIMULATION_METADATA: SimulationMeta[] = [
     priority: 5,
     requiresPhage: true,
     keywords: ['packaging', 'motor', 'pressure', 'capsid', 'portal', 'dna'],
+  },
+  {
+    id: 'infection-kinetics',
+    name: 'Burst Kinetics Simulator',
+    description: 'Adsorption, latent period, burst size infection model',
+    icon: '📈',
+    priority: 6,
+    requiresPhage: false,
+    keywords: ['burst', 'latency', 'adsorption', 'infection', 'ode'],
   },
 ];

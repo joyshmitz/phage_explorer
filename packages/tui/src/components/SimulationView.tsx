@@ -61,6 +61,12 @@ function renderDetails(sim: Simulation, state: SimState): React.ReactElement {
           {'  '}Fill gauge {bar(state.fillFraction)}
         </Text>
       );
+    case 'infection-kinetics':
+      return (
+        <Text>
+          B {state.bacteria.toExponential(2)} · I {state.infected.toExponential(2)} · P {state.phage.toExponential(2)}
+        </Text>
+      );
     default:
       return <Text>State active</Text>;
   }
