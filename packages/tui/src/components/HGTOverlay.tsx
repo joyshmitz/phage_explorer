@@ -3,7 +3,7 @@ import { Box, Text, useInput } from 'ink';
 import { usePhageStore } from '@phage-explorer/state';
 import type { HGTAnalysis, PassportStamp } from '@phage-explorer/comparison';
 
-function islandBar(stamps: PassportStamp[], genomeLength: number, width: number, colors: { accent: string; warning: string; textDim: string }) {
+function islandBar(stamps: PassportStamp[], genomeLength: number, width: number) {
   const bar = Array(width).fill('░');
   for (const stamp of stamps) {
     const start = Math.floor((stamp.island.start / genomeLength) * width);
@@ -47,11 +47,7 @@ export function HGTOverlay(): React.ReactElement {
 
   const genomeLength = phage.genomeLength ?? Math.max(1, ...overlayData.islands.map(i => i.end));
 
-  const bar = islandBar(overlayData.stamps, genomeLength, 60, {
-    accent: colors.accent,
-    warning: colors.warning,
-    textDim: colors.textDim,
-  });
+  const bar = islandBar(overlayData.stamps, genomeLength, 60);
 
   return (
     <Box
