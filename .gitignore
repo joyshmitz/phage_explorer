@@ -9,6 +9,19 @@ out/
 .next/
 *.tsbuildinfo
 
+# TypeScript compiled outputs in source directories
+# (proper builds go to dist/, these are errant artifacts from IDE/improper builds)
+packages/*/src/**/*.js
+packages/*/src/**/*.d.ts
+packages/*/src/**/*.js.map
+packages/*/src/**/*.d.ts.map
+
+# Temporary/scratch files
+reproduce*.ts
+scratch*.ts
+temp*.ts
+debug*.ts
+
 # Generated database
 phage.db
 
