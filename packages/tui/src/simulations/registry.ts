@@ -89,19 +89,31 @@ function makeRibosomeSimulation(): Simulation<RibosomeTrafficState> {
   return {
     id: 'ribosome-traffic',
     name: 'Ribosome Traffic',
-    description: 'Toy TASEP along a transcript with stalls.',
+    description: 'TASEP-like translation with footprint, stalls, and initiation.',
     controls: STANDARD_CONTROLS,
     parameters: [
       { id: 'length', label: 'mRNA length (codons)', type: 'number', min: 30, max: 300, step: 10, defaultValue: 120 },
-      { id: 'stallRate', label: 'Stall rate', type: 'number', min: 0, max: 0.2, step: 0.01, defaultValue: 0.03 },
+      { id: 'stallRate', label: 'Stall site fraction', type: 'number', min: 0, max: 0.3, step: 0.01, defaultValue: 0.08 },
+      { id: 'initRate', label: 'Initiation rate', type: 'number', min: 0, max: 2, step: 0.05, defaultValue: 0.6 },
+      { id: 'footprint', label: 'Ribosome footprint (codons)', type: 'number', min: 6, max: 12, step: 1, defaultValue: 9 },
     ],
     init: (_phage, params): RibosomeTrafficState => {
       const base = getDefaultParams([
         { id: 'length', label: '', type: 'number', defaultValue: 120 },
-        { id: 'stallRate', label: '', type: 'number', defaultValue: 0.03 },
+        { id: 'stallRate', label: '', type: 'number', defaultValue: 0.08 },
+        { id: 'initRate', label: '', type: 'number', defaultValue: 0.6 },
+        { id: 'footprint', label: '', type: 'number', defaultValue: 9 },
       ]);
       const merged = { ...base, ...(params ?? {}) } as Record<string, number | boolean | string>;
       const length = Number(merged.length ?? 120);
+      const stallRate = Number(merged.stallRate ?? 0.08);
+      const slowCount = Math.max(1, Math.floor(length * stallRate));
+      const codonRates = Array.from({ length }, () => 6 + Math.random() * 4); // 6-10 fast-ish
+      // Seed slow codons
+      for (let i = 0; i < slowCount; i++) {
+        const idx = Math.floor(Math.random() * length);
+        codonRates[idx] = 1 + Math.random() * 2; // very slow site
+      }
       return {
         type: 'ribosome-traffic',
         time: 0,
@@ -109,27 +121,53 @@ function makeRibosomeSimulation(): Simulation<RibosomeTrafficState> {
         speed: 1,
         params: merged,
         mRnaId: 'gene-1',
-        ribosomes: [0, Math.floor(length / 3)],
-        codonRates: Array.from({ length }, () => 5 + Math.random() * 5),
+        ribosomes: [],
+        codonRates,
         proteinsProduced: 0,
         stallEvents: 0,
       };
     },
     step: (state: RibosomeTrafficState, dt: number): RibosomeTrafficState => {
       const length = Number(state.params.length ?? 120);
-      const stallRate = Number(state.params.stallRate ?? 0.03);
-      const ribosomes = state.ribosomes.map((pos: number) => {
-        if (Math.random() < stallRate * dt) return pos;
-        return Math.min(length, pos + 1 + Math.floor(state.speed));
-      });
+      const initRate = Number(state.params.initRate ?? 0.6);
+      const footprint = Number(state.params.footprint ?? 9);
+
+      const ribosomes = [...state.ribosomes];
+      let stallEvents = state.stallEvents;
+
+      // Attempt initiation
+      const canInitiate = ribosomes.every(pos => pos > footprint);
+      if (canInitiate && Math.random() < initRate * dt) {
+        ribosomes.unshift(0);
+      }
+
+      // Advance ribosomes from front to back to respect exclusion
+      for (let i = 0; i < ribosomes.length; i++) {
+        const pos = ribosomes[i];
+        if (pos >= length) continue;
+
+        const rate = state.codonRates[Math.min(pos, state.codonRates.length - 1)] ?? 5;
+        const stepSize = Math.max(1, Math.floor(rate * dt));
+        const target = Math.min(length, pos + stepSize);
+
+        const ahead = ribosomes.slice(0, i).find(p => p >= pos && p < pos + footprint);
+        const blocked = ahead !== undefined && ahead - pos < footprint;
+        if (blocked) {
+          stallEvents += 1;
+          continue;
+        }
+        ribosomes[i] = target;
+      }
+
       const completed = ribosomes.filter(pos => pos >= length).length;
       const active = ribosomes.filter(pos => pos < length);
+
       return {
         ...state,
         time: state.time + dt,
         ribosomes: active,
         proteinsProduced: state.proteinsProduced + completed,
-        stallEvents: state.stallEvents + (ribosomes.length - active.length - completed >= 0 ? 0 : 0),
+        stallEvents,
       };
     },
     getSummary: (state) => `t=${state.time.toFixed(0)} ribosomes=${state.ribosomes.length} proteins=${state.proteinsProduced}`,
@@ -249,10 +287,17 @@ function makePackagingSimulation(): Simulation<PackagingMotorState> {
   return {
     id: 'packaging-motor',
     name: 'Packaging Motor',
-    description: 'Fill fraction → pressure model.',
+    description: 'DNA fill → pressure/force with salt and capsid geometry.',
     controls: STANDARD_CONTROLS,
     parameters: [
-      { id: 'stall', label: 'Stall prob', type: 'number', min: 0, max: 0.2, step: 0.01, defaultValue: 0.02 },
+      { id: 'genomeKb', label: 'Genome length (kb)', type: 'number', min: 3, max: 200, step: 1, defaultValue: 50 },
+      { id: 'capsidRadius', label: 'Capsid radius (nm)', type: 'number', min: 20, max: 60, step: 1, defaultValue: 30 },
+      { id: 'ionic', label: 'Ionic strength (mM)', type: 'number', min: 1, max: 200, step: 5, defaultValue: 50 },
+      { id: 'mode', label: 'Packaging mode', type: 'select', options: [
+        { value: 'headful', label: 'Headful' },
+        { value: 'cos', label: 'Cos' },
+        { value: 'phi29', label: 'Phi29 motor' },
+      ], defaultValue: 'cos' },
     ],
     init: (_phage, params): PackagingMotorState => {
       const base = getDefaultParams([{ id: 'stall', label: '', type: 'number', defaultValue: 0.02 }]);
@@ -266,25 +311,47 @@ function makePackagingSimulation(): Simulation<PackagingMotorState> {
         fillFraction: 0.1,
         pressure: 5,
         force: 20,
-        stallProbability: Number(merged.stall ?? 0.02),
+        stallProbability: 0,
       };
     },
     step: (state: PackagingMotorState, dt: number): PackagingMotorState => {
-      const stall = Number(state.params.stall ?? 0.02);
-      const stalled = Math.random() < stall * dt;
-      const fill = clamp(state.fillFraction + (stalled ? 0 : 0.01 * dt * state.speed), 0, 1);
-      const pressure = 5 + fill * 55;
-      const force = 20 + fill * 80;
+      const genomeKb = Number(state.params.genomeKb ?? 50);
+      const capsidRadius = Number(state.params.capsidRadius ?? 30); // nm
+      const ionic = Number(state.params.ionic ?? 50); // mM
+      const mode = String(state.params.mode ?? 'cos');
+
+      // Progress fill; faster when under-stuffed, slower near full
+      const fillDelta = 0.015 * state.speed * (1 - state.fillFraction) * dt;
+      const fill = clamp(state.fillFraction + fillDelta, 0, 1);
+
+      // Very lightweight physics-inspired approximations
+      const persistenceLen = 50; // nm
+      const contourNm = genomeKb * 0.34 * 1000; // nm
+      const packedDensity = (contourNm * fill) / ((4 / 3) * Math.PI * Math.pow(capsidRadius, 3));
+
+      // Bending energy ~ (L / R^2)
+      const bendingEnergy = (contourNm * fill) / Math.max(1, capsidRadius * capsidRadius * persistenceLen);
+
+      // Electrostatics damped by ionic strength (Debye ~ 0.304/sqrt(I) nm)
+      const debye = 0.304 / Math.sqrt(Math.max(1, ionic)); // nm
+      const electrostatic = packedDensity * 0.5 * (1 / Math.max(debye, 0.05));
+
+      // Mode-specific pressure scaling
+      const modeFactor = mode === 'headful' ? 1.0 : mode === 'phi29' ? 1.2 : 0.9;
+
+      const pressure = clamp(5 + 30 * fill + 200 * bendingEnergy * 1e-6 + 80 * electrostatic * 1e-3, 0, 80) * modeFactor;
+      const force = clamp(10 + 150 * fill + pressure * 0.8, 0, 200);
+
       return {
         ...state,
         time: state.time + dt,
         fillFraction: fill,
         pressure,
         force,
-        stallProbability: stall,
+        stallProbability: 0,
       };
     },
-    getSummary: (state) => `t=${state.time.toFixed(0)} fill ${(state.fillFraction * 100).toFixed(1)}% pressure=${state.pressure.toFixed(1)} atm`,
+    getSummary: (state) => `t=${state.time.toFixed(0)} fill ${(state.fillFraction * 100).toFixed(1)}% · P=${state.pressure.toFixed(1)} atm · F=${state.force.toFixed(1)} pN`,
   };
 }
 
