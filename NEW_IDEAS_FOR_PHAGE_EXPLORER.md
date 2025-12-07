@@ -1780,3 +1780,483 @@ A gauge/meter showing internal pressure rising as you scroll from start to end o
 | 25. Intrinsic Curvature | Med | Med | **P2** |
 | 26. Virtual Gel | Med | Low | **P2** |
 | 30. Plaque Sim | High | High | **P3** |
+
+---
+
+# UI Architecture Recommendations: Integrating 31 Features Without Overwhelming Users
+
+*Analysis and recommendations by Claude — December 2024*
+
+## The Core Challenge
+
+We have 31 sophisticated features spanning:
+- Statistical overlays (GC skew, complexity, curvature)
+- Full-screen visualizations (CGR fractals, Hilbert curves, dot plots, PCA)
+- Interactive simulations (lysogeny circuit, ribosome traffic, plaque growth)
+- Comparative analyses (dN/dS, synteny, structural variants)
+- Predictions and annotations (host range, AMGs, promoters)
+- Utilities (virtual gel, sequence logos)
+
+If we expose all 31 features as top-level keybindings, we get:
+- **Cognitive overload**: Users can't remember 31 keys
+- **Intimidation**: New users see complexity and leave
+- **Accidental triggers**: Typos activate unfamiliar features
+- **UI clutter**: Help overlay becomes a wall of text
+
+The existing interface is already excellent — clean, focused, discoverable. We must preserve that while adding depth.
+
+---
+
+## Proposed Architecture: The "Depth Layers" Model
+
+### Layer 0: The Sacred Surface (Keep Untouched)
+
+The current interface represents our **core loop**:
+```
+↑/↓     Navigate phages       ←/→     Scroll sequence
+N/C     DNA/Amino acid view   F       Reading frame
+T       Theme cycle           D       Diff mode
+M       3D model              K       Amino acid key
+S       Search                ?       Help
+```
+
+**These 12 controls must never change.** They represent the "5-minute experience" — what users learn in their first session. This is our brand.
+
+### Layer 1: Quick Overlays (Single-Keypress Toggles)
+
+For features that augment the existing view without disrupting it, we add **overlay toggles**. These show additional data tracks beneath/above the sequence grid.
+
+**Proposed quick-toggle keys** (unused in Layer 0):
+```
+G       GC Skew curve + origin/terminus markers
+X       Complexity (Kolmogorov) sparkline
+B       Bendability/curvature track
+P       Promoter/RBS strength annotations
+R       Repeat/palindrome markers
+```
+
+**Design principles:**
+- Each overlay is **independent** — toggle any combination
+- Overlays use **consistent visual language** (sparklines, annotation bars)
+- Pressing the key again **hides** the overlay
+- Status bar shows active overlays: `[G][X][P]`
+
+**Why this works:**
+- Single keypress = zero friction for power users
+- Discoverable via `?` help (a separate "Overlays" section)
+- Non-destructive — main view unchanged when all off
+
+### Layer 2: The Analysis Menu (Press 'A')
+
+For features requiring configuration, multiple inputs, or dedicated screen real estate, we introduce a **modal menu**.
+
+```
+╭─────────────────────────────────────────────────────────────╮
+│  ANALYSIS MENU                                    [ESC] Close │
+├─────────────────────────────────────────────────────────────┤
+│                                                              │
+│  SEQUENCE ANALYSIS                                           │
+│    [1] GC Skew Origin Detector         (overlays origin)     │
+│    [2] Information Anomaly Scanner     (find HGT regions)    │
+│    [3] Non-B DNA Structures            (G4, Z-DNA)           │
+│    [4] Sequence Logo Generator         (from alignment)      │
+│                                                              │
+│  COMPARATIVE                                                 │
+│    [5] Selection Pressure (dN/dS)      (vs another phage)    │
+│    [6] Structural Variants             (vs another phage)    │
+│    [7] Synteny Browser                 (multi-phage)         │
+│    [8] Genome Comparison Dashboard     (already built!)      │
+│                                                              │
+│  PREDICTIONS                                                 │
+│    [9] Host Range (CRISPR spacers)     (requires DB)         │
+│    [0] AMG Pathway Mapper              (metabolic hijacking) │
+│    [a] Promoter/RBS Strength           (expression levels)   │
+│    [b] Prophage Excision Sites         (att site prediction) │
+│    [c] Virion Stability                (therapy formulation) │
+│                                                              │
+│  WHOLE-GENOME VIEWS                                          │
+│    [d] CGR Fractal Fingerprint         (full-screen)         │
+│    [e] Hilbert Curve Atlas             (full-screen)         │
+│    [f] Self-Homology Dot Plot          (full-screen)         │
+│    [g] Tetranucleotide PCA             (full-screen)         │
+│                                                              │
+│  ─────────────────────────────────────────────────────────── │
+│  [/] Search features...                                      │
+╰─────────────────────────────────────────────────────────────╯
+```
+
+**Design principles:**
+- **Categorized** — users find features by purpose, not alphabetically
+- **Numbered shortcuts** — power users learn favorites (A + 5 = dN/dS)
+- **Brief descriptions** — explain what each does in ≤4 words
+- **Fuzzy search** — press `/` to filter by keyword
+- **ESC always exits** — no trapped states
+
+### Layer 3: The Simulation Hub (Press Shift+S)
+
+Interactive simulations need their own space. They're time-evolving, may need parameter sliders, and fundamentally change the interaction model.
+
+```
+╭─────────────────────────────────────────────────────────────╮
+│  SIMULATION HUB                                   [ESC] Exit │
+├─────────────────────────────────────────────────────────────┤
+│                                                              │
+│  DYNAMIC SIMULATIONS                                         │
+│                                                              │
+│    [1] Lysogeny Decision Circuit                             │
+│        Watch CI/Cro battle unfold — adjust MOI, UV damage    │
+│        ════════════════════════════════════════════════════  │
+│                                                              │
+│    [2] Ribosome Traffic Simulator                            │
+│        See translation bottlenecks form in real-time         │
+│        ════════════════════════════════════════════════════  │
+│                                                              │
+│    [3] Plaque Growth Automata                                │
+│        Cellular automaton of phage spreading on lawn         │
+│        ════════════════════════════════════════════════════  │
+│                                                              │
+│    [4] Evolution Replay                                      │
+│        Watch mutations accumulate across isolates            │
+│        ════════════════════════════════════════════════════  │
+│                                                              │
+│    [5] Packaging Motor Pressure                              │
+│        Feel the 60 atmospheres building in the capsid        │
+│                                                              │
+╰─────────────────────────────────────────────────────────────╯
+```
+
+**Design principles:**
+- Dedicated space respects simulation complexity
+- Each simulation has its own **full-screen mode** with custom controls
+- Common controls: `Space` = pause/resume, `R` = reset, `←/→` = speed
+- Status bar shows simulation time/state
+- ESC returns to main view
+
+### Layer 4: Command Palette (Press ':' or Ctrl+P)
+
+For power users who know what they want, a **fuzzy-search command palette**:
+
+```
+╭─────────────────────────────────────────────────────────────╮
+│  : gc skew█                                                  │
+├─────────────────────────────────────────────────────────────┤
+│  → GC Skew Origin Detector       Toggle overlay              │
+│    Cumulative GC Skew Analysis   Full analysis view          │
+│    GC Content in Comparison      Compare GC %                │
+│                                                              │
+│  [↑/↓] Navigate   [Enter] Select   [ESC] Cancel              │
+╰─────────────────────────────────────────────────────────────╯
+```
+
+**Why command palette matters:**
+- **Instant access** to any feature with 3-4 keystrokes
+- **Discoverable** — users find features by typing concepts
+- **Extensible** — future features automatically searchable
+- Familiar to developers (VSCode, Sublime, Raycast)
+
+---
+
+## Feature Classification Table
+
+| Feature | Layer | Access | Screen Impact |
+|---------|-------|--------|---------------|
+| GC Skew curve | L1 | `G` | Overlay |
+| Complexity sparkline | L1 | `X` | Overlay |
+| Bendability track | L1 | `B` | Overlay |
+| Promoter annotations | L1 | `P` | Overlay |
+| Repeat markers | L1 | `R` | Overlay |
+| dN/dS painter | L2 | `A` → 5 | Overlay + panel |
+| Structural variants | L2 | `A` → 6 | Overlay + panel |
+| Synteny browser | L2 | `A` → 7 | Full-screen |
+| Host range predictor | L2 | `A` → 9 | Panel |
+| AMG mapper | L2 | `A` → 0 | Full-screen |
+| CGR fractal | L2 | `A` → d | Full-screen |
+| Hilbert curve | L2 | `A` → e | Full-screen |
+| Dot plot | L2 | `A` → f | Full-screen |
+| PCA plot | L2 | `A` → g | Full-screen |
+| Lysogeny sim | L3 | `Shift+S` → 1 | Full-screen |
+| Ribosome traffic | L3 | `Shift+S` → 2 | Full-screen |
+| Plaque automata | L3 | `Shift+S` → 3 | Full-screen |
+| Evolution replay | L3 | `Shift+S` → 4 | Full-screen |
+| Packaging motor | L3 | `Shift+S` → 5 | Overlay + gauge |
+| Virtual gel | L2 | `A` → ... | Panel |
+| Sequence logo | L2 | `A` → 4 | Panel |
+| (All features) | L4 | `:` | Search |
+
+---
+
+## Implementation Recommendations
+
+### Phase 1: Foundation (Do First)
+
+1. **Overlay System Architecture**
+   - Create `OverlayManager` in state store
+   - Define `Overlay` interface: `{ id, render, height, position }`
+   - Implement overlay stacking logic (max 3 simultaneous?)
+   - Add overlay status indicator to status bar
+
+2. **Menu Infrastructure**
+   - Create reusable `ModalMenu` component (Ink)
+   - Define `MenuItem` interface with icons, shortcuts, actions
+   - Implement keyboard navigation (↑/↓, numbers, letters)
+   - Add fuzzy search capability
+
+3. **Command Palette**
+   - Create `CommandRegistry` singleton
+   - All features register with name, keywords, action
+   - Implement fuzzy matching (Fuse.js or simple scoring)
+   - Hotkey: `:` or `Ctrl+P`
+
+### Phase 2: Quick Overlays (High Impact, Low Effort)
+
+These features benefit most from Layer 1 quick toggles:
+
+| Overlay | Key | Data Source | Complexity |
+|---------|-----|-------------|------------|
+| GC Skew | `G` | Pure sequence | Low |
+| Complexity | `X` | Compression | Low |
+| Bendability | `B` | Dinucleotide tables | Medium |
+| Promoter/RBS | `P` | Pattern match | Medium |
+
+**Implementation pattern:**
+```typescript
+// In store
+toggleOverlay: (id: OverlayId) => void;
+activeOverlays: Set<OverlayId>;
+
+// In component
+const gcSkewData = useGCSkew(sequence); // Memoized
+if (activeOverlays.has('gc-skew')) {
+  return <OverlaySparkline data={gcSkewData} />;
+}
+```
+
+### Phase 3: Analysis Menu
+
+Create dedicated components for each analysis:
+
+```
+packages/tui/src/components/
+  AnalysisMenu/
+    index.tsx          # Menu modal
+    categories.ts      # Category definitions
+    items.ts           # MenuItem list
+  Analysis/
+    DNDSPainter.tsx
+    StructuralVariants.tsx
+    SyntenyBrowser.tsx
+    CGRFractal.tsx
+    HilbertAtlas.tsx
+    DotPlot.tsx
+    ...
+```
+
+### Phase 4: Simulation Hub
+
+Simulations need special infrastructure:
+
+```typescript
+interface Simulation {
+  id: string;
+  name: string;
+  description: string;
+
+  // Lifecycle
+  init: (params: SimParams) => SimState;
+  step: (state: SimState, dt: number) => SimState;
+  render: (state: SimState) => React.ReactNode;
+
+  // Controls
+  parameters: SimParameter[];
+  controls: SimControl[];
+}
+```
+
+Each simulation runs in a dedicated full-screen mode with:
+- Parameter sliders (if applicable)
+- Play/pause/speed controls
+- Reset button
+- Current state visualization
+- ESC to exit
+
+---
+
+## Progressive Disclosure Strategy
+
+**New User Journey:**
+
+1. **First 5 minutes**: Navigate phages, scroll sequences, toggle DNA/AA view
+   - Only Layer 0 needed
+   - Help overlay shows only essential controls
+
+2. **First hour**: Discover overlays via help, try diff mode, explore 3D model
+   - Layer 0 + some Layer 1
+   - Help now shows "Advanced: press A for more..."
+
+3. **Power user**: Uses command palette, runs simulations, does comparative analysis
+   - Full Layer 0-4 access
+   - Discovers features through exploration
+
+**Key insight**: Every feature should be **reachable in ≤3 keypresses** but **invisible until needed**.
+
+---
+
+## Help System Redesign
+
+Current help is a single overlay. Proposed: **contextual, layered help**.
+
+```
+╭─────────────────────────────────────────────────────────────╮
+│  HELP                                               [ESC]    │
+├─────────────────────────────────────────────────────────────┤
+│                                                              │
+│  NAVIGATION           │  VIEW CONTROLS                       │
+│  ↑/↓  Select phage    │  N/C  DNA / Amino acid               │
+│  ←/→  Scroll sequence │  F    Reading frame (1-3)            │
+│  PgUp/PgDn  Page      │  T    Theme cycle                    │
+│  Home/End   Jump      │  D    Diff mode                      │
+│  [/]  Prev/next gene  │  M    3D model                       │
+│                       │  K    Amino acid key                 │
+│                       │                                      │
+│  OVERLAYS (toggle)    │  SEARCH                              │
+│  G  GC Skew           │  S or /  Search phages               │
+│  X  Complexity        │                                      │
+│  B  Bendability       │  ADVANCED                            │
+│  P  Promoters         │  A       Analysis Menu               │
+│  R  Repeats           │  Shift+S Simulation Hub              │
+│                       │  :       Command Palette             │
+│                       │                                      │
+│  [?] Detailed docs    │  [Q] Quit                            │
+╰─────────────────────────────────────────────────────────────╯
+```
+
+**Future enhancement**: Press `?` twice for detailed docs, including:
+- Each overlay explained
+- Each analysis tool described
+- Keyboard shortcut cheatsheet
+
+---
+
+## Visual Language Guidelines
+
+To maintain coherence across 31 features:
+
+### Color Semantics
+```
+Green  (#22c55e)  = Good, conserved, stable, similar
+Yellow (#eab308)  = Caution, moderate, neutral
+Red    (#ef4444)  = Warning, divergent, unstable, different
+Blue   (#3b82f6)  = Informational, cool metrics
+Purple (#a855f7)  = Special, unique, notable
+Gray   (#6b7280)  = Inactive, background, reference
+```
+
+### Graph/Sparkline Standards
+```
+Height: 3-5 character rows for overlays
+Width:  Full terminal width
+Scale:  Auto-normalize, show min/max in labels
+Style:  Braille dots (⣿⣤⣀) for high resolution
+```
+
+### Panel/Modal Standards
+```
+Border: Single line box drawing (╭╮╰╯─│)
+Header: Bold, centered, with close hint
+Padding: 1 character on all sides
+Max width: 80 characters (or terminal width - 4)
+```
+
+---
+
+## State Management Considerations
+
+```typescript
+interface AdvancedUIState {
+  // Overlay system
+  activeOverlays: Set<OverlayId>;
+  overlayConfigs: Map<OverlayId, OverlayConfig>;
+
+  // Modal system
+  activeModal: ModalId | null;
+  modalHistory: ModalId[];  // For back navigation
+
+  // Simulation state
+  activeSimulation: SimulationId | null;
+  simulationState: SimState | null;
+  simulationSpeed: number;
+  simulationPaused: boolean;
+
+  // Command palette
+  commandPaletteOpen: boolean;
+  commandSearch: string;
+  commandResults: CommandMatch[];
+  selectedCommandIndex: number;
+
+  // Computed data cache
+  analysisCache: Map<string, AnalysisResult>;
+}
+```
+
+Key principle: **Precompute on phage selection, not on feature activation.**
+
+When user selects a phage, we should background-compute:
+- GC skew curve
+- Complexity profile
+- Bendability track
+- Promoter predictions
+
+This makes overlays feel **instant** when toggled.
+
+---
+
+## Risk Mitigation
+
+### Risk: Feature bloat slows down main loop
+**Mitigation**:
+- Lazy-load analysis components (`React.lazy`)
+- Precompute in Web Worker / background
+- Cache aggressively in SQLite
+
+### Risk: Users get lost in menus
+**Mitigation**:
+- ESC always returns to main view
+- Breadcrumb trail in status bar
+- "Back" action in every modal
+
+### Risk: Mobile/small terminal breaks
+**Mitigation**:
+- Detect terminal size, hide overlays if too small
+- Stack overlays vertically if narrow
+- Minimum viable mode: Layer 0 only
+
+### Risk: Too many keybindings conflict
+**Mitigation**:
+- Layer 0 = unmodified lowercase letters
+- Layer 1 = specific lowercase letters (G, X, B, P, R)
+- Layer 2/3 = Shift+letter or menu selection
+- Layer 4 = `:` prefix (command mode)
+
+---
+
+## Summary
+
+The **Depth Layers** model preserves what makes Phage Explorer excellent while enabling 31 advanced features:
+
+| Layer | Access | Audience | Features |
+|-------|--------|----------|----------|
+| L0 | Direct keys | Everyone | 12 core controls |
+| L1 | Single keys | Intermediate | 5 quick overlays |
+| L2 | `A` menu | Researchers | ~15 analyses |
+| L3 | `Shift+S` menu | Explorers | 5 simulations |
+| L4 | `:` palette | Power users | Everything |
+
+**Total keystrokes to any feature**: 1-3
+**Visible complexity for new users**: 12 controls
+**Available power for experts**: 31+ features
+
+The architecture is **extensible** — future features (32, 33, ...) simply register in the command palette and appear in the appropriate menu category.
+
+---
+
+*End of UI Architecture Recommendations*
