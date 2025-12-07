@@ -1,47 +1,140 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { Box, Text } from 'ink';
 import { usePhageStore } from '@phage-explorer/state';
 
+type HelpRow = { key: string; desc: string; note?: string };
+
+function Section({ title, rows }: { title: string; rows: HelpRow[] }): React.ReactElement {
+  const colors = usePhageStore.getState().currentTheme.colors;
+  return (
+    <Box flexDirection="column" marginBottom={1}>
+      <Text color={colors.primary} bold underline>
+        {title}
+      </Text>
+      {rows.map(({ key, desc, note }) => (
+        <Box key={key} gap={2}>
+          <Text color={colors.accent}>{key.padEnd(12)}</Text>
+          <Text color={colors.text}>{desc}</Text>
+          {note ? (
+            <Text color={colors.textDim}> · {note}</Text>
+          ) : null}
+        </Box>
+      ))}
+    </Box>
+  );
+}
+
 export function HelpOverlay(): React.ReactElement {
   const theme = usePhageStore(s => s.currentTheme);
-  const closeOverlay = usePhageStore(s => s.closeOverlay);
+  const viewMode = usePhageStore(s => s.viewMode);
+  const readingFrame = usePhageStore(s => s.readingFrame);
+  const diffEnabled = usePhageStore(s => s.diffEnabled);
+  const model3DFullscreen = usePhageStore(s => s.model3DFullscreen);
+  const helpDetail = usePhageStore(s => s.helpDetail);
+  const overlays = usePhageStore(s => s.overlays);
   const colors = theme.colors;
 
-  const sections = [
-    {
-      title: 'Navigation',
-      keys: [
-        { key: '↑ / ↓', desc: 'Previous / next phage' },
-        { key: '← / →', desc: 'Scroll sequence left / right' },
-        { key: 'PgUp / PgDn', desc: 'Scroll by page' },
-        { key: 'Home / End', desc: 'Jump to start / end' },
-        { key: '[ / ]', desc: 'Previous / next gene' },
-        { key: '1-9', desc: 'Jump to gene by number' },
-      ],
-    },
-    {
-      title: 'View',
-      keys: [
-        { key: 'N / C', desc: 'Toggle DNA / AA (codon) view' },
-        { key: 'F', desc: 'Cycle reading frame (1, 2, 3)' },
-        { key: 'T', desc: 'Cycle color theme' },
-        { key: 'D', desc: 'Toggle diff mode' },
-        { key: 'W', desc: 'Compare genomes (stats)' },
-        { key: 'K', desc: 'Toggle amino acid key' },
-        { key: 'M', desc: 'Toggle 3D model' },
-      ],
-    },
-    {
-      title: 'Other',
-      keys: [
-        { key: 'S / /', desc: 'Search phages' },
-        { key: 'G', desc: 'Go to position' },
-        { key: '?', desc: 'Toggle this help' },
-        { key: 'Esc', desc: 'Close overlay' },
-        { key: 'Q', desc: 'Quit' },
-      ],
-    },
+  const overlayRows: HelpRow[] = [
+    { key: 'X', desc: 'Sequence complexity (gzip)', note: 'HGT / repeats' },
+    { key: 'G', desc: 'GC skew overlay', note: 'origin / terminus' },
+    { key: 'B', desc: 'DNA bendability', note: 'coming soon' },
+    { key: 'P', desc: 'Promoter / RBS strength', note: 'coming soon' },
+    { key: 'R', desc: 'Repeats / palindromes', note: 'coming soon' },
+    { key: 'K', desc: 'AA legend (AA view)', note: 'AA only' },
+    { key: 'W', desc: 'Comparison overlay', note: 'pairwise' },
   ];
+
+  const essential = useMemo(() => {
+    return {
+      left: [
+        {
+          title: 'Navigate',
+          rows: [
+            { key: '↑ / ↓', desc: 'Previous / next phage' },
+            { key: '← / →', desc: 'Scroll sequence left / right' },
+            { key: 'PgUp / PgDn', desc: 'Scroll by page' },
+            { key: 'Home / End', desc: 'Jump to start / end' },
+          ],
+        },
+        {
+          title: 'View & diff',
+          rows: [
+            { key: 'N / C / Space', desc: 'Toggle DNA / AA view' },
+            { key: 'F', desc: `Reading frame (now ${readingFrame + 1})`, note: 'AA view only' },
+            { key: 'T', desc: 'Cycle theme' },
+            { key: 'D', desc: `Diff mode (${diffEnabled ? 'on' : 'off'})` },
+            { key: 'M', desc: 'Toggle 3D model' },
+          ],
+        },
+      ],
+      right: [
+        {
+          title: 'Quick overlays',
+          rows: [
+            { key: 'X', desc: 'Complexity (HGT / repeats)' },
+            { key: 'G', desc: 'GC skew (origin/terminus)' },
+            { key: 'W', desc: 'Comparison overlay' },
+            { key: 'K', desc: 'AA legend (AA view)' },
+          ],
+        },
+        {
+          title: 'Find & exit',
+          rows: [
+            { key: 'S / /', desc: 'Search phages' },
+            { key: '?', desc: 'More help detail' },
+            { key: 'Esc', desc: 'Close top overlay' },
+            { key: 'Q', desc: 'Quit' },
+          ],
+        },
+      ],
+    };
+  }, [readingFrame, diffEnabled]);
+
+  const detailed = useMemo(() => {
+    const left: { title: string; rows: HelpRow[] }[] = [
+      ...essential.left,
+      {
+        title: 'Context',
+        rows: [
+          { key: 'Mode', desc: viewMode === 'aa' ? 'Amino acids (translated)' : 'DNA (nucleotides)' },
+          { key: 'Diff', desc: diffEnabled ? 'Comparing vs reference' : 'Single genome view' },
+          { key: '3D', desc: model3DFullscreen ? 'Fullscreen: Z exit, P pause, R quality' : 'M toggles, Z fullscreen' },
+          { key: 'Overlays', desc: overlays.join(', ') || 'None' },
+        ],
+      },
+    ];
+
+    const right: { title: string; rows: HelpRow[] }[] = [
+      ...essential.right,
+      {
+        title: 'Analysis & menus',
+        rows: [
+          { key: 'A', desc: 'Analysis menu' },
+          { key: 'Shift+S', desc: 'Simulation hub' },
+          { key: 'W', desc: 'Genome comparison overlay' },
+          { key: 'K', desc: 'Amino acid key' },
+          { key: ': / Ctrl+P', desc: 'Command palette (future)' },
+        ],
+      },
+      {
+        title: '3D & model controls',
+        rows: [
+          { key: 'M', desc: 'Toggle 3D model' },
+          { key: 'P', desc: 'Pause/resume model' },
+          { key: 'Z', desc: 'Fullscreen model' },
+          { key: 'R', desc: 'Cycle model quality' },
+        ],
+      },
+      {
+        title: 'Quick overlays (full list)',
+        rows: overlayRows,
+      },
+    ];
+
+    return { left, right };
+  }, [essential, viewMode, diffEnabled, model3DFullscreen, overlays, overlayRows]);
+
+  const layout = helpDetail === 'essential' ? essential : detailed;
 
   return (
     <Box
@@ -51,28 +144,24 @@ export function HelpOverlay(): React.ReactElement {
       paddingX={2}
       paddingY={1}
     >
-      <Box justifyContent="center" marginBottom={1}>
+      <Box justifyContent="space-between" marginBottom={1}>
         <Text color={colors.accent} bold>
-          PHAGE-EXPLORER HELP
+          HELP {helpDetail === 'essential' ? '(essentials)' : '(detailed)'}
         </Text>
+        <Text color={colors.textDim}>?: expand/close · Esc: close</Text>
       </Box>
 
-      {sections.map((section, i) => (
-        <Box key={section.title} flexDirection="column" marginBottom={1}>
-          <Text color={colors.primary} bold underline>
-            {section.title}
-          </Text>
-          {section.keys.map(({ key, desc }) => (
-            <Box key={key} gap={2}>
-              <Text color={colors.accent}>{key.padEnd(12)}</Text>
-              <Text color={colors.text}>{desc}</Text>
-            </Box>
+      <Box gap={4}>
+        <Box flexDirection="column" width={40}>
+          {layout.left.map(section => (
+            <Section key={section.title} title={section.title} rows={section.rows} />
           ))}
         </Box>
-      ))}
-
-      <Box justifyContent="center" marginTop={1}>
-        <Text color={colors.textDim}>Press Esc or ? to close</Text>
+        <Box flexDirection="column" width={40}>
+          {layout.right.map(section => (
+            <Section key={section.title} title={section.title} rows={section.rows} />
+          ))}
+        </Box>
       </Box>
     </Box>
   );

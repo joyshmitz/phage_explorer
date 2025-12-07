@@ -74,6 +74,14 @@ export function AnalysisMenuOverlay({ onClose }: MenuOverlayProps): React.ReactE
           shortcut: 'X',
           action: () => openOverlay('complexity'),
         },
+        {
+          id: 'analysis-gcskew',
+          label: 'GC Skew Overlay',
+          description: 'Visualize cumulative GC skew (G)',
+          icon: '🧮',
+          shortcut: 'G',
+          action: () => openOverlay('gcSkew'),
+        },
       ],
     },
     {

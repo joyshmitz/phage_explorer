@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Box, Text, useInput, useApp, useStdout } from 'ink';
-import { usePhageStore } from '@phage-explorer/state';
+import { usePhageStore, useOverlayStack, type HelpDetailLevel } from '@phage-explorer/state';
 import type { PhageRepository } from '@phage-explorer/db-runtime';
 
 import { Header } from './Header';
@@ -14,6 +14,16 @@ import { AAKeyOverlay } from './AAKeyOverlay';
 import { SearchOverlay } from './SearchOverlay';
 import { ComparisonOverlay } from './ComparisonOverlay';
 import { AALegend } from './AALegend';
+import { AnalysisMenuOverlay, SimulationMenuOverlay } from './MenuOverlays';
+import { GCOverlay } from './GCOverlay';
+import { CommandPalette } from './CommandPalette';
+import { SequenceComplexityOverlay } from './SequenceComplexityOverlay';
+import type { OverlayId } from '@phage-explorer/state';
+
+const ANALYSIS_MENU_ID: OverlayId = 'analysisMenu';
+const SIMULATION_MENU_ID: OverlayId = 'simulationMenu';
+const COMPLEXITY_ID: OverlayId = 'complexity';
+const GC_SKEW_ID: OverlayId = 'gcSkew';
 
 interface AppProps {
   repository: PhageRepository;
@@ -31,7 +41,8 @@ export function App({ repository }: AppProps): React.ReactElement {
   const setLoadingPhage = usePhageStore(s => s.setLoadingPhage);
   const viewMode = usePhageStore(s => s.viewMode);
   const theme = usePhageStore(s => s.currentTheme);
-  const activeOverlay = usePhageStore(s => s.activeOverlay);
+  const overlayStack = useOverlayStack();
+  const activeOverlay = overlayStack.at(-1) ?? null;
   const terminalCols = usePhageStore(s => s.terminalCols);
   const terminalRows = usePhageStore(s => s.terminalRows);
   const setTerminalSize = usePhageStore(s => s.setTerminalSize);
@@ -53,9 +64,13 @@ export function App({ repository }: AppProps): React.ReactElement {
   const toggle3DModelFullscreen = usePhageStore(s => s.toggle3DModelFullscreen);
   const cycle3DModelQuality = usePhageStore(s => s.cycle3DModelQuality);
   const model3DFullscreen = usePhageStore(s => s.model3DFullscreen);
-  const setActiveOverlay = usePhageStore(s => s.setActiveOverlay);
+  const openOverlay = usePhageStore(s => s.openOverlay);
   const closeOverlay = usePhageStore(s => s.closeOverlay);
+  const toggleOverlay = usePhageStore(s => s.toggleOverlay);
   const openComparison = usePhageStore(s => s.openComparison);
+  const helpDetail = usePhageStore(s => s.helpDetail);
+  const setHelpDetail = usePhageStore(s => s.setHelpDetail);
+  const currentPhage = usePhageStore(s => s.currentPhage);
 
   // Sequence state
   const [sequence, setSequence] = useState<string>('');
@@ -130,11 +145,11 @@ export function App({ repository }: AppProps): React.ReactElement {
       return;
     }
 
-    // Escape: exit fullscreen first, then close overlay
+    // Escape: exit fullscreen first, then close top overlay if present
     if (key.escape) {
       if (model3DFullscreen) {
         toggle3DModelFullscreen();
-      } else {
+      } else if (activeOverlay) {
         closeOverlay();
       }
       return;
@@ -153,18 +168,29 @@ export function App({ repository }: AppProps): React.ReactElement {
       return;
     }
 
-    // If overlay is active, don't process other keys (comparison handles its own input)
-    if (activeOverlay && activeOverlay !== 'search' && activeOverlay !== 'comparison') {
-      if (input === '?' || input === 'h' || input === 'H') {
-        closeOverlay();
-      } else if (input === 'k' || input === 'K') {
-        closeOverlay();
+    // If overlay is active, don't process other keys (comparison/search/menus handle their own input)
+    if (activeOverlay) {
+      if (activeOverlay === 'help') {
+        if (input === '?' || input === 'h' || input === 'H') {
+          if (helpDetail === 'essential') {
+            setHelpDetail('detailed' as HelpDetailLevel);
+          } else {
+            closeOverlay('help');
+            setHelpDetail('essential' as HelpDetailLevel);
+          }
+        }
+        return;
       }
-      return;
-    }
 
-    // Comparison overlay handles its own input
-    if (activeOverlay === 'comparison') {
+      if (activeOverlay !== 'search' && activeOverlay !== 'comparison') {
+        if (
+          input === '?' || input === 'h' || input === 'H' || input === 'k' || input === 'K'
+        ) {
+          closeOverlay(activeOverlay);
+        } else if (activeOverlay === 'complexity' && (input === 'x' || input === 'X')) {
+          closeOverlay(activeOverlay);
+        }
+      }
       return;
     }
 
@@ -198,6 +224,8 @@ export function App({ repository }: AppProps): React.ReactElement {
       cycleTheme();
     } else if (input === 'd' || input === 'D') {
       toggleDiff();
+    } else if (input === 'g' || input === 'G') {
+      toggleOverlay(GC_SKEW_ID);
     } else if (input === 'm' || input === 'M') {
       toggle3DModel();
     } else if (input === 'p' || input === 'P') {
@@ -210,13 +238,21 @@ export function App({ repository }: AppProps): React.ReactElement {
 
     // Overlays (we already returned early if overlay is active, so just open)
     else if (input === '?' || input === 'h' || input === 'H') {
-      setActiveOverlay('help');
+      toggleOverlay('help');
     } else if (input === 'k' || input === 'K') {
-      setActiveOverlay('aaKey');
-    } else if (input === 's' || input === 'S' || input === '/') {
-      setActiveOverlay('search');
+      toggleOverlay('aaKey');
+    } else if (key.shift && input === 'S') {
+      openOverlay(SIMULATION_MENU_ID);
+    } else if (input === 'a' || input === 'A') {
+      openOverlay(ANALYSIS_MENU_ID);
+    } else if (input === 'x' || input === 'X') {
+      toggleOverlay(COMPLEXITY_ID);
+    } else if (input === 's' || input === '/') {
+      openOverlay('search');
     } else if (input === 'w' || input === 'W') {
       openComparison();
+    } else if (input === ':' || (key.ctrl && (input === 'p' || input === 'P'))) {
+      openOverlay('commandPalette');
     }
   });
 
@@ -324,6 +360,71 @@ export function App({ repository }: AppProps): React.ReactElement {
           marginTop={Math.floor((terminalRows - 16) / 2)}
         >
           <SearchOverlay repository={repository} />
+        </Box>
+      )}
+
+      {activeOverlay === 'gcSkew' && (
+        <Box
+          position="absolute"
+          marginLeft={Math.floor((terminalCols - 80) / 2)}
+          marginTop={Math.floor((terminalRows - 12) / 2)}
+        >
+          <GCOverlay sequence={sequence} />
+        </Box>
+      )}
+
+      {activeOverlay === ANALYSIS_MENU_ID && (
+        <Box
+          position="absolute"
+          marginLeft={Math.floor((terminalCols - 70) / 2)}
+          marginTop={Math.floor((terminalRows - 20) / 2)}
+        >
+          <AnalysisMenuOverlay onClose={() => closeOverlay(ANALYSIS_MENU_ID)} />
+        </Box>
+      )}
+
+      {activeOverlay === 'simulationMenu' && (
+        <Box
+          position="absolute"
+          marginLeft={Math.floor((terminalCols - 70) / 2)}
+          marginTop={Math.floor((terminalRows - 20) / 2)}
+        >
+          <SimulationMenuOverlay onClose={() => closeOverlay('simulationMenu')} />
+        </Box>
+      )}
+
+      {activeOverlay === 'gcSkew' && (
+        <Box
+          position="absolute"
+          marginLeft={Math.floor((terminalCols - 80) / 2)}
+          marginTop={Math.floor((terminalRows - 14) / 2)}
+        >
+          <GCOverlay sequence={sequence} />
+        </Box>
+      )}
+
+      {activeOverlay === 'complexity' && (
+        <Box
+          position="absolute"
+          marginLeft={Math.floor((terminalCols - 90) / 2)}
+          marginTop={Math.floor((terminalRows - 26) / 2)}
+        >
+          <SequenceComplexityOverlay
+            sequence={sequence}
+            phageName={currentPhage?.name ?? 'Unknown phage'}
+            genomeLength={currentPhage?.genomeLength ?? sequence.length}
+            onClose={() => closeOverlay('complexity')}
+          />
+        </Box>
+      )}
+
+      {activeOverlay === 'commandPalette' && (
+        <Box
+          position="absolute"
+          marginLeft={Math.floor((terminalCols - 70) / 2)}
+          marginTop={Math.floor((terminalRows - 18) / 2)}
+        >
+          <CommandPalette onClose={() => closeOverlay('commandPalette')} />
         </Box>
       )}
 

@@ -158,6 +158,66 @@ phage-explorer/
 
 ---
 
+## UI Design System (for contributors)
+
+To keep 31+ planned features coherent, Phage Explorer follows a lightweight design system tailored for text UIs:
+
+- **Color semantics**  
+  - Green `#22c55e`: good / conserved / similar  
+  - Yellow `#eab308`: caution / neutral  
+  - Red `#ef4444`: warning / divergent  
+  - Blue `#3b82f6`: informational metrics  
+  - Purple `#a855f7`: notable / special  
+  - Gray `#6b7280`: background / reference / inactive
+
+- **Graph & sparkline standards**  
+  - Height: 3–5 text rows; Width: terminal width where possible  
+  - Auto-normalize values; show min/max in labels  
+  - Prefer Braille dots for dense sparklines; fall back to ASCII if needed
+
+- **Panels, modals, overlays**  
+  - Single-line box borders, 1-char padding  
+  - Headers bold, centered, include close hint (e.g., “Esc to close”)  
+  - Max width 80 chars or `(terminal width - 4)`, whichever is smaller
+
+- **Interaction “depth layers” (progressive disclosure)**  
+  - Layer 0: Core always-on controls (navigation, view toggles, help, search)  
+  - Layer 1: Quick overlays (single-key toggles; limit 3 active)  
+  - Layer 2: Analysis menu (`A`) with numbered shortcuts + fuzzy search  
+  - Layer 3: Simulation hub (`Shift+S`) for interactive models  
+  - Layer 4: Command palette (`:` or `Ctrl+P`) that fuzzy-searches all actions
+
+Use these conventions for any new component: pick colors from the palette above, respect padding/borders, and place advanced features in deeper layers so newcomers see a stable core UI.
+
+---
+
+## Depth Layers & Keybinding Conventions (progressive disclosure)
+
+Phage Explorer serves both newcomers and power users by stacking features in “depth layers”:
+
+- **Layer 0 – Sacred Surface (always available, never changed)**  
+  Navigation: `↑` `↓` `←` `→` `PgUp` `PgDn` `Home` `End`  
+  View: `N`/`C`/`Space` (DNA/AA), `F` (frame), `T` (theme), `D` (diff), `M` (3D model)  
+  Meta: `?` (help), `S` or `/` (search), `Q` (quit)  
+  These keys are stable forever; everything else builds on top.
+
+- **Layer 1 – Quick Overlays (single-key toggles; max 3 active)**  
+  Reserved keys: `G` (GC skew), `X` (complexity), `B` (bendability), `P` (promoter/RBS), `R` (repeats).  
+  Data is precomputed on phage selection so toggles feel instant. (Feature hooks coming next.)
+
+- **Layer 2 – Analysis Menu (`A`)**  
+  Categorized, numbered actions (e.g., GC skew analysis, dot plots, codon dashboards). Supports fuzzy search.
+
+- **Layer 3 – Simulation Hub (`Shift+S`)**  
+  Full-screen interactive simulations (lysogeny circuits, ribosome traffic, plaque automata, etc.).
+
+- **Layer 4 – Command Palette (`:` or `Ctrl+P`)**  
+  Fuzzy-search every action; shows the shortcut path (e.g., “GC skew [G] Overlay” or “Dot plot [A→4] Analysis”).
+
+Keystroke budget rule: Layer 0 keys are immutable; new features must live in higher layers. This keeps discoverability for beginners and speed for experts.
+
+---
+
 ## Installation Options
 
 ### Installer Flags

@@ -29,7 +29,13 @@ export type OverlayId =
   | 'simulationMenu'
   | 'simulationView'
   | 'complexity'
-  | 'gcSkew';
+  | 'gcSkew'
+  | 'bendability'
+  | 'promoter'
+  | 'repeats'
+  | 'commandPalette';
+
+export type HelpDetailLevel = 'essential' | 'detailed';
 
 // Comparison view tab
 export type ComparisonTab = 'summary' | 'kmer' | 'information' | 'correlation' | 'biological' | 'genes';
@@ -78,8 +84,10 @@ export interface PhageExplorerState {
 
   // Overlays
   overlays: OverlayId[]; // stack, last = top
+  overlayData: Partial<Record<'gcSkew' | 'complexity' | 'bendability' | 'promoter' | 'repeats', unknown>>;
   searchQuery: string;
   searchResults: PhageSummary[];
+  helpDetail: HelpDetailLevel;
 
   // Terminal dimensions
   terminalCols: number;
@@ -145,6 +153,8 @@ export interface PhageExplorerActions {
   closeAllOverlays: () => void;
   setSearchQuery: (query: string) => void;
   setSearchResults: (results: PhageSummary[]) => void;
+  setHelpDetail: (level: HelpDetailLevel) => void;
+  setOverlayData: (data: Partial<Record<'gcSkew' | 'complexity' | 'bendability' | 'promoter' | 'repeats', unknown>>) => void;
 
   // Terminal
   setTerminalSize: (cols: number, rows: number) => void;
@@ -210,8 +220,10 @@ const initialState: PhageExplorerState = {
   mouseY: 0,
   hoveredAminoAcid: null,
   overlays: [],
+  overlayData: {},
   searchQuery: '',
   searchResults: [],
+  helpDetail: 'essential',
   terminalCols: 80,
   terminalRows: 24,
   error: null,
@@ -494,7 +506,10 @@ export const usePhageStore = create<PhageExplorerStore>((set, get) => ({
     set(state => {
       const filtered = state.overlays.filter(o => o !== id);
       const next = [...filtered, id];
-      return { overlays: next.slice(-3) };
+      return {
+        overlays: next.slice(-3),
+        ...(id === 'help' ? { helpDetail: 'essential' as HelpDetailLevel } : {}),
+      };
     });
   },
 
@@ -517,6 +532,9 @@ export const usePhageStore = create<PhageExplorerStore>((set, get) => ({
   },
 
   closeAllOverlays: () => set({ overlays: [] }),
+
+  setHelpDetail: (level) => set({ helpDetail: level }),
+  setOverlayData: (data) => set({ overlayData: data }),
 
   // Simulation controls
   launchSimulation: (simId, initialState) => {

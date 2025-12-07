@@ -4815,120 +4815,1282 @@ Information content: 8.2 bits (highly conserved)
 ## 22) Chaos Game Representation (CGR) Fractal Fingerprints
 
 ### Concept
-Turn a 1D sequence into a 2D fractal image. The algorithm is simple: start at the center of a square. For each nucleotide, move halfway toward its designated corner (A=top-left, T=top-right, G=bottom-right, C=bottom-left).
 
-This generates a unique "fingerprint" where patterns (like CpG islands or repetitive kmers) emerge as distinct visual attractors or voids.
+The Chaos Game Representation transforms a linear DNA sequence into a two-dimensional fractal image that encodes the complete k-mer frequency spectrum in a single visual fingerprint. Originally developed by H. Joel Jeffrey in 1990, CGR exploits a remarkable mathematical property: each point in the resulting image corresponds exactly to a specific k-mer, and its brightness reflects that k-mer's frequency in the genome.
 
-### Implementation
-**Canvas-less TUI Rendering:**
-Use Braille characters (`⣿`, `⣤`) to create a 4x resolution grid per character cell.
+The algorithm is elegantly simple: assign each nucleotide to a corner of a unit square (A=top-left, T=top-right, G=bottom-right, C=bottom-left). Start at the center. For each nucleotide in the sequence, move halfway toward its designated corner and place a point. The resulting pattern reveals deep structural properties that are invisible in linear sequence views.
 
+**Why this works**: After k steps, the point's location uniquely encodes the last k nucleotides seen. All sequences ending in "AAA" cluster in one region; all "GGC" endings cluster elsewhere. This means a single image captures **all k-mer frequencies simultaneously** — no need to choose k in advance.
+
+**Biological insights revealed by CGR:**
+- **CpG suppression**: In many organisms, CG dinucleotides are rare (methylation targets). This appears as a void in the CG corner region
+- **Codon bias**: Highly expressed genes cluster in specific regions corresponding to preferred codons
+- **Repetitive elements**: Appear as unusually bright spots (high local k-mer frequency)
+- **Horizontal gene transfer**: Recent acquisitions have different k-mer signatures, appearing as texture discontinuities
+- **Strand asymmetry**: Leading vs lagging strand preferences create asymmetric patterns
+
+### Mathematical Foundations
+
+**The CGR Iteration Map:**
+```
+Given nucleotide corners:
+  A = (0, 0)    T = (1, 0)
+  C = (0, 1)    G = (1, 1)
+
+Starting point: P₀ = (0.5, 0.5)
+
+For each nucleotide nᵢ in sequence:
+  Pᵢ = (Pᵢ₋₁ + corner(nᵢ)) / 2
+
+Or equivalently:
+  Pᵢ = Pᵢ₋₁/2 + corner(nᵢ)/2
+```
+
+**K-mer to Coordinate Mapping:**
+For a k-mer s₁s₂...sₖ, the CGR coordinate is:
+```
+x = Σᵢ₌₁ᵏ xᵢ / 2ⁱ   where xᵢ = corner_x(sᵢ)
+y = Σᵢ₌₁ᵏ yᵢ / 2ⁱ   where yᵢ = corner_y(sᵢ)
+```
+
+This is a bijective mapping — every point in [0,1]² corresponds to a unique infinite k-mer, and finite k-mers map to distinct 2⁻ᵏ × 2⁻ᵏ cells.
+
+**Frequency Chaos Game Representation (FCGR):**
+Discretize the unit square into a 2ᵏ × 2ᵏ grid. Each cell counts occurrences of its corresponding k-mer:
+```
+FCGR[i,j] = count(k-mer corresponding to cell (i,j))
+
+For k=3, grid is 8×8 = 64 cells (one per trinucleotide)
+For k=4, grid is 16×16 = 256 cells (one per tetranucleotide)
+```
+
+**Fractal Dimension Analysis:**
+The CGR image has a fractal structure. The correlation dimension D₂ measures sequence complexity:
+```
+D₂ = lim(ε→0) log(C(ε)) / log(ε)
+
+where C(ε) = (1/N²) Σᵢⱼ I(|Pᵢ - Pⱼ| < ε)
+```
+- Random sequence: D₂ ≈ 2 (fills the plane uniformly)
+- Repetitive sequence: D₂ < 2 (concentrates on attractors)
+- Biased composition: D₂ < 2 (avoids certain regions)
+
+**Distance Metrics for CGR Comparison:**
+```
+Euclidean distance between FCGRs:
+  d(A,B) = √(Σᵢⱼ (FCGRₐ[i,j] - FCGRᵦ[i,j])²)
+
+Pearson correlation (normalized):
+  r(A,B) = Σᵢⱼ (Aᵢⱼ - μₐ)(Bᵢⱼ - μᵦ) / (σₐ σᵦ n²)
+
+Kullback-Leibler divergence (asymmetric):
+  KL(A||B) = Σᵢⱼ Aᵢⱼ log(Aᵢⱼ / Bᵢⱼ)
+```
+
+### Implementation Approach
+
+**Core CGR Engine:**
 ```typescript
-function computeCGR(sequence: string, resolution: number): number[][] {
-  const grid = Array(resolution).fill(0).map(() => Array(resolution).fill(0));
-  let x = resolution / 2;
-  let y = resolution / 2;
+interface CGRConfig {
+  resolution: number;      // Grid size (power of 2 recommended)
+  normalize: boolean;      // Normalize by sequence length
+  logScale: boolean;       // Log transform for visualization
+  smoothing: number;       // Gaussian blur sigma (0 = none)
+}
 
-  for (const char of sequence) {
-    if (char === 'A') { x /= 2; y /= 2; }
-    else if (char === 'T') { x = (x + resolution) / 2; y /= 2; }
-    else if (char === 'G') { x = (x + resolution) / 2; y = (y + resolution) / 2; }
-    else if (char === 'C') { x /= 2; y = (y + resolution) / 2; }
-    grid[Math.floor(y)][Math.floor(x)]++;
+interface CGRResult {
+  grid: Float32Array;      // Flattened 2D frequency grid
+  resolution: number;
+  maxCount: number;
+  totalPoints: number;
+  emptyFraction: number;   // Fraction of cells with count 0
+  entropy: number;         // Shannon entropy of distribution
+}
+
+function computeCGR(sequence: string, config: CGRConfig): CGRResult {
+  const { resolution, normalize, logScale, smoothing } = config;
+  const grid = new Float32Array(resolution * resolution);
+
+  // Corner coordinates
+  const corners: Record<string, [number, number]> = {
+    'A': [0, 0], 'T': [1, 0], 'G': [1, 1], 'C': [0, 1]
+  };
+
+  // Iterate through sequence
+  let x = 0.5, y = 0.5;
+  let validPoints = 0;
+
+  for (const char of sequence.toUpperCase()) {
+    const corner = corners[char];
+    if (!corner) continue; // Skip N or other ambiguous bases
+
+    x = (x + corner[0]) / 2;
+    y = (y + corner[1]) / 2;
+
+    const gridX = Math.min(Math.floor(x * resolution), resolution - 1);
+    const gridY = Math.min(Math.floor(y * resolution), resolution - 1);
+    grid[gridY * resolution + gridX]++;
+    validPoints++;
   }
-  return grid;
+
+  // Statistics
+  let maxCount = 0;
+  let nonZeroCells = 0;
+  let entropy = 0;
+
+  for (let i = 0; i < grid.length; i++) {
+    if (grid[i] > 0) {
+      nonZeroCells++;
+      if (grid[i] > maxCount) maxCount = grid[i];
+      const p = grid[i] / validPoints;
+      entropy -= p * Math.log2(p);
+    }
+  }
+
+  // Normalization
+  if (normalize && validPoints > 0) {
+    for (let i = 0; i < grid.length; i++) {
+      grid[i] /= validPoints;
+    }
+  }
+
+  // Log transform (improves visualization of rare k-mers)
+  if (logScale) {
+    for (let i = 0; i < grid.length; i++) {
+      grid[i] = grid[i] > 0 ? Math.log1p(grid[i]) : 0;
+    }
+  }
+
+  return {
+    grid,
+    resolution,
+    maxCount,
+    totalPoints: validPoints,
+    emptyFraction: 1 - nonZeroCells / (resolution * resolution),
+    entropy
+  };
+}
+
+// Compare two CGRs
+function compareCGR(a: CGRResult, b: CGRResult): {
+  euclidean: number;
+  pearson: number;
+  cosineSimilarity: number;
+} {
+  if (a.resolution !== b.resolution) {
+    throw new Error('CGR resolutions must match');
+  }
+
+  const n = a.grid.length;
+  let sumA = 0, sumB = 0, sumAB = 0;
+  let sumA2 = 0, sumB2 = 0;
+  let euclideanSum = 0;
+
+  for (let i = 0; i < n; i++) {
+    sumA += a.grid[i];
+    sumB += b.grid[i];
+    sumAB += a.grid[i] * b.grid[i];
+    sumA2 += a.grid[i] * a.grid[i];
+    sumB2 += b.grid[i] * b.grid[i];
+    euclideanSum += (a.grid[i] - b.grid[i]) ** 2;
+  }
+
+  const meanA = sumA / n;
+  const meanB = sumB / n;
+
+  // Pearson correlation
+  let covSum = 0, varA = 0, varB = 0;
+  for (let i = 0; i < n; i++) {
+    const dA = a.grid[i] - meanA;
+    const dB = b.grid[i] - meanB;
+    covSum += dA * dB;
+    varA += dA * dA;
+    varB += dB * dB;
+  }
+
+  const pearson = covSum / (Math.sqrt(varA) * Math.sqrt(varB));
+  const cosineSimilarity = sumAB / (Math.sqrt(sumA2) * Math.sqrt(sumB2));
+
+  return {
+    euclidean: Math.sqrt(euclideanSum),
+    pearson,
+    cosineSimilarity
+  };
 }
 ```
 
-### Why Good?
-Instant visual classification. You can *see* if a phage is AT-rich or has specific forbidden k-mers (empty zones in the fractal).
+**Braille-Based TUI Rendering:**
+```typescript
+// Braille characters give 2x4 dots per character = 8x resolution boost
+const BRAILLE_BASE = 0x2800;
+const BRAILLE_DOTS = [
+  [0x01, 0x08],  // Row 0: dots 1, 4
+  [0x02, 0x10],  // Row 1: dots 2, 5
+  [0x04, 0x20],  // Row 2: dots 3, 6
+  [0x40, 0x80],  // Row 3: dots 7, 8
+];
 
-### Novelty
-High. CGR is a niche bioinformatics tool, almost never seen in CLI tools.
+function renderCGRBraille(
+  cgr: CGRResult,
+  width: number,
+  height: number,
+  colorMap: (value: number) => string
+): string[] {
+  const { grid, resolution } = cgr;
+  const lines: string[] = [];
 
-### Pedagogical Value
-Teaches **Chaos Theory**, **Fractals**, and **k-mer frequency visualization**.
+  // Each character covers 2 columns and 4 rows of the grid
+  const cellsPerCharX = Math.ceil(resolution / (width * 2));
+  const cellsPerCharY = Math.ceil(resolution / (height * 4));
 
-### Cool/Wow Factor
-It creates a beautiful, complex image from "random" looking text.
+  // Find max for normalization
+  let maxVal = 0;
+  for (let i = 0; i < grid.length; i++) {
+    if (grid[i] > maxVal) maxVal = grid[i];
+  }
+
+  for (let charY = 0; charY < height; charY++) {
+    let line = '';
+
+    for (let charX = 0; charX < width; charX++) {
+      let brailleCode = BRAILLE_BASE;
+      let avgValue = 0;
+      let dotCount = 0;
+
+      // Check each of the 8 dots in this Braille character
+      for (let dotRow = 0; dotRow < 4; dotRow++) {
+        for (let dotCol = 0; dotCol < 2; dotCol++) {
+          const gridX = charX * 2 * cellsPerCharX + dotCol * cellsPerCharX;
+          const gridY = charY * 4 * cellsPerCharY + dotRow * cellsPerCharY;
+
+          if (gridX < resolution && gridY < resolution) {
+            const value = grid[gridY * resolution + gridX];
+            avgValue += value;
+            dotCount++;
+
+            // Threshold: dot is lit if value > 10% of max
+            if (value > maxVal * 0.1) {
+              brailleCode |= BRAILLE_DOTS[dotRow][dotCol];
+            }
+          }
+        }
+      }
+
+      // Color based on average value in this cell
+      avgValue = dotCount > 0 ? avgValue / dotCount : 0;
+      const color = colorMap(avgValue / maxVal);
+      line += `\x1b[${color}m${String.fromCharCode(brailleCode)}\x1b[0m`;
+    }
+
+    lines.push(line);
+  }
+
+  return lines;
+}
+
+// Heat map color scheme
+function heatmapColor(normalized: number): string {
+  if (normalized < 0.2) return '38;5;17';      // Dark blue
+  if (normalized < 0.4) return '38;5;39';      // Cyan
+  if (normalized < 0.6) return '38;5;226';     // Yellow
+  if (normalized < 0.8) return '38;5;208';     // Orange
+  return '38;5;196';                            // Red
+}
+```
+
+**Zoom and Navigation:**
+```typescript
+interface CGRViewState {
+  centerX: number;        // 0-1, center of view
+  centerY: number;        // 0-1, center of view
+  zoomLevel: number;      // 1 = full view, higher = zoomed in
+  selectedKmer?: string;  // Highlighted k-mer
+}
+
+function getKmerAtPosition(x: number, y: number, k: number): string {
+  // Reverse the CGR mapping to get the k-mer
+  let kmer = '';
+  for (let i = 0; i < k; i++) {
+    // At each step, determine which quadrant we're in
+    if (x < 0.5) {
+      if (y < 0.5) { kmer = 'A' + kmer; }
+      else { kmer = 'C' + kmer; }
+    } else {
+      if (y < 0.5) { kmer = 'T' + kmer; }
+      else { kmer = 'G' + kmer; }
+    }
+    // Zoom into that quadrant
+    x = (x < 0.5) ? x * 2 : (x - 0.5) * 2;
+    y = (y < 0.5) ? y * 2 : (y - 0.5) * 2;
+  }
+  return kmer;
+}
+```
+
+### Why This Is a Good Idea
+
+1. **Complete K-mer Spectrum in One Image**: Unlike frequency tables that require choosing k, CGR captures ALL k-mer frequencies simultaneously. The k=3 frequencies are visible at coarse zoom; k=8 frequencies emerge when you zoom into specific regions. One visualization, infinite resolution.
+
+2. **Instant Visual Phylogenetics**: Closely related phages have similar CGR patterns. You can visually cluster phages by their "fingerprints" without running alignment algorithms. AT-rich phages cluster together; GC-rich phages look different at a glance.
+
+3. **Anomaly Detection**: Horizontally transferred regions have different k-mer compositions than the rest of the genome. These appear as texture discontinuities in the CGR — literally visible evidence of mosaic ancestry.
+
+4. **Codon Bias Visualization**: For coding sequences, CGR reveals codon usage patterns. Highly expressed genes (with strong codon optimization) cluster in specific CGR regions, making expression level patterns visible.
+
+5. **Algorithmic Elegance**: The algorithm is O(n) in sequence length, requiring only addition and division. No alignment, no comparison matrix, no dynamic programming. A 170kb phage genome renders in milliseconds.
+
+### Innovation Assessment
+
+**Novelty: 9/10 (Very High)**
+
+CGR is a niche bioinformatics technique known mainly to theoretical biologists. It has been used in academic papers since the 1990s but almost never appears in user-facing tools. The combination of CGR with:
+- Braille-character TUI rendering (8x resolution)
+- Interactive zoom to explore k-mer space
+- Real-time comparison between phage fingerprints
+- Integration with genome browsing
+
+...is unprecedented in any phage analysis platform.
+
+### Pedagogical Value: 9/10
+
+CGR teaches multiple deep concepts:
+- **Iterated Function Systems (IFS)**: The CGR algorithm is an IFS, the same mathematics behind fractal image compression and procedural content generation
+- **Bijective Mappings**: The 1:1 correspondence between k-mers and spatial positions is a beautiful example of encoding high-dimensional data in 2D
+- **Information Theory**: Empty regions = forbidden k-mers = constraints on sequence space
+- **Comparative Genomics**: Distance in CGR space correlates with phylogenetic distance
+- **The Beauty of Chaos**: Deterministic iteration producing complex, unpredictable-looking patterns
+
+### Cool/Wow Factor: 10/10
+
+CGR produces genuinely beautiful, fractal images from DNA sequences. The "wow" moment when students realize that every point in the image corresponds to a specific genetic word, and the overall pattern is a unique signature of the organism, is profound. It makes the abstract concept of "genomic composition" tangible and visual.
+
+### TUI Visualization
+
+```
+╭───────────────────────────────────────────────────────────────────────────╮
+│  CHAOS GAME REPRESENTATION: Lambda Phage (48,502 bp)                      │
+├───────────────────────────────────────────────────────────────────────────┤
+│                                                                           │
+│  A                                                               T        │
+│   ┌─────────────────────────────────────────────────────────────────┐     │
+│   │⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠠⣀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀│     │
+│   │⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣤⣾⣿⣿⣦⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣀⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀│     │
+│   │⠀⠀⠀⠀⠀⠀⠀⠀⠀⣴⣿⣿⣿⣿⣿⣿⣿⡄⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣾⣿⣿⣿⣦⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀│     │
+│   │⠀⠀⠀⠀⠀⠀⠀⠀⣸⣿⣿⣿⣿⣿⣿⣿⣿⣿⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣴⣿⣿⣿⣿⣿⣿⣇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀│     │
+│   │⠀⠀⣴⣶⣶⣄⠀⠀⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡇⠀⠀⣰⣶⣶⣄⠀⠀⠀⠀⠀⣶⣶⣦⡀⠀⢠⣿⣿⣿⣿⣿⣿⣿⣿⠀⠀⢀⣤⣶⣦⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀│     │
+│   │⠀⣸⣿⣿⣿⣿⣆⠀⢻⣿⣿⣿⣿⣿⣿⣿⣿⣿⠇⠀⣼⣿⣿⣿⣿⣧⠀⠀⠀⢸⣿⣿⣿⣿⡄⠘⣿⣿⣿⣿⣿⣿⣿⡟⠀⢠⣿⣿⣿⣿⣷⠀⠀⠀⠀⠀⠀⠀⠀⠀│     │
+│   │⠀⣿⣿⣿⣿⣿⣿⡄⠈⢿⣿⣿⣿⣿⣿⣿⣿⠏⠀⣸⣿⣿⣿⣿⣿⣿⡆⠀⠀⣿⣿⣿⣿⣿⣿⡀⠹⣿⣿⣿⣿⣿⠟⠀⢀⣿⣿⣿⣿⣿⣿⡆⠀⠀⠀⠀⠀⠀⠀⠀│     │
+│   │⠀⣿⣿⣿⣿⣿⣿⣿⠀⠀⠙⢿⣿⣿⣿⠟⠁⠀⢀⣿⣿⣿⣿⣿⣿⣿⣿⠀⢰⣿⣿⣿⣿⣿⣿⣧⠀⠈⠻⣿⠿⠋⠀⠀⣸⣿⣿⣿⣿⣿⣿⣷⠀⠀⠀⠀⠀⠀⠀⠀│     │
+│   │⠀⢹⣿⣿⣿⣿⣿⣿⡆⠀⠀⠀⠀█ CG void █⢸⣿⣿⣿⣿⣿⣿⣿⣿⢸⣿⣿⣿⣿⣿⣿⣿⡇⠀⠀⠀⠀⠀⠀⢀⣿⣿⣿⣿⣿⣿⣿⣿⠀⠀⠀⠀⠀⠀⠀⠀│     │
+│   │⠀⠈⢿⣿⣿⣿⣿⣿⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⢸⣿⣿⣿⣿⣿⣿⣿⡟⢸⣿⣿⣿⣿⣿⣿⡿⠀⠀⠀⠀⠀⠀⠀⠸⣿⣿⣿⣿⣿⣿⣿⡇⠀⠀⠀⠀⠀⠀⠀⠀│     │
+│   │⠀⠀⠘⢿⣿⣿⣿⡿⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢿⣿⣿⣿⣿⣿⣿⠃⠀⢻⣿⣿⣿⣿⡿⠁⠀⠀⠀⠀⠀⠀⠀⠀⠹⣿⣿⣿⣿⣿⡿⠀⠀⠀⠀⠀⠀⠀⠀⠀│     │
+│   │⠀⠀⠀⠀⠙⠿⠋⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠙⠿⠿⠿⠟⠁⠀⠀⠀⠙⠿⠿⠋⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠙⠿⠿⠋⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀│     │
+│   │                    (CpG suppression visible)                        │     │
+│   └─────────────────────────────────────────────────────────────────────┘     │
+│  C                                                               G        │
+│                                                                           │
+│  Statistics:                                                              │
+│  ├─ Entropy: 7.84 bits (high complexity)                                  │
+│  ├─ Empty cells: 12.3% (some k-mers absent)                               │
+│  └─ CG depletion: 0.78 (mild CpG suppression)                             │
+│                                                                           │
+│  [+/-] Zoom  [←→↑↓] Pan  [C] Compare  [K] Show k-mer at cursor  [ESC] Exit│
+╰───────────────────────────────────────────────────────────────────────────╯
+```
+
+**Side-by-Side Comparison View:**
+```
+╭─────────────────────────────────────────────────────────────────────────────╮
+│  CGR COMPARISON: Lambda vs T4                                               │
+├──────────────────────────────────┬──────────────────────────────────────────┤
+│  Lambda Phage (48kb)             │  T4 Phage (169kb)                        │
+│  ┌────────────────────────┐      │  ┌────────────────────────┐              │
+│  │⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿│      │  │⣤⣤⣤⡤⡤⣤⣤⣤⣤⣤⣤⣤│              │
+│  │⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿│      │  │⣤⣤⣤⣤⣤⣤⣤⣤⣤⣤⣤⣤│              │
+│  │⣿⣿⣿⣿░░░░⣿⣿⣿⣿│      │  │⣤⣤⣤⣤⣤⣤⣤⣤⣤⣤⣤⣤│              │
+│  │⣿⣿⣿⣿░░░░⣿⣿⣿⣿│      │  │⣤⣤⣤⣤⣿⣿⣿⣿⣤⣤⣤⣤│              │
+│  │⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿│      │  │⣤⣤⣤⣤⣿⣿⣿⣿⣤⣤⣤⣤│              │
+│  │⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿│      │  │⣤⣤⣤⣤⣤⣤⣤⣤⣤⣤⣤⣤│              │
+│  └────────────────────────┘      │  └────────────────────────┘              │
+│  GC: 49.8% | Entropy: 7.84      │  GC: 34.5% | Entropy: 7.62               │
+├──────────────────────────────────┴──────────────────────────────────────────┤
+│  Similarity: 67.3% (Pearson)  │  Note: T4 is AT-rich, pattern shifted      │
+╰─────────────────────────────────────────────────────────────────────────────╯
+```
 
 ---
 
 ## 23) Hilbert Curve Genome Atlas
 
 ### Concept
-Map the entire linear genome onto a 2D square using a **Hilbert space-filling curve**. This preserves locality: points close in 1D are close in 2D.
 
-Color pixels by:
-- GC Content
-- Hydrophobicity
-- Gene Density
+The Hilbert Curve Genome Atlas transforms a linear phage genome into a 2D spatial map using a **Hilbert space-filling curve** — a fractal curve that visits every point in a square while preserving locality. Unlike naive row-by-row wrapping, the Hilbert curve ensures that positions close in 1D remain close in 2D, making spatial patterns in the genome visible as coherent 2D regions rather than scattered lines.
 
-### Implementation
-**Hilbert Mapping:**
-Standard recursive algorithm to map 1D index `i` to `(x, y)`.
+**Why Hilbert curves are special:**
+- **Locality preservation**: Unlike a raster scan (which has discontinuities at line ends), Hilbert curves maintain distance relationships. Nearby genes stay nearby
+- **Fractal self-similarity**: The curve looks the same at every zoom level, enabling hierarchical exploration
+- **Optimal compactness**: Among all space-filling curves, Hilbert has the best locality properties
 
+**What the atlas reveals:**
+- **Gene organization**: Early, middle, and late genes often cluster spatially on phage genomes. The Hilbert map shows these as distinct "provinces"
+- **GC islands**: Regions with anomalous GC content (possibly acquired by HGT) appear as colored patches
+- **Coding density**: Highly packed regions vs intergenic deserts become visually obvious
+- **Temporal expression patterns**: Color by expression phase to see the genome's "timeline" in 2D
+- **Structural features**: Promoter clusters, terminators, packaging signals form recognizable patterns
+
+### Mathematical Foundations
+
+**The Hilbert Curve Iteration:**
+The Hilbert curve is defined recursively. A level-n curve fills a 2ⁿ × 2ⁿ grid:
+```
+Level 1 (2×2):     Level 2 (4×4):
+┌──┐               ┌──┐  ┌──┐
+│  │               │  │  │  │
+└──┘               └──┘──└──┘
+                   │        │
+                   ┌──┐  ┌──┐
+                   │  │  │  │
+                   └──┘──└──┘
+```
+
+**Index-to-Coordinate Mapping:**
+Given a 1D index d ∈ [0, 4ⁿ-1], compute (x, y) coordinates:
+```
+For each level s from 1 to n:
+  1. Extract 2-bit quadrant from d
+  2. Rotate/flip based on quadrant:
+     - Quadrant 0: Swap x,y (↺ rotation)
+     - Quadrant 1: No change
+     - Quadrant 2: No change
+     - Quadrant 3: Swap and flip (↻ rotation)
+  3. Add quadrant offset to (x, y)
+```
+
+**Locality Metric:**
+For a Hilbert curve, the maximum distance between adjacent points satisfies:
+```
+max|d(p₁,p₂) - 1| implies ||coord(p₁) - coord(p₂)||∞ ≤ √2 + 1
+```
+This is optimal among all space-filling curves.
+
+**Coordinate-to-Index (Reverse Mapping):**
+```
+Given (x, y), compute 1D index:
+  d = 0
+  For s from 2^(n-1) down to 1:
+    rx = (x & s) > 0 ? 1 : 0
+    ry = (y & s) > 0 ? 1 : 0
+    d += s² × ((3 × rx) ^ ry)
+    Rotate/flip (x, y) based on (rx, ry)
+```
+
+**Multi-Scale Aggregation:**
+For display at resolution 2ᵏ when genome has 4ⁿ positions (n > k):
+```
+Each pixel represents 4^(n-k) base pairs
+Aggregate values (GC%, coding, etc.) by averaging over the range
+```
+
+### Implementation Approach
+
+**Core Hilbert Engine:**
 ```typescript
-function d2xy(n: number, d: number): [number, number] {
-  let rx, ry, s, t = d;
+interface HilbertConfig {
+  order: number;            // Curve order (resolution = 2^order × 2^order)
+  colorMode: 'gc' | 'coding' | 'phase' | 'complexity' | 'custom';
+  windowSize: number;       // bp per calculation window
+  smoothing: boolean;       // Apply Gaussian smoothing
+}
+
+interface HilbertResult {
+  grid: Float32Array;       // Color values [0-1]
+  resolution: number;       // 2^order
+  metadata: {
+    bpPerPixel: number;
+    genomeLength: number;
+    colorScale: { min: number; max: number };
+  };
+}
+
+// Convert 1D index to 2D Hilbert coordinates
+function hilbertD2XY(order: number, d: number): [number, number] {
+  const n = 1 << order; // 2^order
   let x = 0, y = 0;
+  let rx: number, ry: number, s: number, t = d;
+
   for (s = 1; s < n; s *= 2) {
-    rx = 1 & (t / 2);
+    rx = 1 & Math.floor(t / 2);
     ry = 1 & (t ^ rx);
-    // Rotate/flip
+
+    // Rotate quadrant
     if (ry === 0) {
-      if (rx === 1) { x = s - 1 - x; y = s - 1 - y; }
+      if (rx === 1) {
+        x = s - 1 - x;
+        y = s - 1 - y;
+      }
+      // Swap x and y
       [x, y] = [y, x];
     }
+
     x += s * rx;
     y += s * ry;
-    t /= 4;
+    t = Math.floor(t / 4);
   }
+
   return [x, y];
+}
+
+// Convert 2D coordinates back to 1D index
+function hilbertXY2D(order: number, x: number, y: number): number {
+  const n = 1 << order;
+  let d = 0;
+  let rx: number, ry: number, s: number;
+
+  for (s = n / 2; s > 0; s = Math.floor(s / 2)) {
+    rx = (x & s) > 0 ? 1 : 0;
+    ry = (y & s) > 0 ? 1 : 0;
+    d += s * s * ((3 * rx) ^ ry);
+
+    // Rotate
+    if (ry === 0) {
+      if (rx === 1) {
+        x = s - 1 - x;
+        y = s - 1 - y;
+      }
+      [x, y] = [y, x];
+    }
+  }
+
+  return d;
+}
+
+// Generate Hilbert genome atlas
+function generateHilbertAtlas(
+  sequence: string,
+  genes: GeneInfo[],
+  config: HilbertConfig
+): HilbertResult {
+  const resolution = 1 << config.order;
+  const totalPixels = resolution * resolution;
+  const grid = new Float32Array(totalPixels);
+
+  const bpPerPixel = Math.ceil(sequence.length / totalPixels);
+
+  // Pre-compute values for each pixel
+  for (let d = 0; d < totalPixels; d++) {
+    const [x, y] = hilbertD2XY(config.order, d);
+    const startBp = d * bpPerPixel;
+    const endBp = Math.min(startBp + bpPerPixel, sequence.length);
+
+    if (startBp >= sequence.length) {
+      grid[y * resolution + x] = -1; // Mark as empty
+      continue;
+    }
+
+    const window = sequence.slice(startBp, endBp);
+    let value: number;
+
+    switch (config.colorMode) {
+      case 'gc':
+        value = calculateGC(window);
+        break;
+      case 'coding':
+        value = calculateCodingDensity(startBp, endBp, genes);
+        break;
+      case 'phase':
+        value = getExpressionPhase(startBp, endBp, genes);
+        break;
+      case 'complexity':
+        value = kolmogorovComplexity(window);
+        break;
+      default:
+        value = 0;
+    }
+
+    grid[y * resolution + x] = value;
+  }
+
+  // Find min/max for color scaling
+  let min = Infinity, max = -Infinity;
+  for (let i = 0; i < grid.length; i++) {
+    if (grid[i] >= 0) {
+      if (grid[i] < min) min = grid[i];
+      if (grid[i] > max) max = grid[i];
+    }
+  }
+
+  // Normalize to [0, 1]
+  for (let i = 0; i < grid.length; i++) {
+    if (grid[i] >= 0) {
+      grid[i] = (grid[i] - min) / (max - min);
+    }
+  }
+
+  return {
+    grid,
+    resolution,
+    metadata: {
+      bpPerPixel,
+      genomeLength: sequence.length,
+      colorScale: { min, max }
+    }
+  };
+}
+
+// Helper functions
+function calculateGC(seq: string): number {
+  let gc = 0;
+  for (const c of seq.toUpperCase()) {
+    if (c === 'G' || c === 'C') gc++;
+  }
+  return seq.length > 0 ? gc / seq.length : 0;
+}
+
+function calculateCodingDensity(
+  start: number,
+  end: number,
+  genes: GeneInfo[]
+): number {
+  let codingBp = 0;
+  for (const gene of genes) {
+    const overlapStart = Math.max(start, gene.start);
+    const overlapEnd = Math.min(end, gene.end);
+    if (overlapStart < overlapEnd) {
+      codingBp += overlapEnd - overlapStart;
+    }
+  }
+  return codingBp / (end - start);
 }
 ```
 
-### Why Good?
-Allows viewing **entire genomes** (even giant ones like T4) on a single screen without scrolling. Global structural organization becomes visible.
+**Interactive Navigation:**
+```typescript
+interface HilbertViewState {
+  zoomLevel: number;      // 1 = full, higher = zoomed
+  centerX: number;        // Viewport center (0-1)
+  centerY: number;
+  hoveredBp: number;      // Current hover position in bp
+  selectedGene?: string;  // Highlighted gene
+}
 
-### Novelty
-Very high for a TUI.
+// Click on map → get genomic position
+function getGenomicPosition(
+  x: number,
+  y: number,
+  order: number,
+  genomeLength: number
+): number {
+  const d = hilbertXY2D(order, x, y);
+  const resolution = 1 << order;
+  const bpPerPixel = genomeLength / (resolution * resolution);
+  return Math.floor(d * bpPerPixel);
+}
 
-### Pedagogical Value
-Teaches **Space-filling curves** and **Genomic Architecture**.
+// Sync with main sequence view
+function syncWithSequenceView(bp: number): void {
+  // Update main view scroll position to show this region
+  store.setScrollPosition(bp);
+}
+```
+
+**TUI Renderer with Block Characters:**
+```typescript
+// Use Unicode block elements for smooth gradients
+const BLOCK_CHARS = [' ', '░', '▒', '▓', '█'];
+
+function renderHilbertAtlas(
+  atlas: HilbertResult,
+  width: number,
+  height: number,
+  colorScheme: (value: number) => string
+): string[] {
+  const { grid, resolution } = atlas;
+  const lines: string[] = [];
+
+  // Scale grid to fit display
+  const scaleX = resolution / width;
+  const scaleY = resolution / height;
+
+  for (let row = 0; row < height; row++) {
+    let line = '';
+    for (let col = 0; col < width; col++) {
+      // Sample from grid (nearest neighbor or bilinear)
+      const gridX = Math.floor(col * scaleX);
+      const gridY = Math.floor(row * scaleY);
+      const value = grid[gridY * resolution + gridX];
+
+      if (value < 0) {
+        line += ' '; // Empty (beyond genome)
+      } else {
+        const blockIdx = Math.min(
+          Math.floor(value * BLOCK_CHARS.length),
+          BLOCK_CHARS.length - 1
+        );
+        const color = colorScheme(value);
+        line += `\x1b[${color}m${BLOCK_CHARS[blockIdx]}\x1b[0m`;
+      }
+    }
+    lines.push(line);
+  }
+
+  return lines;
+}
+
+// Color schemes
+const gcColorScheme = (v: number): string => {
+  // Blue (low GC) → Green → Yellow → Red (high GC)
+  if (v < 0.25) return '38;5;21';  // Blue
+  if (v < 0.50) return '38;5;34';  // Green
+  if (v < 0.75) return '38;5;226'; // Yellow
+  return '38;5;196';                // Red
+};
+
+const phaseColorScheme = (v: number): string => {
+  // Early (blue) → Middle (green) → Late (red)
+  if (v < 0.33) return '38;5;39';  // Cyan (early)
+  if (v < 0.66) return '38;5;46';  // Green (middle)
+  return '38;5;202';                // Orange (late)
+};
+```
+
+### Why This Is a Good Idea
+
+1. **See the Whole Genome at Once**: Even T4's 170kb genome fits in a 128×128 grid (16kb per row in raster, but with preserved locality in Hilbert). Global organizational patterns become immediately visible that would require endless scrolling in linear view.
+
+2. **Locality-Preserving Visualization**: Unlike simple line wrapping that creates artificial discontinuities, the Hilbert curve ensures that neighboring genomic regions remain visually adjacent. Gene clusters, operons, and regulatory regions form coherent 2D shapes.
+
+3. **Multi-Layer Overlay System**: Color by GC content, coding density, expression timing, or complexity. Toggle between layers to see different aspects of genomic organization. The same spatial layout works for all metrics.
+
+4. **Zoom-to-Sequence Integration**: Click any pixel to instantly navigate the main sequence view to that position. The atlas becomes a minimap for the entire exploration experience.
+
+5. **Pattern Recognition**: Humans are excellent at recognizing 2D visual patterns. Converting 1D sequence data into 2D Hilbert space leverages this strength for rapid anomaly detection and structural understanding.
+
+### Innovation Assessment
+
+**Novelty: 9/10 (Very High)**
+
+Hilbert curves are well-known in computer science and have been applied to genomics in research papers, but:
+- Almost no user-facing tools expose this visualization
+- TUI implementation with block characters is unprecedented
+- Integration with genome browsing (click to navigate) is novel
+- Multi-layer overlay system adds analytical power
+
+The combination makes this a unique feature that will distinguish Phage Explorer from all competitors.
+
+### Pedagogical Value: 8/10
+
+Hilbert curves teach fundamental concepts:
+- **Space-filling curves**: A beautiful mathematical concept with practical applications
+- **Locality and dimensionality reduction**: How to preserve relationships when reducing dimensions
+- **Genomic organization**: Why genes are arranged the way they are
+- **Data visualization theory**: Why layout matters for pattern detection
+- **Recursion and self-similarity**: The fractal nature of the curve at all scales
+
+### Cool/Wow Factor: 9/10
+
+The visual impact is dramatic — an entire genome compressed into a colored square that reveals hidden structure. The moment users realize they're seeing every base pair of a phage genome in a single image, and that clicking any pixel takes them there, is genuinely impressive. The Hilbert curve itself is aesthetically pleasing, with its continuous serpentine path.
 
 ### TUI Visualization
-A dense colored square. Different "lobes" of the phage (Early, Middle, Late genes) appear as distinct blocks.
+
+```
+╭─────────────────────────────────────────────────────────────────────────────╮
+│  HILBERT CURVE GENOME ATLAS: T4 Phage (168,903 bp)                          │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│  Color: GC Content (Blue < 30% | Green 40% | Yellow 50% | Red > 60%)        │
+│                                                                             │
+│   ┌─────────────────────────────────────────────────────────────────┐       │
+│   │░░░░▒▒▒▒░░░░░░▒▒▒▒▓▓▓▓▒▒▒▒░░░░░░▒▒▒▒░░░░░░░░░░░░▒▒▒▒░░░░░░▒▒▒▒│       │
+│   │░░▒▒▓▓▓▓▒▒░░░░▒▒▓▓████▓▓▒▒░░░░░░▒▒▓▓▒▒░░░░░░░░▒▒▓▓▒▒░░░░▒▒▓▓▒▒│       │
+│   │░░▒▒▓▓▓▓▒▒░░  EARLY   ▓▓▒▒░░░░░░▒▒▓▓▓▓▒▒░░░░▒▒▓▓▓▓▒▒░░▒▒▓▓▓▓▒▒│       │
+│   │░░░░▒▒▒▒░░░░  GENES   ▒▒░░░░░░░░░░▒▒▒▒░░░░░░░░▒▒▒▒░░░░░░▒▒▒▒░░│       │
+│   │▒▒▒▒░░░░▒▒▒▒░░░░░░▒▒▒▒░░░░▒▒▒▒░░░░░░░░▓▓▓▓████▓▓▓▓░░░░░░░░░░░░│       │
+│   │▓▓▓▓▒▒▒▒▓▓▓▓▒▒░░░░▒▒▓▓▒▒░░▓▓▓▓▒▒░░░░  MIDDLE  ████▒▒░░░░░░░░░░│       │
+│   │▓▓▓▓▒▒▒▒▓▓▓▓▒▒░░░░▒▒▓▓▒▒░░▓▓▓▓▒▒░░░░  GENES   ████▒▒░░░░░░░░░░│       │
+│   │▒▒▒▒░░░░▒▒▒▒░░░░░░░░▒▒░░░░▒▒▒▒░░░░░░░░▓▓▓▓████▓▓▓▓░░░░░░░░░░░░│       │
+│   │░░░░░░░░░░░░░░░░▒▒▒▒▒▒▒▒▒▒▒▒░░░░░░░░░░░░░░▒▒▒▒░░░░████████████│       │
+│   │░░░░░░░░░░░░░░▒▒▓▓▓▓▓▓▓▓▓▓▓▓▒▒░░░░░░░░░░▒▒▓▓▓▓▒▒░░  LATE     ░│       │
+│   │░░░░░░░░░░░░▒▒▓▓████████████▓▓▒▒░░░░░░▒▒▓▓████▓▓▒▒  GENES    ░│       │
+│   │░░░░░░░░░░░░▒▒▓▓████████████▓▓▒▒░░░░░░▒▒▓▓████▓▓▒▒████████████│       │
+│   └─────────────────────────────────────────────────────────────────┘       │
+│                                                                             │
+│  Position: 84,451 bp  │  GC: 35.2%  │  Gene: gp32 (ssDNA binding)           │
+│  Region: DNA replication / recombination cluster (Middle expression)       │
+│                                                                             │
+│  [↑↓←→] Navigate  [+/-] Zoom  [G/C/P/X] Color mode  [Enter] Jump  [ESC] Exit│
+╰─────────────────────────────────────────────────────────────────────────────╯
+```
+
+**Multi-Genome Comparison:**
+```
+╭─────────────────────────────────────────────────────────────────────────────╮
+│  HILBERT COMPARISON: Three Phage Genomes (GC Content)                       │
+├─────────────────────┬─────────────────────┬─────────────────────────────────┤
+│  Lambda (48kb)      │  T4 (169kb)         │  T7 (40kb)                      │
+│  ┌───────────┐      │  ┌───────────┐      │  ┌───────────┐                  │
+│  │▓▓▓▒▒░░▓▓▓│      │  │░░░░▒▒░░░░│      │  │▒▒▓▓▓▓▓▓▒▒│                  │
+│  │▓▓████▓▓▓▓│      │  │░░▒▒▒▒▒▒░░│      │  │▓▓████████▓▓│                  │
+│  │▒▒▓▓▓▓▒▒▒▒│      │  │░░▒▒░░▒▒░░│      │  │▓▓████████▓▓│                  │
+│  │▒▒▓▓▓▓▒▒▒▒│      │  │░░░░░░░░░░│      │  │▒▒▓▓▓▓▓▓▒▒│                  │
+│  └───────────┘      │  └───────────┘      │  └───────────┘                  │
+│  GC: 49.8%         │  GC: 34.5%          │  GC: 48.4%                      │
+├─────────────────────┴─────────────────────┴─────────────────────────────────┤
+│  Note: T4's AT-richness creates distinct pattern; Lambda/T7 more similar    │
+╰─────────────────────────────────────────────────────────────────────────────╯
+```
 
 ---
 
 ## 24) Ribosome Traffic Jam Simulator
 
 ### Concept
-A dynamic **particle simulation** of translation. Ribosomes (particles) move along the mRNA (track). Their speed depends on the **tRNA availability** (codon adaptation) of the current codon.
 
-If a ribosome hits a "slow" codon (rare tRNA), it pauses. Behind it, other ribosomes pile up, creating a "traffic jam."
+The Ribosome Traffic Jam Simulator is a dynamic, real-time particle simulation that visualizes translation as ribosomes move along mRNA. Unlike static codon adaptation metrics, this simulation shows how rare codons create **kinetic bottlenecks** that affect protein production rates dynamically.
 
-### Implementation
-**Discrete Event Simulation:**
-- `Ribosome` object with `position`, `state`.
-- `CodonWaitTimes` lookup table (inverse of CAI).
-- Tick loop: Move ribosomes. If `dist(r1, r2) < footprint`, block r2.
+**The biological reality:**
+- Ribosomes are ~20nm molecular machines that translate mRNA into protein
+- Each ribosome occupies a "footprint" of ~10 codons (30 nucleotides)
+- Translation speed varies by codon — common codons (abundant tRNAs) translate fast; rare codons stall
+- When a ribosome stalls, following ribosomes pile up behind it, creating "traffic jams"
+- These jams reduce protein output and can trigger quality control mechanisms
 
-### Why Good?
-Visualizes **Translation Kinetics**. Shows why "codon optimization" matters dynamically, not just statistically.
+**Why dynamic simulation matters:**
+- **CAI is a static average**: It tells you overall adaptation but not WHERE bottlenecks occur
+- **Position matters**: A rare codon at position 50 might stall the first ribosome before more initiate
+- **Jamming is nonlinear**: One slow codon doesn't slow production by 1% — the jam propagates
+- **Initiation rate interaction**: High initiation + slow elongation = worse jams
 
-### Novelty
-Extremely high. Most tools show static plots. This is a *movie*.
+**What the simulation reveals:**
+- Exact positions of translation bottlenecks
+- How jams propagate upstream
+- Effect of codon choice on protein production rate
+- Trade-offs in codon optimization strategies
 
-### Pedagogical Value
-Teaches **Kinetic theory**, **Translation elongation**, and **Bottlenecks**.
+### Mathematical Foundations
+
+**TASEP Model (Totally Asymmetric Simple Exclusion Process):**
+The canonical model for ribosome traffic. Particles (ribosomes) hop forward on a 1D lattice (codons) with:
+```
+- Entry rate: α (initiation)
+- Hopping rate: p(c) = f(tRNA abundance for codon c)
+- Exit rate: β (termination)
+- Exclusion: No two ribosomes can occupy same site
+
+Master equation:
+∂ρᵢ/∂t = pᵢ₋₁ρᵢ₋₁(1-ρᵢ) - pᵢρᵢ(1-ρᵢ₊₁)
+
+where ρᵢ = probability of site i being occupied
+```
+
+**Codon-Specific Elongation Rates:**
+```
+For each codon c:
+  p(c) = w(c) / max(w)   where w(c) = tAI or RSCU weight
+
+Typical values (E. coli):
+  Fastest (AAA, Lys): p = 1.0 (25 codons/sec)
+  Slowest (CGA, Arg): p = 0.05 (1.25 codons/sec)
+
+Time to translate codon: τ(c) = 1/p(c) × τ_base
+where τ_base ≈ 40ms for E. coli
+```
+
+**Ribosome Footprint and Exclusion:**
+```
+Footprint L ≈ 10 codons
+
+Exclusion constraint:
+  For ribosomes at positions xᵢ and xⱼ where i < j:
+  xⱼ - xᵢ ≥ L
+
+A ribosome can only advance if:
+  next_position - nearest_upstream_ribosome ≥ L
+```
+
+**Steady-State Flux (Protein Production Rate):**
+```
+J = α × (1 - ρ₁)  [entry rate × probability first site free]
+
+For uniform rates, mean-field theory gives:
+  J = α(1-α)/(1+α)  if α < 0.5 (entry-limited)
+  J = p(1-p)/(1+p)  if p < α (elongation-limited)
+
+With non-uniform rates, bottleneck codon determines J.
+```
+
+**Queue Formation Dynamics:**
+```
+When a slow codon creates a jam:
+  - Queue length grows until it hits initiation site
+  - Then initiation is blocked (entry-limited regime)
+  - Effective production rate = min(α, p_bottleneck)
+
+Queue growth rate:
+  dQ/dt = J_in - p_slow
+  where J_in = rate of ribosomes arriving at slow site
+```
+
+### Implementation Approach
+
+**Core Simulation Engine:**
+```typescript
+interface RibosomeState {
+  id: number;
+  position: number;           // Codon index
+  waitTime: number;           // Ticks until next move
+  state: 'translating' | 'waiting' | 'blocked';
+  peptideLength: number;      // Amino acids synthesized
+}
+
+interface TranslationSimConfig {
+  initiationRate: number;     // α: probability of new ribosome per tick
+  terminationBonus: number;   // Speed multiplier for release
+  footprintSize: number;      // Codons occupied by ribosome
+  tickDuration: number;       // Milliseconds per simulation tick
+  maxRibosomes: number;       // Limit for display
+}
+
+interface SimulationState {
+  ribosomes: RibosomeState[];
+  mRNA: string[];             // Array of codons
+  elongationRates: number[];  // Rate for each codon position
+  time: number;               // Simulation ticks elapsed
+  producedProteins: number;   // Completed translations
+  stallEvents: number;        // Times a ribosome was blocked
+}
+
+function initializeSimulation(
+  sequence: string,
+  codonWeights: Map<string, number>,
+  config: TranslationSimConfig
+): SimulationState {
+  // Convert sequence to codon array
+  const mRNA: string[] = [];
+  for (let i = 0; i < sequence.length - 2; i += 3) {
+    mRNA.push(sequence.slice(i, i + 3));
+  }
+
+  // Pre-compute elongation rates
+  const maxWeight = Math.max(...codonWeights.values());
+  const elongationRates = mRNA.map(codon => {
+    const weight = codonWeights.get(codon) ?? 0.1;
+    return weight / maxWeight; // Normalize to [0, 1]
+  });
+
+  return {
+    ribosomes: [],
+    mRNA,
+    elongationRates,
+    time: 0,
+    producedProteins: 0,
+    stallEvents: 0
+  };
+}
+
+function simulationTick(
+  state: SimulationState,
+  config: TranslationSimConfig
+): SimulationState {
+  const newState = { ...state, time: state.time + 1 };
+
+  // Try to initiate new ribosome
+  if (Math.random() < config.initiationRate) {
+    const firstRibosome = state.ribosomes.find(r =>
+      r.position < config.footprintSize
+    );
+    if (!firstRibosome) {
+      newState.ribosomes.push({
+        id: state.time,
+        position: 0,
+        waitTime: 0,
+        state: 'translating',
+        peptideLength: 0
+      });
+    }
+  }
+
+  // Process each ribosome (from 3' to 5' to handle blocking)
+  const sortedRibosomes = [...newState.ribosomes].sort(
+    (a, b) => b.position - a.position
+  );
+
+  for (const ribosome of sortedRibosomes) {
+    // Check if blocked by ribosome ahead
+    const ahead = sortedRibosomes.find(r =>
+      r.position > ribosome.position &&
+      r.position - ribosome.position <= config.footprintSize
+    );
+
+    if (ahead) {
+      ribosome.state = 'blocked';
+      newState.stallEvents++;
+      continue;
+    }
+
+    // Decrement wait time
+    if (ribosome.waitTime > 0) {
+      ribosome.waitTime--;
+      ribosome.state = 'waiting';
+      continue;
+    }
+
+    // Try to advance
+    const nextPos = ribosome.position + 1;
+
+    if (nextPos >= state.mRNA.length) {
+      // Termination
+      newState.producedProteins++;
+      newState.ribosomes = newState.ribosomes.filter(
+        r => r.id !== ribosome.id
+      );
+      continue;
+    }
+
+    // Move to next codon
+    ribosome.position = nextPos;
+    ribosome.peptideLength++;
+    ribosome.state = 'translating';
+
+    // Set wait time based on codon
+    const rate = state.elongationRates[nextPos];
+    // Geometric distribution: mean wait = 1/rate
+    ribosome.waitTime = Math.floor(
+      -Math.log(Math.random()) / rate
+    );
+  }
+
+  return newState;
+}
+
+// Run simulation for N ticks and collect metrics
+function runSimulation(
+  sequence: string,
+  codonWeights: Map<string, number>,
+  config: TranslationSimConfig,
+  ticks: number
+): SimulationMetrics {
+  let state = initializeSimulation(sequence, codonWeights, config);
+
+  const occupancyHistory: number[][] = [];
+  const productionHistory: number[] = [];
+
+  for (let t = 0; t < ticks; t++) {
+    state = simulationTick(state, config);
+
+    // Record occupancy map
+    const occupancy = new Array(state.mRNA.length).fill(0);
+    for (const rib of state.ribosomes) {
+      for (let i = 0; i < config.footprintSize; i++) {
+        if (rib.position + i < occupancy.length) {
+          occupancy[rib.position + i] = 1;
+        }
+      }
+    }
+    occupancyHistory.push(occupancy);
+    productionHistory.push(state.producedProteins);
+  }
+
+  return {
+    finalState: state,
+    meanOccupancy: computeMeanOccupancy(occupancyHistory),
+    productionRate: state.producedProteins / ticks,
+    bottleneckPositions: findBottlenecks(occupancyHistory),
+    stallRate: state.stallEvents / ticks
+  };
+}
+```
+
+**Real-Time Visualization:**
+```typescript
+interface RibosomeVisualState {
+  position: number;
+  color: string;
+  char: string;
+  blocked: boolean;
+}
+
+function renderTranslation(
+  state: SimulationState,
+  config: TranslationSimConfig,
+  width: number
+): string[] {
+  const lines: string[] = [];
+  const { mRNA, ribosomes, elongationRates } = state;
+
+  // Visible window
+  const startCodon = 0;
+  const endCodon = Math.min(mRNA.length, width / 4);
+
+  // Line 1: Codon labels (every 10th)
+  let labelLine = '';
+  for (let i = startCodon; i < endCodon; i++) {
+    if (i % 10 === 0) {
+      labelLine += i.toString().padStart(3) + ' ';
+    } else {
+      labelLine += '    ';
+    }
+  }
+  lines.push(labelLine);
+
+  // Line 2: mRNA codons
+  let mrnaLine = '';
+  for (let i = startCodon; i < endCodon; i++) {
+    mrnaLine += `[${mRNA[i]}]`;
+  }
+  lines.push(`5'─${mrnaLine}─3'`);
+
+  // Line 3: Ribosomes
+  const ribosomeMap = new Map<number, RibosomeState>();
+  for (const rib of ribosomes) {
+    ribosomeMap.set(rib.position, rib);
+  }
+
+  let ribLine = '   ';
+  for (let i = startCodon; i < endCodon; i++) {
+    const rib = ribosomeMap.get(i);
+    if (rib) {
+      const char = rib.state === 'blocked' ? '⬤' :
+                   rib.state === 'waiting' ? '◉' : '●';
+      const color = rib.state === 'blocked' ? '\x1b[31m' : '\x1b[32m';
+      ribLine += `${color}${char}\x1b[0m   `;
+    } else {
+      ribLine += '    ';
+    }
+  }
+  lines.push(ribLine);
+
+  // Line 4: Elongation rate heatmap
+  let rateBar = 'Rate: ';
+  for (let i = startCodon; i < endCodon; i++) {
+    const rate = elongationRates[i];
+    const char = rate > 0.8 ? '█' : rate > 0.5 ? '▓' : rate > 0.2 ? '▒' : '░';
+    const color = rate > 0.5 ? '\x1b[32m' : rate > 0.2 ? '\x1b[33m' : '\x1b[31m';
+    rateBar += `${color}${char}\x1b[0m`;
+  }
+  lines.push(rateBar);
+
+  // Line 5: Traffic density
+  let trafficLine = 'Jam:  ';
+  const occupancy = computeOccupancy(ribosomes, mRNA.length, config.footprintSize);
+  for (let i = startCodon; i < endCodon; i++) {
+    if (occupancy[i]) {
+      trafficLine += '█';
+    } else {
+      trafficLine += ' ';
+    }
+  }
+  lines.push(trafficLine);
+
+  return lines;
+}
+
+function computeOccupancy(
+  ribosomes: RibosomeState[],
+  length: number,
+  footprint: number
+): boolean[] {
+  const occupied = new Array(length).fill(false);
+  for (const rib of ribosomes) {
+    for (let i = 0; i < footprint; i++) {
+      if (rib.position + i < length) {
+        occupied[rib.position + i] = true;
+      }
+    }
+  }
+  return occupied;
+}
+```
+
+### Why This Is a Good Idea
+
+1. **Dynamic vs Static Understanding**: CAI and tAI give static averages. This simulation shows the actual kinetic behavior — where jams form, how they propagate, and how they resolve. Students see that codon optimization is about traffic flow, not just individual codon quality.
+
+2. **Visualizes Emergent Phenomena**: Traffic jams are emergent — they arise from simple local rules but have global effects. Watching ribosomes pile up behind a single slow codon creates intuition that no static metric can provide.
+
+3. **Interactive Exploration**: Users can modify initiation rates, watch different genes, compare wild-type vs optimized sequences, and see immediate effects. This kind of "what-if" exploration is impossible with static analyses.
+
+4. **Connects to Real Experiments**: The simulation parallifies ribosome profiling experiments. Users learn why those experiments show "ribosome footprint pileups" at certain codons.
+
+5. **Engaging and Memorable**: There's something mesmerizing about watching particles move along a track and pile up. It's a "lava lamp" for molecular biology that makes learning enjoyable.
+
+### Innovation Assessment
+
+**Novelty: 10/10 (Extremely High)**
+
+Dynamic translation simulations exist in research software (SimPool, TASEP models), but:
+- No general-purpose phage/genome browser includes one
+- TUI-based real-time visualization is unprecedented
+- Integration with actual phage sequences is novel
+- Interactive parameter adjustment is unique
+
+This feature would be genuinely unique in the field.
+
+### Pedagogical Value: 10/10
+
+This is perhaps the most pedagogically valuable feature in the entire roadmap:
+- **TASEP models**: Fundamental physics of exclusion processes
+- **Translation kinetics**: How protein production actually works
+- **Codon optimization**: Why and how to optimize genes for expression
+- **Systems biology**: Emergent behavior from simple rules
+- **Ribosome profiling**: Connects to modern experimental techniques
+
+### Cool/Wow Factor: 10/10
+
+Watching ribosomes collide and create traffic jams in real-time is genuinely captivating. The "aha" moment when a student sees a rare codon create a pileup that propagates back to the start codon is powerful. This feature turns abstract kinetics into a game-like experience.
 
 ### TUI Visualization
+
 ```
-mRNA: ──[AUG]──[UUU]──[CGA]──[GGG]──
-Ribosomes:  ⬤ ➔    ⬤ ➔   ⬤ (stuck!)
-Traffic:    ░░      ░░    ████
+╭─────────────────────────────────────────────────────────────────────────────╮
+│  RIBOSOME TRAFFIC SIMULATOR: Lambda cI gene (repressor)                    │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│  Time: 00:42.3  │  Proteins: 7  │  Active Ribosomes: 4  │  Stalls: 23      │
+│                                                                             │
+│    0         10        20        30        40        50        60          │
+│  5'─[AUG][GCA][AAA][GAA][CGA][UUU][GGU][AAA][CGA][GAC][AAA][UGA]─3'         │
+│     ●➔       ●➔                 ◉(wait)        ⬤(JAM!)   ●➔                │
+│                                                                             │
+│  Rate: ████████░░████████░░████████░░████████▒▒████████████                 │
+│        Fast─────────────────Slow────────────────Fast                        │
+│                                                                             │
+│  Traffic Density:                                                           │
+│  ╭────────────────────────────────────────────────────────────────────────╮ │
+│  │░░░░░░░░░░░░░░░░░░████████████████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░│ │
+│  │         ↑ Bottleneck at codon 32 (CGA - rare Arg)                     │ │
+│  ╰────────────────────────────────────────────────────────────────────────╯ │
+│                                                                             │
+│  Metrics:                                                                   │
+│  ├─ Production rate: 0.17 proteins/sec (suboptimal)                         │
+│  ├─ Theoretical max: 0.42 proteins/sec                                      │
+│  ├─ Bottleneck cost: 59% efficiency loss                                    │
+│  └─ Suggested fix: CGA→CGU at position 32                                   │
+│                                                                             │
+│  [Space] Pause  [←→] Speed  [R] Reset  [O] Optimize  [C] Compare  [ESC] Exit│
+╰─────────────────────────────────────────────────────────────────────────────╯
+```
+
+**Comparison View (Wild-Type vs Optimized):**
+```
+╭─────────────────────────────────────────────────────────────────────────────╮
+│  TRANSLATION COMPARISON: Wild-Type vs Codon-Optimized                       │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│  WILD-TYPE (original sequence):                                             │
+│  5'─[AUG][GCA][CGA][GAA][CGA][UUU][AGG][AAA][CGA][GAC]─3'                   │
+│     ●➔   ●➔   ⬤⬤⬤⬤⬤⬤⬤⬤⬤⬤ (massive jam at CGA cluster!)                  │
+│  Rate: ████░░████░░████░░████░░████████                                     │
+│  Production: 0.08 proteins/sec                                              │
+│                                                                             │
+│  OPTIMIZED (synonymous substitutions):                                      │
+│  5'─[AUG][GCA][CGU][GAA][CGU][UUU][CGU][AAA][CGU][GAC]─3'                   │
+│     ●➔   ●➔   ●➔   ●➔   ●➔   (smooth flow!)                               │
+│  Rate: ████████████████████████████████                                     │
+│  Production: 0.38 proteins/sec (+375%)                                      │
+│                                                                             │
+│  Summary: Replaced 4 CGA→CGU codons. Same amino acid, 4.7x more protein.    │
+│                                                                             │
+╰─────────────────────────────────────────────────────────────────────────────╯
 ```
 
 ---
@@ -4936,65 +6098,843 @@ Traffic:    ░░      ░░    ████
 ## 25) Intrinsic DNA Curvature & Stiffness Map
 
 ### Concept
-DNA is not a straight rod. Specific sequences (like A-tracts) cause the helix to bend. This **intrinsic curvature** is critical for:
-- DNA packaging into the capsid (needs to bend tight!).
-- Promoter recognition (wrapping around RNA pol).
-- Nucleosome positioning (in temperate phages).
 
-### Implementation
-**Structural parameters:**
-Use dinucleotide "wedge angles" (Roll, Tilt, Twist) from Trifonov or Bolshoy models. Calculate the vector trajectory of the helix axis.
+DNA is not the straight, rigid rod that textbooks often depict. It's a flexible polymer with sequence-dependent mechanical properties. Certain sequences, particularly **A-tracts** (runs of 4-6 adenines), cause the helix axis to bend, while **GC-rich regions** tend to be stiffer. This intrinsic curvature and flexibility have profound biological consequences:
 
+**Why DNA curvature matters for phages:**
+- **Capsid packaging**: Phage DNA must bend extremely tightly to fit inside the capsid (radius ~30nm for a 50kb genome). Sequence-encoded flexibility can facilitate this, while stiff regions may resist
+- **Packaging signals (pac/cos sites)**: These recognition sequences often have unusual structural features that the terminase complex recognizes
+- **Promoter architecture**: DNA must wrap around RNA polymerase; curved promoters can pre-position DNA optimally
+- **Recombination hotspots**: Bent DNA exposes the minor groove, facilitating protein binding
+
+**The physical basis:**
+- Each dinucleotide step has characteristic **roll**, **tilt**, and **twist** angles
+- A-tracts compress the minor groove and cause the helix to curve toward it
+- The cumulative effect of many small bends creates large-scale curvature
+- **Persistence length** (~150bp for random DNA) describes stiffness
+
+### Mathematical Foundations
+
+**Dinucleotide Wedge Model:**
+Each of the 16 dinucleotides has characteristic structural parameters:
+```
+Step parameters (from crystallography):
+  Roll (ρ): Rotation around the long axis of base pair
+  Tilt (τ): Rotation around short axis
+  Twist (Ω): Rotation around helix axis
+
+For dinucleotide XY:
+  ρ_XY, τ_XY, Ω_XY are tabulated values (degrees)
+
+Popular datasets:
+  - Bolshoy et al. (1991): Averaged from gel mobility experiments
+  - Olson et al. (1998): From crystal structures
+  - Dixit et al. (2005): From MD simulations
+```
+
+**Curvature Calculation:**
+The helix axis trajectory is computed by accumulating rotation matrices:
+```
+For each position i along the sequence:
+  R_i = R_x(tilt_i) × R_y(roll_i) × R_z(twist_i)
+
+Helix axis direction at position i:
+  d_i = R_1 × R_2 × ... × R_i × [0, 0, 1]ᵀ
+
+Local curvature κ over window W:
+  κ = |Δd| / (L × W)  where L = 0.34 nm/bp rise
+  Δd = d_{i+W} - d_{i-W}
+
+Expressed in degrees per helical turn (10.5 bp):
+  κ_deg = κ × 10.5 × (180/π)
+```
+
+**A-Tract Curvature Rule:**
+A-tracts bend DNA toward the minor groove. Empirical formula:
+```
+For n consecutive A:T pairs (A-tract of length n ≥ 4):
+  Bend angle ≈ 17° + 4° × (n - 4)  (maximum ~35°)
+
+A-tracts phased by ~10.5 bp add constructively:
+  Total curvature = N × individual_bend × cos(Δphase)
+```
+
+**Bendability/Stiffness:**
+Flexibility varies by dinucleotide. The **persistence length** P relates to stiffness:
+```
+Persistence length formula:
+  P = k_B T / (bend_stiffness)
+
+Relative flexibility (from DNase I cleavage):
+  AA/TT: 1.0 (reference)
+  TA: 1.5 (very flexible)
+  CG: 0.6 (stiff)
+  GC: 0.7 (stiff)
+
+Local persistence length from sequence:
+  P_local = Σ w_i × P_dinucleotide_i
+```
+
+### Implementation Approach
+
+**Dinucleotide Parameter Tables:**
 ```typescript
-// Predicted curvature (degrees per helical turn)
-function calculateCurvature(sequence: string): number[] {
-  // Sum wedge angles over sliding window
-  // Vector addition of roll/tilt vectors
+// Bolshoy wedge angles (degrees)
+const WEDGE_ANGLES: Record<string, { roll: number; tilt: number; twist: number }> = {
+  'AA': { roll: -6.5, tilt: 0.9, twist: 35.1 },
+  'AT': { roll: -5.4, tilt: 0.0, twist: 29.3 },
+  'AC': { roll: -7.8, tilt: 1.6, twist: 31.5 },
+  'AG': { roll: -4.4, tilt: 1.3, twist: 31.9 },
+  'TA': { roll:  2.0, tilt: 0.0, twist: 36.3 },
+  'TT': { roll: -6.5, tilt: -0.9, twist: 35.1 },
+  'TC': { roll: -3.6, tilt: 0.5, twist: 33.0 },
+  'TG': { roll: -2.0, tilt: 2.0, twist: 35.0 },
+  'CA': { roll: -2.0, tilt: -2.0, twist: 35.0 },
+  'CT': { roll: -4.4, tilt: -1.3, twist: 31.9 },
+  'CC': { roll: -3.7, tilt: 0.0, twist: 33.3 },
+  'CG': { roll:  3.7, tilt: 0.0, twist: 29.8 },
+  'GA': { roll: -3.6, tilt: -0.5, twist: 33.0 },
+  'GT': { roll: -7.8, tilt: -1.6, twist: 31.5 },
+  'GC': { roll: -1.3, tilt: 0.0, twist: 33.6 },
+  'GG': { roll: -3.7, tilt: 0.0, twist: 33.3 },
+};
+
+// Flexibility scores (higher = more bendable)
+const FLEXIBILITY: Record<string, number> = {
+  'AA': 1.0, 'AT': 1.2, 'AC': 0.9, 'AG': 1.0,
+  'TA': 1.5, 'TT': 1.0, 'TC': 0.9, 'TG': 1.1,
+  'CA': 1.1, 'CT': 1.0, 'CC': 0.8, 'CG': 0.6,
+  'GA': 0.9, 'GT': 0.9, 'GC': 0.7, 'GG': 0.8,
+};
+
+interface CurvatureResult {
+  curvature: Float32Array;     // Degrees per helical turn
+  flexibility: Float32Array;   // Relative bendability
+  aTractPositions: number[];   // Start positions of A-tracts
+  peakCurvature: number;       // Maximum curvature
+  meanFlexibility: number;     // Overall flexibility score
+}
+
+function analyzeCurvature(
+  sequence: string,
+  windowSize: number = 21  // ~2 helical turns
+): CurvatureResult {
+  const n = sequence.length;
+  const curvature = new Float32Array(n);
+  const flexibility = new Float32Array(n);
+  const aTractPositions: number[] = [];
+
+  // Find A-tracts
+  const aTractRegex = /A{4,}|T{4,}/gi;
+  let match;
+  while ((match = aTractRegex.exec(sequence)) !== null) {
+    aTractPositions.push(match.index);
+  }
+
+  // Calculate per-position curvature using sliding window
+  const halfWindow = Math.floor(windowSize / 2);
+
+  for (let i = halfWindow; i < n - halfWindow - 1; i++) {
+    // Accumulate roll/tilt vectors in window
+    let rollSum = 0;
+    let tiltSum = 0;
+    let flexSum = 0;
+
+    for (let j = i - halfWindow; j < i + halfWindow; j++) {
+      const dinuc = sequence.slice(j, j + 2).toUpperCase();
+      const angles = WEDGE_ANGLES[dinuc];
+      const flex = FLEXIBILITY[dinuc];
+
+      if (angles) {
+        // Phase-dependent addition (account for helix repeat)
+        const phase = ((j - i) * 2 * Math.PI) / 10.5;
+        rollSum += angles.roll * Math.cos(phase);
+        tiltSum += angles.tilt * Math.sin(phase);
+      }
+      if (flex) {
+        flexSum += flex;
+      }
+    }
+
+    // Total curvature magnitude (degrees per helical turn)
+    curvature[i] = Math.sqrt(rollSum * rollSum + tiltSum * tiltSum) / windowSize * 10.5;
+    flexibility[i] = flexSum / windowSize;
+  }
+
+  // Statistics
+  let peakCurvature = 0;
+  let totalFlex = 0;
+  let count = 0;
+
+  for (let i = 0; i < n; i++) {
+    if (curvature[i] > peakCurvature) peakCurvature = curvature[i];
+    if (flexibility[i] > 0) {
+      totalFlex += flexibility[i];
+      count++;
+    }
+  }
+
+  return {
+    curvature,
+    flexibility,
+    aTractPositions,
+    peakCurvature,
+    meanFlexibility: count > 0 ? totalFlex / count : 1.0
+  };
 }
 ```
 
-### Why Good?
-Reveals the **physical reality** of the molecule. Explains *why* packaging signals work.
+**3D Helix Trajectory Visualization:**
+```typescript
+interface HelixPoint {
+  x: number;
+  y: number;
+  z: number;
+  bp: number;
+}
 
-### Novelty
-High. Structural genomics is rarely part of general browsers.
+function computeHelixTrajectory(
+  sequence: string,
+  stepSize: number = 10  // Compute every N bp
+): HelixPoint[] {
+  const points: HelixPoint[] = [];
 
-### Pedagogical Value
-Teaches **DNA biophysics** and **Structural biology**.
+  // Accumulate rotation matrix
+  let x = 0, y = 0, z = 0;
+  let dx = 0, dy = 0, dz = 1;  // Initial direction: along Z
+
+  const rise = 0.34;  // nm per bp
+
+  for (let i = 0; i < sequence.length - 1; i++) {
+    const dinuc = sequence.slice(i, i + 2).toUpperCase();
+    const angles = WEDGE_ANGLES[dinuc] ?? { roll: 0, tilt: 0, twist: 34 };
+
+    // Convert to radians
+    const roll = angles.roll * Math.PI / 180;
+    const tilt = angles.tilt * Math.PI / 180;
+    const twist = angles.twist * Math.PI / 180;
+
+    // Apply rotations to direction vector
+    // (Simplified - full implementation uses rotation matrices)
+    const newDx = dx * Math.cos(twist) - dy * Math.sin(twist);
+    const newDy = dx * Math.sin(twist) + dy * Math.cos(twist);
+    dx = newDx + roll * dz;
+    dy = newDy + tilt * dz;
+
+    // Normalize
+    const mag = Math.sqrt(dx*dx + dy*dy + dz*dz);
+    dx /= mag; dy /= mag; dz /= mag;
+
+    // Advance position
+    x += dx * rise;
+    y += dy * rise;
+    z += dz * rise;
+
+    if (i % stepSize === 0) {
+      points.push({ x, y, z, bp: i });
+    }
+  }
+
+  return points;
+}
+
+// Project 3D trajectory to 2D for ASCII visualization
+function projectTrajectory(
+  points: HelixPoint[],
+  width: number,
+  height: number
+): string[] {
+  // Find bounding box
+  const xs = points.map(p => p.x);
+  const ys = points.map(p => p.y);
+  const minX = Math.min(...xs), maxX = Math.max(...xs);
+  const minY = Math.min(...ys), maxY = Math.max(...ys);
+
+  const grid: string[][] = Array(height).fill(0)
+    .map(() => Array(width).fill(' '));
+
+  for (const point of points) {
+    const px = Math.floor(((point.x - minX) / (maxX - minX)) * (width - 1));
+    const py = Math.floor(((point.y - minY) / (maxY - minY)) * (height - 1));
+    grid[py][px] = '●';
+  }
+
+  return grid.map(row => row.join(''));
+}
+```
+
+### Why This Is a Good Idea
+
+1. **Reveals Hidden Physics**: DNA sequences encode not just information but physical properties. Curvature maps make this invisible layer visible, helping users understand why certain sequences function as packaging signals or promoters.
+
+2. **Explains Experimental Observations**: Gel mobility anomalies, DNase I footprinting patterns, and atomic force microscopy images all relate to DNA curvature. This feature connects sequence to these experimental readouts.
+
+3. **Capsid Packaging Insights**: Phage DNA packaging is a remarkable feat of molecular engineering. Showing which regions are flexible (easy to pack) vs stiff (resistant) provides intuition for how terminases and capsid proteins work.
+
+4. **Unique Analytical Perspective**: While many tools calculate GC content or find genes, almost none show structural predictions. This adds an entirely new dimension to genome analysis.
+
+5. **Beautiful Visualizations**: The 3D helix trajectory and curvature sparklines create visually striking displays that make the abstract concept of DNA shape tangible.
+
+### Innovation Assessment
+
+**Novelty: 8/10 (High)**
+
+DNA curvature prediction has existed since the 1980s but remains confined to specialized structural biology software. Integrating it into a genome browser, especially with:
+- Interactive visualization in a TUI
+- Overlay on gene maps
+- Connection to packaging biology
+
+...is highly innovative.
+
+### Pedagogical Value: 9/10
+
+This feature teaches concepts rarely encountered in standard bioinformatics:
+- **Polymer physics**: Persistence length, bending energy
+- **DNA structure**: Beyond the B-form double helix
+- **Sequence-structure relationships**: How sequence determines shape
+- **Biological function of structure**: Why DNA shape matters
+- **Crystallographic parameters**: Roll, tilt, twist
+
+### Cool/Wow Factor: 8/10
+
+Seeing DNA as a curved, flexible molecule rather than a straight line is eye-opening. The 3D trajectory visualization, showing how the helix axis snakes through space, provides a new way of thinking about genomes that most users have never encountered.
 
 ### TUI Visualization
-A "Bendability" graph. High peaks = "kinks" in the DNA.
-`Bend: ▂▃▅▇█▇▅▃ (Packaging Signal?)`
+
+```
+╭─────────────────────────────────────────────────────────────────────────────╮
+│  DNA CURVATURE & FLEXIBILITY: Lambda cos site region (47,000-49,000 bp)     │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│  Curvature (°/turn):  [Straight] ▁▂▃▄▅▆▇█ [Bent]                           │
+│  ════════════════════════════════════════════════════════════════════════   │
+│                                                                             │
+│       47000      47200      47400      47600      47800      48000          │
+│  ────────────────────────────────────────────────────────────────────────   │
+│       ▂▂▃▃▂▂▁▁▂▃▅▇███▇▅▃▂▁▁▂▂▃▃▂▂▁▁▂▃▅▆▇██▇▆▅▃▂▁▁▂▂▃▃▂▂▁▁▂▃▄▅   │
+│                   ↑↑↑ A-tract cluster       ↑↑ Strong bend                  │
+│                   cos site recognition      Packaging kink                  │
+│                                                                             │
+│  Flexibility:     [Stiff] ░▒▓█ [Flexible]                                   │
+│  ────────────────────────────────────────────────────────────────────────   │
+│       ▓▓▓▒▒░░░░▒▒▓▓██▓▓▒▒░░▒▒▓▓▓▓▒▒░░░░▒▒▓▓██████▓▓▒▒░░░░▒▒▓▓              │
+│                                         ↑↑↑ TA-rich = flexible              │
+│                                                                             │
+│  A-tracts:        ●           ●                    ●●                       │
+│                   AAAAA       AAAA                 AAAAAA                   │
+│                                                                             │
+│  Helix Trajectory (top view):                                               │
+│  ┌────────────────────────────────────────────────────────────────┐         │
+│  │            ●●●                                                  │         │
+│  │         ●●●   ●●●                    ●●●●●                      │         │
+│  │       ●●         ●●              ●●●●     ●●●●                  │         │
+│  │      ●             ●           ●●             ●●●               │         │
+│  │     ●              ●●        ●●                 ●●              │         │
+│  │   ●●                 ●●    ●●                    ●●●            │         │
+│  │  ●                     ●●●●                        ●●           │         │
+│  └────────────────────────────────────────────────────────────────┘         │
+│  DNA bends significantly at A-tracts, creating recognition features         │
+│                                                                             │
+│  Statistics:                                                                │
+│  ├─ Peak curvature: 34.2°/turn at position 47,412 (A-tract)                 │
+│  ├─ Mean flexibility: 1.12 (slightly above average)                         │
+│  └─ A-tracts found: 8 (3 in phased arrangement)                             │
+│                                                                             │
+│  [←→] Scroll  [+/-] Window size  [F] Toggle flexibility  [3] 3D view  [ESC] │
+╰─────────────────────────────────────────────────────────────────────────────╯
+```
 
 ---
 
 ## 26) Virtual Agarose Gel Electrophoresis
 
 ### Concept
-Simulate a lab experiment. Select a restriction enzyme (e.g., *EcoRI*, *HindIII*), "digest" the genome, and display the resulting bands on a virtual gel.
 
-### Implementation
-**In-silico Digestion:**
-- Search for cut sites (e.g. `GAATTC`).
-- Calculate fragment lengths.
-- Map length to log-scale migration distance.
+The Virtual Agarose Gel Electrophoresis simulator brings a classic molecular biology technique to the terminal. Users select restriction enzymes, "digest" phage genomes in silico, and visualize the resulting DNA fragments as bands on a virtual gel — complete with a size ladder, realistic band intensities, and the characteristic log-linear migration pattern.
 
-### Why Good?
-Essential for experimental planning ("Will I see distinct bands?").
+**Why this matters for phage research:**
+- **Experimental planning**: Before spending time and reagents, predict what your gel will look like
+- **Strain verification**: Restriction patterns are "fingerprints" for phage identity
+- **Genetic mapping**: Historical technique still useful for quick localization
+- **Cloning design**: Identify suitable restriction sites for inserting/extracting genes
+- **Teaching tool**: Visualize the relationship between sequence and physical fragments
 
-### Novelty
-Classic concept, but great TUI utility.
+**The physics of gel electrophoresis:**
+- DNA is negatively charged (phosphate backbone) and migrates toward the positive electrode
+- Agarose gel acts as a molecular sieve — small fragments move faster through the pores
+- Migration distance is approximately linear with log(fragment size)
+- Band intensity reflects the mass of DNA, not the number of molecules
 
-### Pedagogical Value
-Teaches **Restriction mapping** and **Log-linear migration**.
+### Mathematical Foundations
+
+**Restriction Site Finding:**
+```
+For restriction enzyme E with recognition sequence R:
+  - Find all positions where sequence matches R
+  - Handle palindromic sequences (most enzymes)
+  - Account for degenerate bases (N, Y, R, W, S, K, M)
+  - Apply cut offset (e.g., EcoRI cuts after G: G↓AATTC)
+
+Common enzymes:
+  EcoRI:    G↓AATTC      (6-cutter, cuts every ~4096 bp on average)
+  HindIII:  A↓AGCTT      (6-cutter)
+  BamHI:    G↓GATCC      (6-cutter)
+  NotI:     GC↓GGCCGC    (8-cutter, rare, ~65536 bp average)
+  HaeIII:   GG↓CC        (4-cutter, frequent, ~256 bp average)
+```
+
+**Fragment Generation:**
+```
+Given cut positions [p₁, p₂, ..., pₙ] sorted:
+  Fragment lengths = [p₁ - 0, p₂ - p₁, p₃ - p₂, ..., L - pₙ]
+  where L = genome length
+
+For circular genomes:
+  Last fragment connects pₙ to p₁: (L - pₙ) + p₁
+
+For double digest (enzymes A and B):
+  Merge cut sites, sort, generate fragments
+```
+
+**Migration Distance (Ogston Model):**
+```
+For fragment of length L bp in gel of concentration C%:
+
+Log-linear relationship:
+  log₁₀(L) = a - b × d
+
+where:
+  d = migration distance
+  a, b = constants depending on gel concentration
+
+Inverted for rendering:
+  d = (a - log₁₀(L)) / b
+
+Typical values (1% agarose):
+  a ≈ 4.5, b ≈ 0.05  (calibrate from ladder)
+
+Resolution limits:
+  - Fragments < 200bp: poor resolution in standard gels
+  - Fragments > 20kb: compress at top, need PFGE
+```
+
+**Band Intensity:**
+```
+Intensity proportional to mass (amount of DNA × length):
+  I ∝ (fragment_copies × fragment_length)
+
+For single genome digest:
+  All fragments have equal copy number (1 per genome)
+  I ∝ fragment_length
+
+Visualization: band width or brightness scales with length
+  (longer fragments appear brighter/wider)
+```
+
+**Expected Fragment Count:**
+```
+For random sequence of length L with enzyme cutting every k bp on average:
+  Expected cuts = L / k
+  Expected fragments = L / k + 1 (linear) or L / k (circular)
+
+For 6-cutter: k ≈ 4⁶ = 4096 bp
+  Lambda (48.5kb): ~12 fragments expected
+  T4 (169kb): ~41 fragments expected
+```
+
+### Implementation Approach
+
+**Restriction Enzyme Database:**
+```typescript
+interface RestrictionEnzyme {
+  name: string;
+  recognitionSite: string;  // IUPAC with cut marker
+  cutOffset: number;        // Position of cut (5' to 3')
+  overhang: '5' | '3' | 'blunt';
+  frequency: number;        // Expected cuts per 4^n bp
+}
+
+const ENZYMES: Record<string, RestrictionEnzyme> = {
+  'EcoRI': {
+    name: 'EcoRI',
+    recognitionSite: 'GAATTC',
+    cutOffset: 1,
+    overhang: '5',
+    frequency: 4096
+  },
+  'HindIII': {
+    name: 'HindIII',
+    recognitionSite: 'AAGCTT',
+    cutOffset: 1,
+    overhang: '5',
+    frequency: 4096
+  },
+  'BamHI': {
+    name: 'BamHI',
+    recognitionSite: 'GGATCC',
+    cutOffset: 1,
+    overhang: '5',
+    frequency: 4096
+  },
+  'NotI': {
+    name: 'NotI',
+    recognitionSite: 'GCGGCCGC',
+    cutOffset: 2,
+    overhang: '5',
+    frequency: 65536
+  },
+  'HaeIII': {
+    name: 'HaeIII',
+    recognitionSite: 'GGCC',
+    cutOffset: 2,
+    overhang: 'blunt',
+    frequency: 256
+  },
+  // ... more enzymes
+};
+
+// Handle degenerate bases
+const IUPAC: Record<string, string> = {
+  'N': '[ACGT]', 'R': '[AG]', 'Y': '[CT]',
+  'W': '[AT]', 'S': '[CG]', 'K': '[GT]',
+  'M': '[AC]', 'B': '[CGT]', 'D': '[AGT]',
+  'H': '[ACT]', 'V': '[ACG]'
+};
+
+function siteToRegex(site: string): RegExp {
+  let pattern = '';
+  for (const char of site.toUpperCase()) {
+    pattern += IUPAC[char] || char;
+  }
+  return new RegExp(pattern, 'gi');
+}
+```
+
+**Digestion Engine:**
+```typescript
+interface DigestResult {
+  enzyme: string;
+  cutSites: number[];      // Positions of cuts
+  fragments: Fragment[];    // Resulting fragments
+  mapData: string;          // Text representation of cut map
+}
+
+interface Fragment {
+  start: number;
+  end: number;
+  length: number;
+  index: number;            // Fragment number
+}
+
+function digestGenome(
+  sequence: string,
+  enzymeName: string,
+  circular: boolean = false
+): DigestResult {
+  const enzyme = ENZYMES[enzymeName];
+  if (!enzyme) throw new Error(`Unknown enzyme: ${enzymeName}`);
+
+  const regex = siteToRegex(enzyme.recognitionSite);
+  const cutSites: number[] = [];
+
+  let match;
+  while ((match = regex.exec(sequence)) !== null) {
+    cutSites.push(match.index + enzyme.cutOffset);
+  }
+
+  cutSites.sort((a, b) => a - b);
+
+  // Generate fragments
+  const fragments: Fragment[] = [];
+  const len = sequence.length;
+
+  if (cutSites.length === 0) {
+    // No cuts - entire genome is one fragment
+    fragments.push({ start: 0, end: len, length: len, index: 1 });
+  } else {
+    // First fragment
+    if (!circular) {
+      fragments.push({
+        start: 0,
+        end: cutSites[0],
+        length: cutSites[0],
+        index: 1
+      });
+    }
+
+    // Middle fragments
+    for (let i = 0; i < cutSites.length - 1; i++) {
+      fragments.push({
+        start: cutSites[i],
+        end: cutSites[i + 1],
+        length: cutSites[i + 1] - cutSites[i],
+        index: i + 2
+      });
+    }
+
+    // Last fragment
+    const lastCut = cutSites[cutSites.length - 1];
+    if (circular) {
+      // Connects back to first cut
+      fragments.push({
+        start: lastCut,
+        end: cutSites[0] + len,
+        length: (len - lastCut) + cutSites[0],
+        index: cutSites.length
+      });
+    } else {
+      fragments.push({
+        start: lastCut,
+        end: len,
+        length: len - lastCut,
+        index: cutSites.length + 1
+      });
+    }
+  }
+
+  // Sort by length for easy comparison
+  fragments.sort((a, b) => b.length - a.length);
+
+  return {
+    enzyme: enzymeName,
+    cutSites,
+    fragments,
+    mapData: generateCutMap(sequence.length, cutSites, enzymeName)
+  };
+}
+
+function generateCutMap(
+  length: number,
+  cutSites: number[],
+  enzyme: string
+): string {
+  // Generate a text-based map of cut sites
+  const scale = 60; // characters
+  let map = '';
+
+  // Scale bar
+  const tick = Math.round(length / 10);
+  for (let i = 0; i <= 10; i++) {
+    map += (i * tick / 1000).toFixed(0).padStart(5) + 'kb';
+  }
+  map += '\n';
+
+  // Line with cut marks
+  let line = '─'.repeat(scale);
+  for (const site of cutSites) {
+    const pos = Math.floor((site / length) * scale);
+    line = line.slice(0, pos) + '│' + line.slice(pos + 1);
+  }
+  map += `[${line}]\n`;
+  map += `${cutSites.length} ${enzyme} cut sites`;
+
+  return map;
+}
+```
+
+**Gel Renderer:**
+```typescript
+interface GelConfig {
+  width: number;          // Characters per lane
+  height: number;         // Gel height in lines
+  lanes: GelLane[];       // Samples to load
+  ladder: number[];       // Size standards (bp)
+  concentration: number;  // Agarose % (affects resolution)
+}
+
+interface GelLane {
+  name: string;
+  fragments: number[];    // Fragment sizes in bp
+}
+
+function renderGel(config: GelConfig): string[] {
+  const { width, height, lanes, ladder, concentration } = config;
+  const lines: string[] = [];
+
+  // Calculate migration parameters from ladder
+  const minSize = Math.min(...ladder);
+  const maxSize = Math.max(...ladder);
+  const logMin = Math.log10(minSize);
+  const logMax = Math.log10(maxSize);
+
+  // Map log(size) to position
+  const sizeToRow = (size: number): number => {
+    const logSize = Math.log10(Math.max(size, minSize));
+    const normalized = (logMax - logSize) / (logMax - logMin);
+    return Math.floor(normalized * (height - 2)) + 1;
+  };
+
+  // Initialize gel grid
+  const totalWidth = (lanes.length + 1) * (width + 2) + 1;
+  const gel: string[][] = Array(height).fill(0)
+    .map(() => Array(totalWidth).fill(' '));
+
+  // Add wells at top
+  let x = 1;
+  gel[0][x] = '▼'; // Ladder well
+  x += width + 2;
+  for (const lane of lanes) {
+    gel[0][x] = '▼';
+    x += width + 2;
+  }
+
+  // Draw ladder bands
+  x = 1;
+  for (const size of ladder) {
+    const row = sizeToRow(size);
+    for (let dx = 0; dx < width; dx++) {
+      gel[row][x + dx] = '━';
+    }
+  }
+  x += width + 2;
+
+  // Draw sample bands
+  for (const lane of lanes) {
+    for (const size of lane.fragments) {
+      if (size < minSize * 0.8 || size > maxSize * 1.2) continue;
+      const row = sizeToRow(size);
+
+      // Band width proportional to log(size) for intensity
+      const intensity = Math.min(width, Math.max(2,
+        Math.floor(Math.log10(size) * 2)
+      ));
+      const offset = Math.floor((width - intensity) / 2);
+
+      for (let dx = offset; dx < offset + intensity; dx++) {
+        gel[row][x + dx] = '█';
+      }
+    }
+    x += width + 2;
+  }
+
+  // Add lane labels
+  const labelLine = Array(totalWidth).fill(' ');
+  x = 1 + Math.floor(width / 2) - 3;
+  'Ladder'.split('').forEach((c, i) => labelLine[x + i] = c);
+  x = 1 + width + 2;
+  for (const lane of lanes) {
+    const label = lane.name.slice(0, width);
+    const offset = Math.floor((width - label.length) / 2);
+    label.split('').forEach((c, i) => labelLine[x + offset + i] = c);
+    x += width + 2;
+  }
+
+  // Add size markers
+  const markerX = 0;
+  for (const size of ladder) {
+    const row = sizeToRow(size);
+    const label = size >= 1000 ? `${size/1000}kb` : `${size}`;
+    // Place label to the left (we'd need more space in real impl)
+  }
+
+  // Convert to strings
+  for (let row = 0; row < height; row++) {
+    lines.push(gel[row].join(''));
+  }
+  lines.push(labelLine.join(''));
+
+  return lines;
+}
+```
+
+### Why This Is a Good Idea
+
+1. **Bridges Wet Lab and Dry Lab**: Many researchers still plan experiments using restriction analysis. This tool lets them predict results before touching a pipette, saving time and reagents.
+
+2. **Historical Context**: Restriction mapping was THE technique for studying genomes before sequencing became cheap. Understanding it provides perspective on molecular biology's history.
+
+3. **Visual Verification**: Comparing an actual gel photo to the predicted pattern is a powerful way to verify phage identity or detect unexpected rearrangements.
+
+4. **Teaching Tool**: The relationship between sequence, cut sites, and band patterns is foundational. Seeing it interactively builds intuition faster than static diagrams.
+
+5. **Practical Utility**: For cloning, identifying unique restriction sites, or designing Southern blots, this tool provides immediately actionable information.
+
+### Innovation Assessment
+
+**Novelty: 6/10 (Medium)**
+
+Virtual gel simulation is not new — many web tools and standalone programs exist (NEBcutter, RestrictionMapper). However:
+- TUI implementation with ASCII art is novel
+- Integration into a phage-focused genome browser is valuable
+- Multi-genome comparison in single view is useful
+- Real-time updates as you select enzymes is engaging
+
+### Pedagogical Value: 8/10
+
+Strong teaching value for:
+- **Restriction enzymes**: Recognition, cutting mechanism, frequency
+- **Log-linear relationship**: Why smaller fragments move faster
+- **Gel interpretation**: Reading patterns, estimating sizes
+- **Experimental design**: Choosing enzymes, predicting results
+- **Molecular biology history**: The pre-sequencing era
+
+### Cool/Wow Factor: 7/10
+
+There's something satisfying about seeing a virtual gel appear in the terminal. The instant feedback when changing enzymes or comparing phages creates an engaging experience. While not as visually striking as some features, the practical utility adds value.
 
 ### TUI Visualization
+
 ```
-  [ Ladder ]  [ Lambda ]  [ T4 ]
-  - 10kb      ---------
-  - 5kb       ---         ---------
-  - 2kb                   ---
-              ---------   ---
+╭─────────────────────────────────────────────────────────────────────────────╮
+│  VIRTUAL GEL ELECTROPHORESIS                                                │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│  Enzyme: [EcoRI]  ▼    Gel: [1.0%]  ▼    Add Enzyme: [+]                   │
+│                                                                             │
+│  Cut Map (Lambda - EcoRI):                                                  │
+│  0kb    5kb    10kb   15kb   20kb   25kb   30kb   35kb   40kb   45kb  48kb │
+│  [─────│──────│─────────────│──────────────│────────────────│──────────]   │
+│  6 EcoRI cut sites: 21,226 | 26,104 | 31,747 | 39,168 | 44,972 | 48,502   │
+│                                                                             │
+│  ┌─────────────────────────────────────────────────────────────────────┐    │
+│  │                                                                     │    │
+│  │   ▼           ▼           ▼           ▼                             │    │
+│  │  Ladder     Lambda       T4          T7                             │    │
+│  │                                                                     │    │
+│  │  ━━━━ 23kb   ████                                                   │    │
+│  │  ━━━━ 10kb            ████                                          │    │
+│  │                       ████                                          │    │
+│  │  ━━━━  6kb   ████     ████         ████                             │    │
+│  │  ━━━━  4kb   ██       ████████     ████████                         │    │
+│  │             ████      ████████     ████████                         │    │
+│  │  ━━━━  2kb   ██       ██████       ██████                           │    │
+│  │             ██        ████         ████                             │    │
+│  │  ━━━━  1kb   █        ██           ██                               │    │
+│  │              █        ██           ██                               │    │
+│  │  ━━━━ 0.5kb           ██                                            │    │
+│  │                                                                     │    │
+│  │             ─────────────────────────────────────────               │    │
+│  │             (Front)                                                 │    │
+│  └─────────────────────────────────────────────────────────────────────┘    │
+│                                                                             │
+│  Lambda Fragments (EcoRI): 21,226 | 7,421 | 5,804 | 5,643 | 4,878 | 3,530  │
+│  Total: 6 fragments | Largest: 21.2 kb | Smallest: 3.5 kb                   │
+│                                                                             │
+│  [E] Change enzyme  [A] Add sample  [D] Double digest  [S] Save  [ESC] Exit │
+╰─────────────────────────────────────────────────────────────────────────────╯
+```
+
+**Double Digest View:**
+```
+╭─────────────────────────────────────────────────────────────────────────────╮
+│  DOUBLE DIGEST: Lambda × EcoRI + HindIII                                    │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│     Ladder    EcoRI      HindIII    Double                                  │
+│        ▼        ▼          ▼          ▼                                     │
+│                                                                             │
+│  23kb  ━━     ████                                                          │
+│  10kb  ━━                  ████                                             │
+│   6kb  ━━     ████         ████       ██                                    │
+│   4kb  ━━     ██           ██         ████                                  │
+│   2kb  ━━     ██           ██         ████████                              │
+│   1kb  ━━     █            ██         ██████                                │
+│ 0.5kb  ━━                  █          ████                                  │
+│                                       ██                                    │
+│                                                                             │
+│  Double digest increases resolution (more, smaller fragments)               │
+│                                                                             │
+╰─────────────────────────────────────────────────────────────────────────────╯
 ```
 
 ---
@@ -5002,133 +6942,1385 @@ Teaches **Restriction mapping** and **Log-linear migration**.
 ## 27) Self-Homology Dot Plot (Matrix)
 
 ### Concept
-Compare the genome against *itself* to find repeats.
-X-axis = Genome, Y-axis = Genome. Place a dot at `(x,y)` if `seq[x] == seq[y]`.
 
-### Implementation
-**Canvas-less Dot Matrix:**
-Sliding window match (e.g., window 10, match > 9).
-Render with Braille dots.
+The Self-Homology Dot Plot compares a genome against itself to reveal internal structure: direct repeats, inverted repeats (hairpins), tandem duplications, and palindromes. This classic bioinformatics visualization remains one of the most powerful tools for understanding sequence organization.
 
-### Why Good?
-The gold standard for finding **Inverted Repeats** (stem loops), **Direct Repeats** (duplications), and **Palindromes**.
+**The method:**
+- X-axis and Y-axis both represent the genome sequence
+- A dot at (x,y) indicates that the sequence at position x matches the sequence at position y
+- The main diagonal is always solid (sequence matches itself)
+- Off-diagonal features reveal repeats and structural elements
 
-### Novelty
-Standard tool, but crucial gap filler.
+**What patterns mean:**
+- **Parallel diagonal lines**: Direct repeats (duplicated sequences in same orientation)
+- **Perpendicular lines**: Inverted repeats (hairpin/stem-loop structures)
+- **Short perpendicular streaks**: Palindromes
+- **Dense clusters**: Repeat-rich regions (often regulatory)
+- **Empty regions**: Unique sequences with no internal homology
 
-### Pedagogical Value
-Teaches **Sequence alignment fundamentals**.
+**Why this matters for phages:**
+- **Terminal repeats**: Many phages have direct terminal repeats (DTR) for circularization
+- **Attachment sites (attP/attB)**: Contain inverted repeats recognized by integrases
+- **Regulatory palindromes**: Operator sequences often are palindromic for homodimer binding
+- **Recombination hotspots**: Repeated sequences facilitate rearrangements
+
+### Mathematical Foundations
+
+**Window-Based Matching:**
+```
+For positions i, j in sequence S:
+  Match(i, j, w) = true if:
+    similarity(S[i:i+w], S[j:j+w]) ≥ threshold
+
+Common similarity measures:
+  - Exact: count identical positions ≥ threshold
+  - Hamming: (w - hamming_distance) / w ≥ threshold
+  - BLOSUM: substitution matrix score ≥ threshold (for proteins)
+
+Typical parameters:
+  Window w = 10-20 bp
+  Threshold = 80-90% identity
+```
+
+**Efficient Computation:**
+```
+Naive approach: O(n² × w) - compare all pairs
+Better approach: Hash-based indexing
+
+For k-mer indexing:
+  1. Build hash table of all k-mers and positions
+  2. For each k-mer, all position pairs are potential matches
+  3. Extend matches to full window
+  Complexity: O(n × k) + O(matches × w)
+
+For sparse matrices:
+  Store only matches, not the full n×n grid
+```
+
+**Inverted Repeat Detection:**
+```
+For detecting hairpins:
+  Compare position i with reverse_complement(j)
+
+Watson-Crick complementarity:
+  A ↔ T, C ↔ G
+
+Reverse complement of "GAATTC" = "GAATTC" (palindrome!)
+Reverse complement of "ATCG" = "CGAT"
+```
+
+### Implementation Approach
+
+```typescript
+interface DotPlotConfig {
+  windowSize: number;      // Minimum match length
+  threshold: number;       // Minimum similarity (0-1)
+  maxDots: number;         // Limit for display
+  includeInverted: boolean; // Also detect inverted repeats
+}
+
+interface DotPlotResult {
+  matches: Match[];
+  directRepeats: RepeatRegion[];
+  invertedRepeats: RepeatRegion[];
+  palindromes: number[];
+}
+
+interface Match {
+  x: number;
+  y: number;
+  length: number;
+  inverted: boolean;
+}
+
+function computeDotPlot(
+  sequence: string,
+  config: DotPlotConfig
+): DotPlotResult {
+  const { windowSize, threshold, includeInverted } = config;
+  const matches: Match[] = [];
+  const n = sequence.length;
+
+  // Build k-mer index
+  const kmerSize = Math.min(windowSize, 12);
+  const index = new Map<string, number[]>();
+
+  for (let i = 0; i <= n - kmerSize; i++) {
+    const kmer = sequence.slice(i, i + kmerSize);
+    const positions = index.get(kmer) ?? [];
+    positions.push(i);
+    index.set(kmer, positions);
+  }
+
+  // Find matches from k-mer hits
+  for (const [kmer, positions] of index.entries()) {
+    for (let i = 0; i < positions.length; i++) {
+      for (let j = i + 1; j < positions.length; j++) {
+        const x = positions[i];
+        const y = positions[j];
+
+        // Extend match
+        const matchLen = extendMatch(sequence, x, y, windowSize);
+        if (matchLen >= windowSize) {
+          matches.push({ x, y, length: matchLen, inverted: false });
+        }
+      }
+    }
+  }
+
+  // Detect inverted repeats
+  if (includeInverted) {
+    const rcSeq = reverseComplement(sequence);
+    const rcIndex = new Map<string, number[]>();
+
+    for (let i = 0; i <= n - kmerSize; i++) {
+      const kmer = rcSeq.slice(i, i + kmerSize);
+      const positions = rcIndex.get(kmer) ?? [];
+      positions.push(n - i - kmerSize);  // Map back to original coordinates
+      rcIndex.set(kmer, positions);
+    }
+
+    for (const [kmer, rcPositions] of rcIndex.entries()) {
+      const fwdPositions = index.get(kmer) ?? [];
+      for (const x of fwdPositions) {
+        for (const y of rcPositions) {
+          if (x !== y) {
+            matches.push({ x, y, length: windowSize, inverted: true });
+          }
+        }
+      }
+    }
+  }
+
+  return {
+    matches,
+    directRepeats: findRepeatRegions(matches.filter(m => !m.inverted)),
+    invertedRepeats: findRepeatRegions(matches.filter(m => m.inverted)),
+    palindromes: findPalindromes(sequence, 6)
+  };
+}
+
+function reverseComplement(seq: string): string {
+  const complement: Record<string, string> = {
+    'A': 'T', 'T': 'A', 'C': 'G', 'G': 'C', 'N': 'N'
+  };
+  return seq.split('').reverse()
+    .map(c => complement[c.toUpperCase()] ?? 'N').join('');
+}
+
+// Render using Braille for high resolution
+function renderDotPlotBraille(
+  result: DotPlotResult,
+  seqLength: number,
+  width: number,
+  height: number
+): string[] {
+  const grid = new Uint8Array(width * 4 * height * 2);
+  const scale = seqLength / (width * 2);
+
+  for (const match of result.matches) {
+    const px = Math.floor(match.x / scale);
+    const py = Math.floor(match.y / scale);
+    if (px < width * 2 && py < height * 4) {
+      grid[py * width * 2 + px] = match.inverted ? 2 : 1;
+    }
+  }
+
+  // Convert to Braille
+  const lines: string[] = [];
+  for (let charY = 0; charY < height; charY++) {
+    let line = '';
+    for (let charX = 0; charX < width; charX++) {
+      let braille = 0x2800;
+      for (let dy = 0; dy < 4; dy++) {
+        for (let dx = 0; dx < 2; dx++) {
+          const val = grid[(charY * 4 + dy) * width * 2 + charX * 2 + dx];
+          if (val > 0) {
+            braille |= BRAILLE_DOTS[dy][dx];
+          }
+        }
+      }
+      line += String.fromCharCode(braille);
+    }
+    lines.push(line);
+  }
+  return lines;
+}
+```
+
+### Why This Is a Good Idea
+
+1. **Canonical Tool**: Dot plots are a fundamental bioinformatics technique taught in every introductory course. Having one built-in makes Phage Explorer a complete educational platform.
+
+2. **Reveals Hidden Structure**: Many important genomic features (terminal repeats, att sites, regulatory palindromes) are instantly visible in dot plots but require complex searches to find otherwise.
+
+3. **Alignment-Free**: Unlike BLAST or similar tools, dot plots don't require choosing parameters or dealing with alignment artifacts. What you see is exactly what's in the sequence.
+
+4. **Visual Pattern Recognition**: Humans are excellent at spotting patterns in 2D images. Dot plots leverage this for rapid structural analysis.
+
+5. **Diagnostic Power**: Unusual patterns (missing diagonal stretches, unexpected repeats) immediately flag rearrangements, deletions, or assembly errors.
+
+### Innovation Assessment
+
+**Novelty: 5/10 (Medium)**
+
+Dot plots are standard tools, available in many programs. However:
+- Braille-based TUI rendering is novel
+- Integration with phage-specific analysis (att sites, terminal repeats) adds value
+- Interactive zoom and annotation is useful
+
+### Pedagogical Value: 9/10
+
+Extremely high for teaching:
+- **Sequence comparison fundamentals**
+- **Repeat biology**: Why genomes have repeats, what they do
+- **Structural genomics**: Hairpins, palindromes, regulatory elements
+- **Pattern recognition**: Training eyes to see biological meaning
+
+### Cool/Wow Factor: 7/10
+
+Seeing the entire genome's internal structure in one image is powerful. The distinct patterns for different features (diagonal lines, perpendicular crosses) create an intuitive visual language.
 
 ### TUI Visualization
-- Diagonal line = Identity.
-- Parallel lines = Direct repeats.
-- Perpendicular lines = Inverted repeats (hairpins).
+
+```
+╭─────────────────────────────────────────────────────────────────────────────╮
+│  SELF-HOMOLOGY DOT PLOT: Lambda Phage (48,502 bp)                           │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│  Window: 15 bp | Threshold: 85% | ● Direct | ○ Inverted                    │
+│                                                                             │
+│      0kb       10kb      20kb      30kb      40kb      48kb                │
+│  0   ┌──────────────────────────────────────────────────────┐ 0             │
+│      │⣿⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀│               │
+│      │⠀⣿⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀│               │
+│ 10   │⠀⠀⣿⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀│               │
+│      │⠀⠀⠀⣿⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀│               │
+│      │⠀⠀⠀⠀⣿⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀│               │
+│ 20   │⠀⠀⠀⠀⠀⣿⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠈⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀│               │
+│      │⠀⠀⠀⠀⠀⠀⣿⣀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠈⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀│  attP site    │
+│      │⠀⠀⠀⠀⠀⠀⠀⣿⠀⠀⠀⠀⠀⠀⠀⠀⠈⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀│  (inverted)   │
+│ 30   │⠀⠀⠀⠀⠀⠀⠀⠀⣿⠀⠀⠀⠀⠀⠀⠈⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀│               │
+│      │⠀⠀⠀⠀⠀⠀⠀⠀⠀⣿⠀⠀⠀⠀⠈⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀│               │
+│      │⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣿⠀⠈⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀│               │
+│ 40   │⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣿⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀│               │
+│      │⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣿⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣀⠀⠀⠀⠀⠀│ cos site      │
+│ 48   │⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣿⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣀⣿⣿⠀⠀⠀⠀⠀⠀│ (direct)      │
+│      └──────────────────────────────────────────────────────┘ 48            │
+│       0kb       10kb      20kb      30kb      40kb      48kb                │
+│                                                                             │
+│  Detected: 2 inverted repeats (attP), 1 direct repeat (cos termini)         │
+│                                                                             │
+│  [+/-] Zoom  [W] Window size  [T] Threshold  [I] Toggle inverted  [ESC] Exit│
+╰─────────────────────────────────────────────────────────────────────────────╯
+```
 
 ---
 
 ## 28) Non-B DNA Structure Map (G4, Z-DNA)
 
 ### Concept
-DNA isn't always a B-form double helix. It forms:
-- **G-Quadruplexes (G4):** 4-stranded knots in G-rich regions (regulates promoters).
-- **Z-DNA:** Left-handed helix in GC-alternating regions (immune response trigger).
 
-### Implementation
-**Regex/Pattern Matching:**
-- G4: `G{3,}N{1,7}G{3,}N{1,7}G{3,}N{1,7}G{3,}`
-- Z-DNA: `(GC){6,}`
+DNA isn't always the canonical B-form double helix. Under certain sequence and environmental conditions, it adopts alternative conformations with profound regulatory implications:
 
-### Why Good?
-These structures are **regulatory switches** often missed by standard analysis.
+**G-Quadruplexes (G4):**
+- Four-stranded structures formed by G-rich sequences
+- Four guanines form a planar "G-tetrad" via Hoogsteen bonding
+- Tetrads stack to form remarkably stable structures
+- Found in telomeres, promoters, and 5' UTRs
+- In phages: regulate gene expression, affect DNA packaging
 
-### Novelty
-Medium-High. G4 finding is trendy in viral research.
+**Z-DNA:**
+- Left-handed helix (vs right-handed B-DNA)
+- Forms in alternating purine-pyrimidine sequences, especially (CG)n
+- Recognized by Z-DNA binding proteins (ZBP1/DAI)
+- Triggers innate immune responses — important for viral detection
+- In phages: may be immune evasion targets
 
-### Pedagogical Value
-Teaches **Alternative DNA conformations**.
+**Other non-B structures:**
+- **Cruciform DNA**: At inverted repeats, DNA extrudes into cross-shaped structure
+- **H-DNA (triplex)**: Three-stranded structure in mirror repeat sequences
+- **Slipped structures**: At tandem repeats
+
+### Mathematical Foundations
+
+**G4 Pattern Recognition:**
+```
+Classic G4 motif:
+  G{3,}N{1,7}G{3,}N{1,7}G{3,}N{1,7}G{3,}
+
+Where:
+  G{3,} = 3+ consecutive guanines (one "G-run")
+  N{1,7} = 1-7 any nucleotides (loop)
+
+Stability prediction (G4Hunter):
+  Score = Σ (G_contribution - C_contribution) / window_size
+
+  G-runs contribute +1 to +4 based on length
+  C-runs contribute -1 to -4 (complementary strand G4)
+
+  Score > 1.5: likely G4
+  Score > 2.0: strong G4
+```
+
+**Z-DNA Propensity:**
+```
+Z-score for dinucleotide XY:
+  CG: +1.0 (highest Z-forming)
+  CA/TG: +0.5
+  GC: +0.4
+  AT/TA: -0.1 (disfavored)
+  AA/TT: -0.5 (strongly disfavored)
+
+Z-DNA propensity over window:
+  P_Z = Σ Z_score(dinucleotide_i) / window_size
+
+Threshold: P_Z > 0.5 suggests Z-DNA potential
+```
+
+**Free Energy of G4 Formation:**
+```
+ΔG = ΔG_stacking + ΔG_loop + ΔG_ion
+
+Stacking (per tetrad): ~ -10 kcal/mol
+Loop penalty: depends on length (1-3 bp: -1 to -3 kcal/mol)
+K+ stabilization: ~ -2 kcal/mol per K+ ion
+
+More negative ΔG = more stable G4
+```
+
+### Implementation Approach
+
+```typescript
+interface NonBStructure {
+  type: 'G4' | 'Z-DNA' | 'cruciform' | 'triplex';
+  start: number;
+  end: number;
+  strand: '+' | '-' | 'both';
+  score: number;
+  sequence: string;
+  loops?: number[];  // Loop lengths for G4
+}
+
+interface NonBAnalysisResult {
+  structures: NonBStructure[];
+  g4Count: number;
+  zDnaCount: number;
+  totalNonBFraction: number;
+}
+
+// G4 detection using G4Hunter algorithm
+function detectG4(sequence: string, windowSize: number = 25): NonBStructure[] {
+  const structures: NonBStructure[] = [];
+  const scores = new Float32Array(sequence.length);
+
+  // Compute G4Hunter scores
+  for (let i = 0; i < sequence.length - windowSize; i++) {
+    const window = sequence.slice(i, i + windowSize).toUpperCase();
+    let score = 0;
+    let gRun = 0, cRun = 0;
+
+    for (const base of window) {
+      if (base === 'G') {
+        gRun++;
+        if (cRun > 0) { score -= Math.min(cRun, 4); cRun = 0; }
+      } else if (base === 'C') {
+        cRun++;
+        if (gRun > 0) { score += Math.min(gRun, 4); gRun = 0; }
+      } else {
+        if (gRun > 0) { score += Math.min(gRun, 4); gRun = 0; }
+        if (cRun > 0) { score -= Math.min(cRun, 4); cRun = 0; }
+      }
+    }
+    if (gRun > 0) score += Math.min(gRun, 4);
+    if (cRun > 0) score -= Math.min(cRun, 4);
+
+    scores[i] = score / windowSize;
+  }
+
+  // Find regions above threshold
+  const threshold = 1.5;
+  let inRegion = false;
+  let regionStart = 0;
+
+  for (let i = 0; i < scores.length; i++) {
+    if (Math.abs(scores[i]) > threshold && !inRegion) {
+      inRegion = true;
+      regionStart = i;
+    } else if (Math.abs(scores[i]) <= threshold && inRegion) {
+      inRegion = false;
+      structures.push({
+        type: 'G4',
+        start: regionStart,
+        end: i + windowSize,
+        strand: scores[regionStart] > 0 ? '+' : '-',
+        score: Math.max(...Array.from(scores.slice(regionStart, i)).map(Math.abs)),
+        sequence: sequence.slice(regionStart, i + windowSize)
+      });
+    }
+  }
+
+  return structures;
+}
+
+// Z-DNA detection
+function detectZDNA(sequence: string, windowSize: number = 12): NonBStructure[] {
+  const structures: NonBStructure[] = [];
+  const zScores: Record<string, number> = {
+    'CG': 1.0, 'GC': 0.4, 'CA': 0.5, 'TG': 0.5,
+    'AC': 0.5, 'GT': 0.5, 'AT': -0.1, 'TA': -0.1,
+    'AA': -0.5, 'TT': -0.5, 'AG': 0.0, 'CT': 0.0,
+    'GA': 0.0, 'TC': 0.0, 'CC': -0.3, 'GG': -0.3
+  };
+
+  for (let i = 0; i < sequence.length - windowSize; i++) {
+    const window = sequence.slice(i, i + windowSize).toUpperCase();
+    let score = 0;
+
+    for (let j = 0; j < window.length - 1; j++) {
+      const dinuc = window.slice(j, j + 2);
+      score += zScores[dinuc] ?? 0;
+    }
+
+    if (score / windowSize > 0.5) {
+      structures.push({
+        type: 'Z-DNA',
+        start: i,
+        end: i + windowSize,
+        strand: 'both',
+        score: score / windowSize,
+        sequence: window
+      });
+    }
+  }
+
+  return mergeOverlapping(structures);
+}
+```
+
+### Why This Is a Good Idea
+
+1. **Cutting-Edge Biology**: G-quadruplex research is one of the hottest areas in nucleic acid biology. Many researchers don't have easy access to G4 prediction tools.
+
+2. **Immune Implications**: Z-DNA triggers innate immunity via ZBP1. For therapeutic phages, knowing where Z-DNA forms could be crucial for avoiding immune clearance.
+
+3. **Regulatory Insights**: G4s in promoter regions often regulate transcription. Identifying them helps understand phage gene expression programs.
+
+4. **Packaging Considerations**: Non-B structures may affect DNA flexibility and packaging efficiency — relevant for phage therapy production.
+
+5. **Novel Perspective**: Standard genome browsers ignore DNA structure. Adding this layer provides unique analytical capability.
+
+### Innovation Assessment
+
+**Novelty: 8/10 (High)**
+
+G4 prediction tools exist (G4Hunter, QGRS Mapper) but:
+- They're standalone web tools, not integrated into genome browsers
+- Z-DNA prediction is rarely included
+- TUI integration is novel
+- Phage-specific context (packaging, therapy) is new
+
+### Pedagogical Value: 8/10
+
+Teaches important concepts:
+- **Non-canonical DNA structures**: Beyond the textbook double helix
+- **Regulatory biology**: How structure affects function
+- **Pattern recognition**: What makes a G4 motif
+- **Biophysics**: Why certain sequences adopt alternative conformations
+
+### Cool/Wow Factor: 7/10
+
+The idea that DNA can form weird structures beyond the double helix is genuinely surprising to many. Visualizing these "danger zones" on the genome adds an element of discovery.
 
 ### TUI Visualization
-"Danger flags" on the genome track.
-`[====]--!G4!--[====]`
+
+```
+╭─────────────────────────────────────────────────────────────────────────────╮
+│  NON-B DNA STRUCTURE MAP: T7 Phage                                          │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│  Genome Track (39,937 bp):                                                  │
+│  ══════════════════════════════════════════════════════════════════════════ │
+│                                                                             │
+│  G4 (+ strand):    ──────⬡──────────────────⬡─────────────⬡⬡────────────── │
+│                           ↑                  ↑             ↑↑                │
+│                        Promoter?           5' UTR       Regulatory?        │
+│                                                                             │
+│  G4 (- strand):    ────────────⬢────────────────────⬢──────────────────── │
+│                               ↑                     ↑                       │
+│                            Potential             Strong                     │
+│                                                                             │
+│  Z-DNA:            ─────────────────────[ZZZ]─────────────[ZZZZ]────────── │
+│                                            ↑                ↑                │
+│                                         Moderate         Strong             │
+│                                                                             │
+│  ─────────────────────────────────────────────────────────────────────────  │
+│                                                                             │
+│  Structure Details:                                                         │
+│  ┌────────────────────────────────────────────────────────────────────────┐ │
+│  │ Position  │ Type   │ Score │ Sequence                                  │ │
+│  ├────────────────────────────────────────────────────────────────────────┤ │
+│  │  2,341    │ G4(+)  │  2.3  │ GGGTTGGGTTTGGGTTTGGG                       │ │
+│  │  8,492    │ G4(+)  │  1.8  │ GGGGACGGGACGGGACGGGG                       │ │
+│  │ 15,221    │ Z-DNA  │  0.7  │ CGCGCGCGCGCG                               │ │
+│  │ 22,108    │ G4(-)  │  2.1  │ (complementary strand)                     │ │
+│  └────────────────────────────────────────────────────────────────────────┘ │
+│                                                                             │
+│  Summary: 6 G4 motifs (4 strong) | 2 Z-DNA regions                          │
+│  Coverage: 0.3% of genome in potential non-B structures                     │
+│                                                                             │
+│  [G] Toggle G4  [Z] Toggle Z-DNA  [D] Details  [E] Export  [ESC] Exit       │
+╰─────────────────────────────────────────────────────────────────────────────╯
+```
 
 ---
 
 ## 29) Genomic Signature PCA (Tetranucleotide Frequency)
 
 ### Concept
-Every organism has a unique ratio of 4-mers (AAAA, AAAC, ...). This is a "genomic signature."
-We can project all phages in the database into a PCA plot based on these 256 dimensions.
 
-### Implementation
-**Dimensionality Reduction:**
-- Calculate 4-mer freq vector (size 256) for all phages.
-- Run PCA (Singular Value Decomposition) in TS/Wasm.
-- Plot PC1 vs PC2.
+Every genome has a characteristic "signature" — a unique pattern of k-mer frequencies that reflects its evolutionary history, GC content, codon usage, and other constraints. By computing tetranucleotide (4-mer) frequencies for all phages and projecting them into a 2D space using Principal Component Analysis (PCA), we can visualize phylogenetic relationships **without sequence alignment**.
 
-### Why Good?
-**Alignment-free phylogeny.** Groups phages by family/host without needing gene homology.
+**The power of genomic signatures:**
+- Alignment-free comparison — works even for divergent sequences
+- Captures global composition, not just individual gene homology
+- Robust to rearrangements, insertions, deletions
+- Fast to compute — O(n) per genome
 
-### Novelty
-High.
+**What the PCA reveals:**
+- **Clustering by family**: Related phages cluster together
+- **Host adaptation**: Phages infecting the same host often cluster (due to shared codon biases)
+- **Outliers**: Unusual phages or chimeric genomes stand out
+- **GC islands**: Horizontally transferred regions have different signatures
 
-### Pedagogical Value
-Teaches **Multivariate statistics** and **Alignment-free methods**.
+### Mathematical Foundations
+
+**Tetranucleotide Frequency Vector:**
+```
+For a genome S of length L:
+  Count each 4-mer: freq(AAAA), freq(AAAC), ..., freq(TTTT)
+  Total 4-mers: 4⁴ = 256 possibilities
+
+Normalize by total count:
+  f(k) = count(k) / (L - 3)
+
+Or by expected (GC-adjusted):
+  f_observed(k) / f_expected(k)
+  where f_expected(k) = p(n1) × p(n2) × p(n3) × p(n4)
+```
+
+**Principal Component Analysis:**
+```
+Given N phages, each with 256-dim frequency vector:
+  Data matrix X: N × 256
+
+1. Center the data:
+   X_centered = X - mean(X, axis=0)
+
+2. Compute covariance matrix:
+   C = (1/N) × X_centeredᵀ × X_centered  [256 × 256]
+
+3. Eigendecomposition:
+   C = V × Λ × Vᵀ
+   where Λ = diagonal matrix of eigenvalues
+         V = matrix of eigenvectors
+
+4. Project to 2D:
+   PC1 = X_centered × v₁
+   PC2 = X_centered × v₂
+   where v₁, v₂ are top 2 eigenvectors
+```
+
+**Variance Explained:**
+```
+Variance explained by PCk = λₖ / Σλᵢ
+
+Typically for genomic signatures:
+  PC1: 30-50% (often correlates with GC content)
+  PC2: 10-20% (often reflects purine/pyrimidine bias)
+  PC3+: Increasingly specific patterns
+```
+
+**Distance in PCA Space:**
+```
+Euclidean distance between phages i and j:
+  d(i,j) = √((PC1ᵢ - PC1ⱼ)² + (PC2ᵢ - PC2ⱼ)²)
+
+This correlates with:
+  - Taxonomic distance
+  - Host range overlap
+  - Time since divergence
+```
+
+### Implementation Approach
+
+```typescript
+interface KmerVector {
+  phageId: number;
+  name: string;
+  frequencies: Float32Array;  // 256 elements for 4-mers
+  gcContent: number;
+}
+
+interface PCAResult {
+  projections: { phageId: number; name: string; pc1: number; pc2: number }[];
+  eigenvalues: number[];
+  varianceExplained: number[];
+  loadings: Float32Array[];  // Which 4-mers contribute to each PC
+}
+
+// Compute 4-mer frequencies for a sequence
+function computeKmerFrequencies(sequence: string): Float32Array {
+  const counts = new Uint32Array(256);  // 4^4 = 256
+  const baseToNum: Record<string, number> = { 'A': 0, 'C': 1, 'G': 2, 'T': 3 };
+
+  for (let i = 0; i <= sequence.length - 4; i++) {
+    let index = 0;
+    let valid = true;
+
+    for (let j = 0; j < 4; j++) {
+      const base = sequence[i + j].toUpperCase();
+      const num = baseToNum[base];
+      if (num === undefined) { valid = false; break; }
+      index = index * 4 + num;
+    }
+
+    if (valid) counts[index]++;
+  }
+
+  // Normalize to frequencies
+  const total = sequence.length - 3;
+  const frequencies = new Float32Array(256);
+  for (let i = 0; i < 256; i++) {
+    frequencies[i] = counts[i] / total;
+  }
+
+  return frequencies;
+}
+
+// Perform PCA on the frequency matrix
+function computePCA(vectors: KmerVector[]): PCAResult {
+  const n = vectors.length;
+  const d = 256;
+
+  // Center the data
+  const mean = new Float32Array(d);
+  for (const v of vectors) {
+    for (let i = 0; i < d; i++) {
+      mean[i] += v.frequencies[i] / n;
+    }
+  }
+
+  const centered = vectors.map(v => {
+    const c = new Float32Array(d);
+    for (let i = 0; i < d; i++) {
+      c[i] = v.frequencies[i] - mean[i];
+    }
+    return c;
+  });
+
+  // SVD-based PCA (more numerically stable than covariance)
+  // Using power iteration for simplicity
+  const pc1 = powerIteration(centered, d);
+  const pc2 = powerIterationDeflated(centered, d, pc1);
+
+  // Project data
+  const projections = vectors.map((v, i) => ({
+    phageId: v.phageId,
+    name: v.name,
+    pc1: dotProduct(centered[i], pc1),
+    pc2: dotProduct(centered[i], pc2)
+  }));
+
+  return {
+    projections,
+    eigenvalues: [computeVariance(projections.map(p => p.pc1)),
+                   computeVariance(projections.map(p => p.pc2))],
+    varianceExplained: [0.4, 0.15],  // Placeholder
+    loadings: [pc1, pc2]
+  };
+}
+
+// Render scatter plot in TUI
+function renderPCAPlot(
+  result: PCAResult,
+  width: number,
+  height: number,
+  highlightId?: number
+): string[] {
+  const { projections } = result;
+  const lines: string[] = [];
+
+  // Find bounds
+  const pc1Values = projections.map(p => p.pc1);
+  const pc2Values = projections.map(p => p.pc2);
+  const minPC1 = Math.min(...pc1Values), maxPC1 = Math.max(...pc1Values);
+  const minPC2 = Math.min(...pc2Values), maxPC2 = Math.max(...pc2Values);
+
+  // Initialize grid
+  const grid: string[][] = Array(height).fill(0)
+    .map(() => Array(width).fill(' '));
+
+  // Plot points
+  for (const p of projections) {
+    const x = Math.floor(((p.pc1 - minPC1) / (maxPC1 - minPC1)) * (width - 1));
+    const y = Math.floor(((maxPC2 - p.pc2) / (maxPC2 - minPC2)) * (height - 1));
+
+    if (x >= 0 && x < width && y >= 0 && y < height) {
+      const char = p.phageId === highlightId ? '◉' : '●';
+      grid[y][x] = char;
+    }
+  }
+
+  // Add axes
+  for (let y = 0; y < height; y++) grid[y][0] = '│';
+  for (let x = 0; x < width; x++) grid[height - 1][x] = '─';
+  grid[height - 1][0] = '└';
+
+  return grid.map(row => row.join(''));
+}
+```
+
+### Why This Is a Good Idea
+
+1. **Instant Phylogenetics**: Without running BLAST, building alignments, or constructing trees, users can immediately see how phages relate to each other. A 10-second computation replaces hours of traditional analysis.
+
+2. **Host Prediction**: Phages adapting to the same host develop similar codon biases. PCA clustering can suggest potential hosts for novel phages.
+
+3. **Anomaly Detection**: A phage that doesn't cluster with its supposed family might be misclassified, chimeric, or genuinely novel.
+
+4. **Educational Clarity**: PCA is a fundamental data science technique. Applying it to genomics teaches multivariate analysis in a biological context.
+
+5. **Interactive Exploration**: Click on a point to see which phage it represents. Zoom into clusters. Compare your phage to known references.
+
+### Innovation Assessment
+
+**Novelty: 7/10 (High)**
+
+Tetranucleotide PCA is a known technique but:
+- Rarely available in user-facing phage tools
+- TUI scatter plot visualization is creative
+- Integration with genome browser is valuable
+- Interactive exploration adds usability
+
+### Pedagogical Value: 9/10
+
+Excellent for teaching:
+- **Dimensionality reduction**: Why and how PCA works
+- **Genomic signatures**: What makes organisms "feel" different
+- **Alignment-free methods**: Alternatives to BLAST
+- **Data visualization**: Interpreting scatter plots
+- **Multivariate statistics**: Eigenvalues, variance explained
+
+### Cool/Wow Factor: 8/10
+
+Seeing all your phages plotted in a 2D space where proximity = relatedness is satisfying. The "aha" moment when students realize that genome composition alone can reveal evolutionary relationships is powerful.
 
 ### TUI Visualization
-A scatter plot. "Your phage is here (X). It clusters with T7-like phages."
+
+```
+╭─────────────────────────────────────────────────────────────────────────────╮
+│  GENOMIC SIGNATURE PCA: Tetranucleotide Frequencies                         │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│  PC1 (43.2% variance) vs PC2 (16.7% variance)                               │
+│                                                                             │
+│  PC2 ↑                                                                      │
+│      │                                                                      │
+│  0.3 │                    ●T7                                               │
+│      │                   ● ●                   ●Phi29                       │
+│  0.2 │                  ●   (T7-like)            ●                          │
+│      │                 ●                                                    │
+│  0.1 │                                                                      │
+│      │  ●MS2                                                                │
+│  0.0 │───────────────────────────────────●Lambda───────────────→ PC1        │
+│      │       ●PhiX174                        ●                              │
+│ -0.1 │         (ssDNA cluster)              ●P22                            │
+│      │      ●M13                                                            │
+│ -0.2 │                                                                      │
+│      │                                        ◉ YOU ARE HERE                │
+│ -0.3 │                           ●T4           (T4-like cluster)            │
+│      │                          ●SPbeta ●T5                                 │
+│ -0.4 └──────────────────────────────────────────────────────────            │
+│     -0.4  -0.3  -0.2  -0.1   0.0   0.1   0.2   0.3   0.4   0.5              │
+│                                                                             │
+│  Clusters detected:                                                         │
+│  ├─ T7-like: T7, SP6 (high GC, similar codon usage)                         │
+│  ├─ T4-like: T4, T5, SPbeta (AT-rich, large genomes)                        │
+│  ├─ ssDNA: PhiX174, M13 (distinct composition)                              │
+│  └─ Lambda-like: Lambda, P22 (temperate phages)                             │
+│                                                                             │
+│  [Click point] Inspect  [Z] Zoom  [3] Add PC3  [E] Export  [ESC] Exit       │
+╰─────────────────────────────────────────────────────────────────────────────╯
+```
 
 ---
 
 ## 30) Plaque Morphology Cellular Automata
 
 ### Concept
-Simulate the growth of a phage plaque on a bacterial lawn.
-Parameters: **Diffusivity** (phage size), **Latent Period** (time to lyse), **Burst Size** (virions produced).
 
-### Implementation
-**2D Grid Simulation:**
-- Cells: `Bacteria`, `Infected`, `Lysed`.
-- Phages diffuse to neighbors.
-- Outcome: A "virtual plaque" size and turbidity (clear vs turbid).
+The Plaque Morphology Simulator uses a cellular automaton to model how phage plaques form and grow on a bacterial lawn. By inputting phage parameters (burst size, latent period, diffusion rate), users watch virtual plaques develop in real-time — connecting genotype to phenotype in an engaging visual simulation.
 
-### Why Good?
-Connects **Genotype** (Burst size, Lysis time) to **Phenotype** (Plaque size).
+**The biology of plaque formation:**
+- Bacteria grow as a "lawn" on solid media
+- A single phage particle infects one bacterium
+- After the **latent period**, the cell lyses, releasing **burst size** new phages
+- Phages diffuse outward and infect neighboring cells
+- The process repeats, creating an expanding zone of dead bacteria (the plaque)
 
-### Novelty
-Very High. A "sim-game" inside the tool.
+**What determines plaque morphology:**
+- **Clear plaques**: Virulent phages that always lyse
+- **Turbid plaques**: Temperate phages; some lysogens survive in the center
+- **Large plaques**: Long latent period (more time to diffuse before lysis)
+- **Small plaques**: Short latent period (cells lyse before diffusion)
+- **Halo plaques**: Phages with depolymerase activity
 
-### Pedagogical Value
-Teaches **Reaction-diffusion systems** and **Phage ecology**.
+### Mathematical Foundations
+
+**Reaction-Diffusion Model:**
+```
+State variables at grid position (x,y) and time t:
+  B(x,y,t) = bacteria density [0, 1]
+  I(x,y,t) = infected cell count
+  P(x,y,t) = free phage particles
+
+Equations:
+  ∂B/∂t = r×B×(1-B) - k×B×P        [growth - infection]
+  ∂I/∂t = k×B×P - (1/τ)×I          [infection - lysis]
+  ∂P/∂t = D×∇²P + b×(1/τ)×I - δ×P  [diffusion + burst - decay]
+
+Parameters:
+  r = bacterial growth rate
+  k = adsorption rate constant
+  τ = latent period
+  b = burst size
+  D = phage diffusion coefficient
+  δ = phage decay rate
+```
+
+**Cellular Automaton Simplification:**
+```
+For each cell in grid at each time step:
+  If BACTERIA:
+    If adjacent PHAGE: become INFECTED with probability p
+    Else: stay BACTERIA (or divide with probability g)
+
+  If INFECTED:
+    age += 1
+    If age >= latent_period:
+      become LYSED
+      spawn burst_size PHAGE particles nearby
+
+  If LYSED:
+    stay LYSED (dead cell)
+
+  If PHAGE:
+    diffuse to random adjacent cell
+    decay with probability d
+```
+
+**Plaque Size Prediction:**
+```
+Final plaque radius R after time T:
+  R ≈ √(4 × D × T × efficiency)
+
+where efficiency depends on:
+  - Burst size (more phages = faster spreading)
+  - Latent period (longer = more diffusion time)
+  - Adsorption rate (higher = faster infection)
+
+Empirical relationship:
+  Plaque area ∝ (burst_size × latent_period × D) / adsorption
+```
+
+### Implementation Approach
+
+```typescript
+type CellState = 'empty' | 'bacteria' | 'infected' | 'lysed' | 'lysogen';
+
+interface PlaqueSimConfig {
+  gridSize: number;           // NxN grid
+  burstSize: number;          // Phages released per lysis
+  latentPeriod: number;       // Ticks until lysis
+  diffusionRate: number;      // Phage movement per tick
+  adsorptionProb: number;     // Infection probability
+  lysogenyProb: number;       // Probability of becoming lysogen (temperate)
+  bacteriaGrowthRate: number; // Division probability
+}
+
+interface SimulationCell {
+  state: CellState;
+  phageCount: number;
+  infectionAge: number;
+}
+
+function initializePlaqueSim(config: PlaqueSimConfig): SimulationCell[][] {
+  const { gridSize } = config;
+  const grid: SimulationCell[][] = [];
+
+  for (let y = 0; y < gridSize; y++) {
+    const row: SimulationCell[] = [];
+    for (let x = 0; x < gridSize; x++) {
+      row.push({
+        state: 'bacteria',
+        phageCount: 0,
+        infectionAge: 0
+      });
+    }
+    grid.push(row);
+  }
+
+  // Seed initial phage at center
+  const center = Math.floor(gridSize / 2);
+  grid[center][center].phageCount = 1;
+
+  return grid;
+}
+
+function simulateTick(
+  grid: SimulationCell[][],
+  config: PlaqueSimConfig
+): SimulationCell[][] {
+  const { gridSize, burstSize, latentPeriod, diffusionRate,
+          adsorptionProb, lysogenyProb, bacteriaGrowthRate } = config;
+
+  const newGrid = JSON.parse(JSON.stringify(grid)) as SimulationCell[][];
+
+  for (let y = 0; y < gridSize; y++) {
+    for (let x = 0; x < gridSize; x++) {
+      const cell = grid[y][x];
+      const newCell = newGrid[y][x];
+
+      switch (cell.state) {
+        case 'bacteria':
+          // Check for phage infection
+          if (cell.phageCount > 0 && Math.random() < adsorptionProb) {
+            if (lysogenyProb > 0 && Math.random() < lysogenyProb) {
+              newCell.state = 'lysogen';
+            } else {
+              newCell.state = 'infected';
+              newCell.infectionAge = 0;
+            }
+            newCell.phageCount--;
+          }
+          break;
+
+        case 'infected':
+          // Lysis after latent period
+          newCell.infectionAge++;
+          if (newCell.infectionAge >= latentPeriod) {
+            newCell.state = 'lysed';
+            // Release burst of phages
+            distributePhages(newGrid, x, y, burstSize, gridSize);
+          }
+          break;
+
+        case 'lysed':
+          // Dead cells stay dead
+          break;
+
+        case 'lysogen':
+          // Lysogens are immune and can grow
+          // (Occasional induction could be added)
+          break;
+      }
+
+      // Phage diffusion
+      if (cell.phageCount > 0) {
+        const phagesToMove = Math.floor(cell.phageCount * diffusionRate);
+        for (let p = 0; p < phagesToMove; p++) {
+          const [nx, ny] = randomNeighbor(x, y, gridSize);
+          newGrid[y][x].phageCount--;
+          newGrid[ny][nx].phageCount++;
+        }
+      }
+    }
+  }
+
+  return newGrid;
+}
+
+function distributePhages(
+  grid: SimulationCell[][],
+  x: number,
+  y: number,
+  count: number,
+  size: number
+): void {
+  for (let i = 0; i < count; i++) {
+    // Random direction
+    const angle = Math.random() * 2 * Math.PI;
+    const dist = Math.random() * 3; // Spread within 3 cells
+    const nx = Math.round(x + Math.cos(angle) * dist);
+    const ny = Math.round(y + Math.sin(angle) * dist);
+
+    if (nx >= 0 && nx < size && ny >= 0 && ny < size) {
+      grid[ny][nx].phageCount++;
+    }
+  }
+}
+
+// Render the plaque
+function renderPlaque(grid: SimulationCell[][], width: number): string[] {
+  const scale = grid.length / width;
+  const lines: string[] = [];
+
+  for (let charY = 0; charY < width; charY++) {
+    let line = '';
+    for (let charX = 0; charX < width; charX++) {
+      const gridX = Math.floor(charX * scale);
+      const gridY = Math.floor(charY * scale);
+      const cell = grid[gridY][gridX];
+
+      switch (cell.state) {
+        case 'bacteria': line += '█'; break;
+        case 'infected': line += '▓'; break;
+        case 'lysed':    line += ' '; break;
+        case 'lysogen':  line += '▒'; break;
+        default:         line += '░'; break;
+      }
+    }
+    lines.push(line);
+  }
+
+  return lines;
+}
+```
+
+### Why This Is a Good Idea
+
+1. **Genotype-to-Phenotype Connection**: Students see how molecular parameters (burst size, latent period) translate into macroscopic observables (plaque size, turbidity). This bridges the gap between genetic analysis and lab observations.
+
+2. **Interactive Experimentation**: Adjust parameters and immediately see the effect. "What if burst size was 10x higher?" — now you can find out without doing the experiment.
+
+3. **Historical Significance**: Plaque assays were foundational to phage biology (Delbrück, Ellis, Luria). Understanding them provides historical context.
+
+4. **Therapeutic Relevance**: For phage therapy, understanding how phages spread through bacterial populations is crucial for dosing and efficacy predictions.
+
+5. **Engaging Visualization**: Watching a virtual plaque grow is mesmerizing — it's a simulation game embedded in a scientific tool.
+
+### Innovation Assessment
+
+**Novelty: 9/10 (Very High)**
+
+Cellular automata for phage plaques have been described in research papers but:
+- No phage genome browser includes this
+- Real-time TUI animation is novel
+- Interactive parameter adjustment is unique
+- Connection to genomic data (burst size prediction from genes) is innovative
+
+### Pedagogical Value: 9/10
+
+Outstanding for teaching:
+- **Phage life cycle**: Latent period, burst size, lysis
+- **Population dynamics**: How infections spread
+- **Mathematical biology**: Reaction-diffusion systems
+- **Emergence**: Simple rules creating complex patterns
+- **Experimental interpretation**: What plaque morphology tells you
+
+### Cool/Wow Factor: 10/10
+
+This is essentially a video game — watching an infection spread across a bacterial lawn in real-time. The visual feedback when changing parameters creates an addictive "just one more experiment" loop. Exceptional engagement.
 
 ### TUI Visualization
-An expanding circle of "dead" cells (` `) surrounded by growing bacteria (`#`).
-"Predicted Plaque Size: Large/Clear (Lytic)" vs "Small/Turbid (Temperate)".
+
+```
+╭─────────────────────────────────────────────────────────────────────────────╮
+│  PLAQUE MORPHOLOGY SIMULATOR: Lambda Phage                                  │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│  Parameters:         Time: 00:45    Generation: 3                           │
+│  ├─ Burst size: 100                                                         │
+│  ├─ Latent period: 45 min                                                   │
+│  ├─ Lysogeny: 50%                                                           │
+│  └─ Diffusion: Medium                                                       │
+│                                                                             │
+│  ┌─────────────────────────────────────────────────────────────────────┐    │
+│  │█████████████████████████████████████████████████████████████████████│    │
+│  │█████████████████████████████████████████████████████████████████████│    │
+│  │████████████████████████████▓▓▓██████████████████████████████████████│    │
+│  │██████████████████████████▓▓   ▓▓████████████████████████████████████│    │
+│  │████████████████████████▓▓  ▒▒  ▓▓██████████████████████████████████│    │
+│  │███████████████████████▓  ▒    ▒  ▓█████████████████████████████████│    │
+│  │██████████████████████▓ ▒  ▒▒▒  ▒ ▓█████████████████████████████████│    │
+│  │█████████████████████▓ ▒ ▒     ▒ ▒ ▓████████████████████████████████│    │
+│  │█████████████████████▓ ▒   ▒▒▒  ▒  ▓████████████████████████████████│    │
+│  │██████████████████████▓ ▒ ▒   ▒ ▒ ▓█████████████████████████████████│    │
+│  │███████████████████████▓  ▒▒▒▒▒  ▓██████████████████████████████████│    │
+│  │████████████████████████▓▓     ▓▓███████████████████████████████████│    │
+│  │██████████████████████████▓▓▓▓▓█████████████████████████████████████│    │
+│  │█████████████████████████████████████████████████████████████████████│    │
+│  │█████████████████████████████████████████████████████████████████████│    │
+│  └─────────────────────────────────────────────────────────────────────┘    │
+│                                                                             │
+│  Legend: █ Bacteria | ▓ Infected | (space) Lysed | ▒ Lysogen                │
+│                                                                             │
+│  Morphology: TURBID (lysogens surviving in center)                          │
+│  Predicted size: Medium (2.1 mm at 24h)                                     │
+│                                                                             │
+│  [Space] Pause  [B/L/D] Adjust params  [R] Reset  [V] Virulent  [ESC] Exit  │
+╰─────────────────────────────────────────────────────────────────────────────╯
+```
 
 ---
 
 ## 31) Packaging Motor Physics (Terminase Energy)
 
 ### Concept
-Phage DNA is packed to extreme density (60 atm pressure!). The **Terminase** motor burns ATP to shove DNA in.
-Visualize the **Force vs Filling** curve.
 
-### Implementation
-**Biophysical Model:**
-Force increases exponentially as capsid fills due to DNA-DNA repulsion and bending energy.
-`F = F_0 + F_bending + F_electrostatic`
+The phage DNA packaging motor is one of the most powerful molecular machines known — generating forces exceeding 60 piconewtons and internal pressures of ~60 atmospheres to compress DNA into the capsid. This feature visualizes the physics of packaging as users scroll through the genome, showing how force builds as the capsid fills.
 
-### Why Good?
-Highlights the **incredible mechanics** of viruses.
+**The packaging marvel:**
+- Terminase complexes translocate DNA into preformed capsids
+- DNA is packed to near-crystalline density (~500 mg/mL)
+- The motor burns ~1 ATP per 2 base pairs packaged
+- Packaging stalls when internal pressure equals motor force
+- This pressure later drives DNA injection into host cells
 
-### Novelty
-High. Physics in a genomics tool.
+**What limits packaging:**
+- **Bending energy**: DNA resists being bent tightly
+- **Electrostatic repulsion**: Negatively charged DNA backbone repels itself
+- **Entropy loss**: Organized DNA has lower entropy than free solution
+- **Capsid volume**: Fixed space limits DNA amount
 
-### Pedagogical Value
-Teaches **Polymer physics** and **Molecular machines**.
+### Mathematical Foundations
+
+**Elastic Energy (Bending):**
+```
+DNA persistence length P ≈ 50 nm
+
+Bending energy for DNA confined to radius R:
+  E_bend = (π × k_B × T × L) / (2 × P × R²)
+
+where:
+  L = contour length of DNA
+  R = effective radius of confinement
+  k_B × T = thermal energy ≈ 4.1 pN·nm at 25°C
+
+For Phi29 (19.3 kb, R ≈ 21 nm):
+  E_bend ≈ 1000 k_B·T (massive!)
+```
+
+**Electrostatic Energy:**
+```
+DNA has ~2 negative charges per bp (phosphate backbone)
+Charges separated by ~0.34 nm
+
+In confined volume, electrostatic energy:
+  E_elec = (ρ × L)² × f(salt, geometry)
+
+where ρ = linear charge density
+
+Screening by counterions reduces this, but at high density:
+  E_elec ~ 500-1000 k_B·T for typical phages
+```
+
+**Entropic Energy:**
+```
+Loss of configurational entropy:
+  ΔS_conf = -k_B × ln(Ω_confined / Ω_free)
+
+  Ω_free ∝ volume^(L/P)  [random coil configurations]
+  Ω_confined << Ω_free
+
+Contributes ~500 k_B·T to packaging energy
+```
+
+**Force vs Filling:**
+```
+Total internal force F as function of filling fraction φ:
+
+  F(φ) = F_0 × [1 + α×φ + β×φ² + γ×φ³]
+
+where:
+  F_0 ~ 5 pN (at start of packaging)
+  α, β, γ are empirical constants
+
+Near completion (φ → 1):
+  F → 50-80 pN (measured by optical tweezers)
+
+This is ~10x the stall force of kinesin!
+```
+
+**ATP Consumption:**
+```
+Packaging rate: ~100-200 bp/sec (E. coli phages)
+Energy cost: ~1 ATP per 2 bp
+
+For Lambda (48.5 kb):
+  Total ATP consumed ≈ 24,000 ATP molecules
+  Total energy: ~600,000 k_B·T = ~2,500 kJ/mol
+```
+
+### Implementation Approach
+
+```typescript
+interface PackagingParams {
+  genomeLength: number;    // bp
+  capsidRadius: number;    // nm
+  persistenceLength: number; // nm (~50 for dsDNA)
+  chargesPerBp: number;    // ~2 for dsDNA
+  saltConcentration: number; // mM
+}
+
+interface PackagingState {
+  fillingFraction: number; // 0 to 1
+  internalPressure: number; // atmospheres
+  force: number;           // piconewtons
+  energyStored: number;    // kT units
+  atpConsumed: number;     // molecules
+}
+
+function computePackagingPhysics(
+  position: number,  // Current position in genome
+  params: PackagingParams
+): PackagingState {
+  const { genomeLength, capsidRadius, persistenceLength } = params;
+
+  const fillingFraction = position / genomeLength;
+  const packedLength = position * 0.34; // nm (rise per bp)
+
+  // Bending energy (simplified model)
+  const effectiveRadius = capsidRadius * Math.pow(1 - fillingFraction, 1/3);
+  const bendEnergy = (Math.PI * 4.1 * packedLength) /
+                     (2 * persistenceLength * effectiveRadius * effectiveRadius);
+
+  // Electrostatic energy (screened)
+  const elecEnergy = 0.5 * fillingFraction * fillingFraction * 1000; // kT
+
+  // Total stored energy
+  const totalEnergy = bendEnergy + elecEnergy;
+
+  // Force from energy derivative
+  // F = dE/dx where x is filling
+  const force = 5 + 50 * Math.pow(fillingFraction, 3); // pN (simplified fit)
+
+  // Internal pressure
+  const capsidVolume = (4/3) * Math.PI * Math.pow(capsidRadius, 3); // nm³
+  const pressure = (force * packedLength) / capsidVolume * 1e-6; // atm (rough)
+
+  // ATP consumed
+  const atpConsumed = Math.floor(position / 2);
+
+  return {
+    fillingFraction,
+    internalPressure: Math.min(pressure, 60), // Cap at known max
+    force,
+    energyStored: totalEnergy,
+    atpConsumed
+  };
+}
+
+// Render as pressure gauge
+function renderPressureGauge(state: PackagingState, width: number): string[] {
+  const lines: string[] = [];
+  const { internalPressure, fillingFraction, force } = state;
+
+  // Pressure bar
+  const filled = Math.floor(fillingFraction * width);
+  const bar = '█'.repeat(filled) + '░'.repeat(width - filled);
+
+  // Color based on pressure (ANSI colors)
+  let color = '\x1b[32m'; // Green
+  if (internalPressure > 30) color = '\x1b[33m'; // Yellow
+  if (internalPressure > 50) color = '\x1b[31m'; // Red
+
+  lines.push(`Capsid Fill: ${color}[${bar}]\x1b[0m ${(fillingFraction * 100).toFixed(1)}%`);
+  lines.push(`Pressure:    ${internalPressure.toFixed(1)} atm ${internalPressure > 50 ? '⚠️ HIGH' : ''}`);
+  lines.push(`Force:       ${force.toFixed(1)} pN`);
+  lines.push(`Energy:      ${state.energyStored.toFixed(0)} kT stored`);
+  lines.push(`ATP used:    ${state.atpConsumed.toLocaleString()} molecules`);
+
+  return lines;
+}
+```
+
+### Why This Is a Good Idea
+
+1. **Awe-Inspiring Physics**: The packaging motor is genuinely remarkable — one of the most powerful molecular machines. Highlighting this connects genomics to biophysics in an engaging way.
+
+2. **Scroll-Synchronized Display**: As users scroll through the genome, they "feel" the packaging happening. Position 1 = low pressure; position 48,000 = maximum stress. This creates embodied understanding.
+
+3. **Therapeutic Relevance**: For phage therapy production, understanding packaging limits matters. Genomes that are too long won't package efficiently.
+
+4. **Unique Perspective**: No genome browser shows physical properties like internal pressure. This adds a dimension of analysis that's completely novel.
+
+5. **Connection to Injection**: The stored energy drives DNA injection into host cells — the pressure gauge foreshadows what happens next in the phage life cycle.
+
+### Innovation Assessment
+
+**Novelty: 10/10 (Extremely High)**
+
+This feature has no precedent in any bioinformatics tool. The combination of:
+- Real-time pressure calculation synced to scroll position
+- Biophysical modeling accessible to non-experts
+- Visual pressure gauge in a genome browser
+- Educational context about molecular motors
+
+...is completely original.
+
+### Pedagogical Value: 9/10
+
+Teaches fascinating biophysics:
+- **Molecular motors**: How biological machines generate force
+- **Polymer physics**: Bending, electrostatics, entropy
+- **Energy scales**: What kT means, what a piconewton means
+- **Biological extremes**: Viruses as engineering marvels
+- **Pressure and force**: Intuitive physical concepts in molecular context
+
+### Cool/Wow Factor: 10/10
+
+The "wow" moment when users realize they're scrolling through a spring under 60 atmospheres of pressure is unforgettable. The pressure gauge turning red at the end of the genome creates drama and understanding simultaneously. This is science communication at its best.
 
 ### TUI Visualization
-A gauge/meter showing internal pressure rising as you scroll from start to end of the genome.
-`[||||||||||||||  ] 40 atm (WARNING: High Pressure)`
+
+```
+╭─────────────────────────────────────────────────────────────────────────────╮
+│  PACKAGING MOTOR PHYSICS: Lambda Phage                                      │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│  Current Position: 42,125 / 48,502 bp (86.8% packaged)                      │
+│                                                                             │
+│  ┌─────────────────────────────────────────────────────────────────────┐    │
+│  │                                                                     │    │
+│  │   TERMINASE MOTOR                                                   │    │
+│  │      ╔═══╗                                                          │    │
+│  │  ────╢ ◉ ╟────[DNA]────────────────────────────────────────>        │    │
+│  │      ╚═══╝      ↓                                                   │    │
+│  │                 ↓                                                   │    │
+│  │       ┌─────────────────┐                                           │    │
+│  │       │  ░░░░░░░░░░░░░░ │  ← DNA being compressed                   │    │
+│  │       │  ░░░░████████░░ │                                           │    │
+│  │       │  ░░████████████ │    CAPSID                                 │    │
+│  │       │  ░░████████████ │    (filling...)                           │    │
+│  │       │  ░░████████████ │                                           │    │
+│  │       │  ░░░░████████░░ │                                           │    │
+│  │       │  ░░░░░░░░░░░░░░ │                                           │    │
+│  │       └─────────────────┘                                           │    │
+│  │                                                                     │    │
+│  └─────────────────────────────────────────────────────────────────────┘    │
+│                                                                             │
+│  PRESSURE GAUGE:                                                            │
+│  ┌────────────────────────────────────────────────────────────────────┐     │
+│  │  0 atm    10      20      30      40      50      60 atm           │     │
+│  │  ├─────────┼───────┼───────┼───────┼───────┼───────┤              │     │
+│  │  [████████████████████████████████████████░░░░░░░░] 52.3 atm      │     │
+│  │                                        ↑                           │     │
+│  │                              ⚠️  HIGH PRESSURE ZONE               │     │
+│  └────────────────────────────────────────────────────────────────────┘     │
+│                                                                             │
+│  Motor Stats:                                                               │
+│  ├─ Force output:      57.2 pN (motor working hard!)                        │
+│  ├─ Energy stored:     892 kT (enough to inject into host)                  │
+│  ├─ ATP consumed:      21,063 molecules                                     │
+│  └─ Packaging rate:    ~120 bp/sec (slowing down...)                        │
+│                                                                             │
+│  Note: Internal pressure will drive DNA injection at ~10 µm/sec             │
+│                                                                             │
+│  [←→] Scroll genome (feel the pressure build!)  [R] Reset  [ESC] Exit       │
+╰─────────────────────────────────────────────────────────────────────────────╯
+```
 
 ---
 
