@@ -4,7 +4,6 @@ import type {
   PhageFull,
   ViewMode,
   ReadingFrame,
-  GeneInfo,
   Theme,
   SimulationId,
   SimState,
@@ -16,8 +15,9 @@ import {
   nextSpeed,
   prevSpeed,
 } from '@phage-explorer/core';
-type OverlayData = Partial<Record<'gcSkew' | 'complexity' | 'bendability' | 'promoter' | 'repeats' | 'kmerAnomaly', unknown>>;
 import type { GenomeComparisonResult } from '@phage-explorer/comparison';
+
+type OverlayData = Partial<Record<'gcSkew' | 'complexity' | 'bendability' | 'promoter' | 'repeats' | 'kmerAnomaly', unknown>>;
 
 // Overlay states
 export type OverlayId =
@@ -39,7 +39,8 @@ export type OverlayId =
   | 'modules'
   | 'kmerAnomaly'
   | 'foldQuickview'
-  | 'commandPalette';
+  | 'commandPalette'
+  | 'phasePortrait';
 
 export type HelpDetailLevel = 'essential' | 'detailed';
 export type ExperienceLevel = 'novice' | 'intermediate' | 'power';
@@ -336,7 +337,7 @@ export const usePhageStore = create<PhageExplorerStore>((set, get) => ({
 
   // Diff mode
   toggleDiff: () => {
-    const { diffEnabled, phages, currentPhageIndex } = get();
+    const { diffEnabled, phages } = get();
     if (!diffEnabled && phages.length > 0) {
       // Enable diff with first phage (lambda) as reference by default
       const lambdaIndex = phages.findIndex(p =>

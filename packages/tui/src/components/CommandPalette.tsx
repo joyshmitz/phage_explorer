@@ -90,7 +90,7 @@ export function CommandPalette({ onClose }: CommandPaletteProps): React.ReactEle
   const toggle3DModelFullscreen = usePhageStore(s => s.toggle3DModelFullscreen);
   const cycle3DModelQuality = usePhageStore(s => s.cycle3DModelQuality);
 
-  // Seed commands each render (lightweight)
+  // Seed commands on mount/experience change
   useEffect(() => {
     const baseCommands = [
       { id: 'nav-next', label: 'Next phage', description: 'Move down the list', keywords: ['arrow', 'down'], action: nextPhage },
@@ -119,6 +119,8 @@ export function CommandPalette({ onClose }: CommandPaletteProps): React.ReactEle
             { id: 'repeats', label: 'Repeats / palindromes', description: 'Detect short palindromic repeats', keywords: ['repeat', 'palindrome'], action: () => toggleOverlay('repeats') },
             { id: 'kmer', label: 'K-mer anomaly', description: 'Highlight composition shifts', keywords: ['kmer', 'anomaly'], action: () => toggleOverlay('kmerAnomaly') },
             { id: 'modules', label: 'Module coherence', description: 'Capsid/tail/lysis module view', keywords: ['module', 'stoichiometry'], action: () => toggleOverlay('modules') },
+            { id: 'pressure', label: 'Packaging pressure gauge', description: 'Estimate capsid filling pressure', keywords: ['pressure', 'packing'], action: () => toggleOverlay('pressure') },
+            { id: 'phase-portraits', label: 'AA property phase portraits', description: 'PCA of hydropathy/charge/aromaticity trajectories', keywords: ['phase', 'portrait', 'protein', 'property'], action: () => toggleOverlay('phasePortrait') },
           ];
 
     const powerCommands =

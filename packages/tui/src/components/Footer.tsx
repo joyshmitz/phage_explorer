@@ -47,6 +47,7 @@ function getOverlayName(o: string): string {
     simulationHub: 'Simulations',
     commandPalette: 'Palette',
     comparison: 'Compare',
+    phasePortrait: 'Phase portraits',
     help: 'Help',
     search: 'Search',
     aaKey: 'AA Key',
@@ -65,7 +66,15 @@ export function Footer(): React.ReactElement {
   const modal = (() => {
     for (let i = overlays.length - 1; i >= 0; i--) {
       const o = overlays[i];
-      if (o === 'analysisMenu' || o === 'simulationHub' || o === 'commandPalette' || o === 'comparison' || o === 'help' || o === 'search') {
+      if (
+        o === 'analysisMenu' ||
+        o === 'simulationHub' ||
+        o === 'commandPalette' ||
+        o === 'comparison' ||
+        o === 'phasePortrait' ||
+        o === 'help' ||
+        o === 'search'
+      ) {
         return o;
       }
     }

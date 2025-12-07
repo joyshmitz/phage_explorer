@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Box, Text, useInput, useApp, useStdout } from 'ink';
-import { usePhageStore, useOverlayStack, type HelpDetailLevel } from '@phage-explorer/state';
+import { usePhageStore, useOverlayStack } from '@phage-explorer/state';
 import type { PhageRepository } from '@phage-explorer/db-runtime';
 
 import { Header } from './Header';
@@ -23,6 +23,7 @@ import { PromoterOverlay } from './PromoterOverlay';
 import { RepeatOverlay } from './RepeatOverlay';
 import { PackagingPressureOverlay } from './PackagingPressureOverlay';
 import { TranscriptionFlowOverlay } from './TranscriptionFlowOverlay';
+import { PhasePortraitOverlay } from './PhasePortraitOverlay';
 import { computeAllOverlays } from '../overlay-computations';
 import { SimulationHubOverlay } from './SimulationHubOverlay';
 import { SimulationView } from './SimulationView';
@@ -112,7 +113,6 @@ export function App({ repository, foldEmbeddings = [] }: AppProps): React.ReactE
 
   // Sequence state
   const [sequence, setSequence] = useState<string>('');
-  const [experienceTimers, setExperienceTimers] = useState<NodeJS.Timeout[]>([]);
 
   // Update terminal size
   useEffect(() => {
@@ -183,13 +183,12 @@ export function App({ repository, foldEmbeddings = [] }: AppProps): React.ReactE
 
   // Progressive disclosure: auto-promote after time in app (5m -> intermediate, 60m -> power)
   useEffect(() => {
-    experienceTimers.forEach(clearTimeout);
-    const timers: NodeJS.Timeout[] = [];
-    timers.push(setTimeout(() => promoteExperienceLevel('intermediate' as ExperienceLevel), 5 * 60 * 1000));
-    timers.push(setTimeout(() => promoteExperienceLevel('power' as ExperienceLevel), 60 * 60 * 1000));
-    setExperienceTimers(timers);
+    const t1 = setTimeout(() => promoteExperienceLevel('intermediate' as ExperienceLevel), 5 * 60 * 1000);
+    const t2 = setTimeout(() => promoteExperienceLevel('power' as ExperienceLevel), 60 * 60 * 1000);
+    
     return () => {
-      timers.forEach(clearTimeout);
+      clearTimeout(t1);
+      clearTimeout(t2);
     };
   }, [promoteExperienceLevel]);
 
@@ -230,7 +229,6 @@ export function App({ repository, foldEmbeddings = [] }: AppProps): React.ReactE
     }
 
     const promote = (level: ExperienceLevel) => promoteExperienceLevel(level);
-    const isNovice = experienceLevel === 'novice';
     const isIntermediate = experienceLevel !== 'novice';
     const isPower = experienceLevel === 'power';
 
@@ -333,6 +331,13 @@ export function App({ repository, foldEmbeddings = [] }: AppProps): React.ReactE
       }
       promote('intermediate');
       toggleOverlay(BENDABILITY_ID);
+    } else if (key.shift && (input === 'P')) {
+      if (!isIntermediate) {
+        setError('Phase portraits unlock after ~5 minutes or once promoted.');
+        return;
+      }
+      promote('intermediate');
+      toggleOverlay('phasePortrait');
     } else if (input === 'p' || input === 'P') {
       if (!isIntermediate) {
         setError('Promoter overlay unlocks after ~5 minutes or once promoted.');
@@ -599,6 +604,16 @@ export function App({ repository, foldEmbeddings = [] }: AppProps): React.ReactE
           marginTop={Math.floor((terminalRows - 18) / 2)}
         >
           <ModuleOverlay />
+        </Box>
+      )}
+
+      {activeOverlay === 'phasePortrait' && (
+        <Box
+          position="absolute"
+          marginLeft={Math.floor((terminalCols - 84) / 2)}
+          marginTop={Math.floor((terminalRows - 22) / 2)}
+        >
+          <PhasePortraitOverlay sequence={sequence} />
         </Box>
       )}
 

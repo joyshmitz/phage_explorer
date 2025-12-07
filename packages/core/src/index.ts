@@ -13,6 +13,9 @@ export * from './virtualizer';
 // Simulation framework
 export * from './simulation';
 
+// Phase portraits
+export * from './phase-portraits';
+
 // Functional module coherence
 export * from './module-coherence';
 

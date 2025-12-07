@@ -131,6 +131,7 @@ export function HelpOverlay(): React.ReactElement {
             { key: 'S / /', desc: 'Search phages' },
             { key: 'W', desc: 'Compare genomes' },
             { key: 'A', desc: 'Analysis menu' },
+            { key: 'A → Phase portraits / Shift+P', desc: 'AA property PCA / domain map' },
             { key: 'Shift+S', desc: 'Simulation hub' },
             { key: ': / Ctrl+P', desc: 'Command palette' },
           ],

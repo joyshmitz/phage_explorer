@@ -117,6 +117,14 @@ export function AnalysisMenuOverlay({ onClose }: MenuOverlayProps): React.ReactE
             shortcut: 'L',
             action: () => openOverlay('modules'),
           },
+          {
+            id: 'analysis-phase-portraits',
+            label: 'AA Property Phase Portraits',
+            description: 'PCA of hydropathy/charge/aromaticity windows',
+            icon: '📈',
+            shortcut: 'A → PP',
+            action: () => openOverlay('phasePortrait'),
+          },
         ]),
         ...(experienceLevel === 'power'
           ? [{
