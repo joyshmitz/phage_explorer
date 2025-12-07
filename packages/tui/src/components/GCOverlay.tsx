@@ -2,8 +2,7 @@ import React, { useMemo } from 'react';
 import { Box, Text, useInput } from 'ink';
 import { usePhageStore } from '@phage-explorer/state';
 import type { NumericOverlay } from '../overlay-computations';
-
-const SPARKLINE_BARS = ['▁', '▂', '▃', '▄', '▅', '▆', '▇', '█'];
+import { Sparkline } from './Sparkline';
 
 interface GCOverlayProps {
   sequence: string;
@@ -45,57 +44,26 @@ function computeCumulativeSkew(sequence: string) {
   }
 
   const gcPercent = sequence.length > 0 ? ((gCount + cCount) / sequence.length) * 100 : 0;
+  const atPercent = 100 - gcPercent;
 
-  return { values, minIdx, maxIdx, gcPercent };
-}
-
-function mapValueToBar(v: number, min: number, max: number): string {
-  if (max === min) return SPARKLINE_BARS[0];
-  const norm = (v - min) / (max - min);
-  const idx = Math.min(
-    SPARKLINE_BARS.length - 1,
-    Math.max(0, Math.floor(norm * (SPARKLINE_BARS.length - 1)))
-  );
-  return SPARKLINE_BARS[idx];
-}
-
-function buildSparkline(values: number[], width: number): string {
-  if (values.length === 0 || width <= 0) return '';
-  const min = Math.min(...values);
-  const max = Math.max(...values);
-
-  if (values.length <= width) {
-    return values.map(v => mapValueToBar(v, min, max)).join('');
-  }
-
-  const step = values.length / width;
-  const chars: string[] = [];
-  for (let i = 0; i < width; i++) {
-    const idx = Math.floor(i * step);
-    chars.push(mapValueToBar(values[idx], min, max));
-  }
-  return chars.join('');
+  return { values, minIdx, maxIdx, gcPercent, atPercent, gCount, cCount };
 }
 
 export function GCOverlay({ sequence }: GCOverlayProps): React.ReactElement {
   const theme = usePhageStore(s => s.currentTheme);
   const closeOverlay = usePhageStore(s => s.closeOverlay);
-
   const overlayData = usePhageStore(s => s.overlayData.gcSkew) as NumericOverlay | undefined;
 
   const result = useMemo(() => {
-    if (overlayData && 'values' in overlayData) {
-      // Reconstruct pseudo cumulative from normalized windows for sparkline; we still compute origin/terminus from sequence
-      return computeCumulativeSkew(sequence.toUpperCase());
-    }
     return computeCumulativeSkew(sequence.toUpperCase());
-  }, [sequence, overlayData]);
+  }, [sequence]);
 
-  const sparkline = useMemo(() => {
+  // Get values for sparkline
+  const sparklineValues = useMemo(() => {
     if (overlayData && 'values' in overlayData) {
-      return buildSparkline(overlayData.values, 64);
+      return overlayData.values;
     }
-    return buildSparkline(result.values, 64);
+    return result.values;
   }, [overlayData, result.values]);
 
   useInput((input, key) => {
@@ -111,34 +79,99 @@ export function GCOverlay({ sequence }: GCOverlayProps): React.ReactElement {
   return (
     <Box
       flexDirection="column"
-      borderStyle="double"
-      borderColor={colors.accent}
+      borderStyle="round"
+      borderColor={colors.borderFocus}
       paddingX={2}
       paddingY={1}
-      width={76}
+      width={80}
     >
+      {/* Header with close hint */}
       <Box justifyContent="space-between" marginBottom={1}>
-        <Text color={colors.accent} bold>GC SKEW (G KEY)</Text>
-        <Text color={colors.textDim}>ESC/G to close</Text>
+        <Box gap={1}>
+          <Text color={colors.primary} bold>◉ GC SKEW ANALYSIS</Text>
+          <Text color={colors.accent}>[G]</Text>
+        </Box>
+        <Text color={colors.textMuted}>ESC or G to close</Text>
+      </Box>
+
+      {/* Separator */}
+      <Box marginBottom={1}>
+        <Text color={colors.borderLight}>{'─'.repeat(74)}</Text>
       </Box>
 
       {sequence.length === 0 ? (
         <Text color={colors.textDim}>No sequence loaded</Text>
       ) : (
         <>
-          <Box flexDirection="column" marginBottom={1}>
-            <Text color={colors.text}>
-              GC% {result.gcPercent.toFixed(1)} · Origin ≈ {originPos.toLocaleString()} bp · Terminus ≈ {terminusPos.toLocaleString()} bp
-            </Text>
-            <Text color={colors.textDim}>
-              Bars: cumulative skew (▁ low G-C → █ high G-C). Origin/terminus often near extrema.
-            </Text>
+          {/* Stats row */}
+          <Box gap={3} marginBottom={1}>
+            <Box gap={1}>
+              <Text color={colors.textDim}>GC Content:</Text>
+              <Text color={colors.success} bold>{result.gcPercent.toFixed(1)}%</Text>
+            </Box>
+            <Box gap={1}>
+              <Text color={colors.textDim}>AT Content:</Text>
+              <Text color={colors.warning} bold>{result.atPercent.toFixed(1)}%</Text>
+            </Box>
+            <Box gap={1}>
+              <Text color={colors.textDim}>G:</Text>
+              <Text color={colors.text}>{result.gCount.toLocaleString()}</Text>
+            </Box>
+            <Box gap={1}>
+              <Text color={colors.textDim}>C:</Text>
+              <Text color={colors.text}>{result.cCount.toLocaleString()}</Text>
+            </Box>
           </Box>
 
-          <Box flexDirection="column">
-            <Text color={colors.text}>{sparkline}</Text>
-            <Text color={colors.textDim} dimColor>
-              min @ {originPos.toLocaleString()} | max @ {terminusPos.toLocaleString()}
+          {/* GC/AT ratio bar */}
+          <Box marginBottom={1}>
+            <Text color={colors.textDim}>Ratio: </Text>
+            <Text color={colors.success}>{'█'.repeat(Math.round(result.gcPercent / 100 * 40))}</Text>
+            <Text color={colors.warning}>{'█'.repeat(Math.round(result.atPercent / 100 * 40))}</Text>
+            <Text color={colors.textMuted}> GC│AT</Text>
+          </Box>
+
+          {/* Sparkline visualization */}
+          <Box flexDirection="column" marginBottom={1}>
+            <Text color={colors.textDim} bold>Cumulative GC Skew:</Text>
+            <Sparkline
+              values={sparklineValues}
+              width={70}
+              colors={colors}
+              gradient={true}
+              showRange={true}
+            />
+          </Box>
+
+          {/* Origin and Terminus markers */}
+          <Box flexDirection="column" marginTop={1}>
+            <Box gap={2}>
+              <Box gap={1}>
+                <Text color={colors.info}>▼</Text>
+                <Text color={colors.textDim}>Origin (min skew):</Text>
+                <Text color={colors.text} bold>{originPos.toLocaleString()} bp</Text>
+                <Text color={colors.textMuted}>
+                  ({((originPos / sequence.length) * 100).toFixed(1)}%)
+                </Text>
+              </Box>
+            </Box>
+            <Box gap={2}>
+              <Box gap={1}>
+                <Text color={colors.warning}>▲</Text>
+                <Text color={colors.textDim}>Terminus (max skew):</Text>
+                <Text color={colors.text} bold>{terminusPos.toLocaleString()} bp</Text>
+                <Text color={colors.textMuted}>
+                  ({((terminusPos / sequence.length) * 100).toFixed(1)}%)
+                </Text>
+              </Box>
+            </Box>
+          </Box>
+
+          {/* Explanation */}
+          <Box marginTop={1}>
+            <Text color={colors.textMuted}>
+              GC skew reveals replication asymmetry. Origin typically near minimum,
+              terminus near maximum. Useful for identifying replication direction.
             </Text>
           </Box>
         </>

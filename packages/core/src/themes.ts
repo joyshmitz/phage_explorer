@@ -12,20 +12,51 @@ export type NucleotideTheme = Record<Nucleotide, ColorPair>;
 // Amino acid color theme
 export type AminoTheme = Record<AminoAcid, ColorPair>;
 
-// HUD/UI color theme
+// HUD/UI color theme - Extended for rich visualizations
 export interface HudTheme {
+  // Core colors
   primary: string;
   secondary: string;
   accent: string;
   background: string;
+  backgroundAlt: string;      // Alternative/lighter background for panels
+
+  // Text hierarchy
   text: string;
   textDim: string;
+  textMuted: string;          // Even dimmer for background elements
+
+  // Borders
   border: string;
   borderFocus: string;
+  borderLight: string;        // Subtle inner borders
+
+  // Status colors
   success: string;
   warning: string;
   error: string;
+  info: string;               // Informational (blue-ish)
+
+  // Specialized visualization colors
   diffHighlight: string;
+
+  // Gene visualization
+  geneForward: string;        // Forward strand genes
+  geneReverse: string;        // Reverse strand genes
+  geneHighlight: string;      // Currently selected gene
+
+  // Analysis gradients (for sparklines)
+  gradientLow: string;        // Low value in gradient
+  gradientMid: string;        // Middle value
+  gradientHigh: string;       // High value
+
+  // K-mer and anomaly
+  kmerNormal: string;         // Normal k-mer composition
+  kmerAnomaly: string;        // Anomalous regions
+
+  // Overlay effects
+  shadow: string;             // For pseudo-shadow effects
+  highlight: string;          // Bright highlight for selections
 }
 
 // Complete theme definition
@@ -83,18 +114,49 @@ const classicAminoAcids: AminoTheme = {
 };
 
 const classicHud: HudTheme = {
+  // Core colors
   primary: '#5cb85c',
   secondary: '#0275d8',
   accent: '#f0ad4e',
   background: '#1a1a2e',
+  backgroundAlt: '#252542',
+
+  // Text hierarchy
   text: '#e0e0e0',
-  textDim: '#6c757d',
+  textDim: '#8c8ca0',
+  textMuted: '#4d4d66',
+
+  // Borders
   border: '#3d3d5c',
   borderFocus: '#5cb85c',
+  borderLight: '#2d2d4a',
+
+  // Status colors
   success: '#5cb85c',
   warning: '#f0ad4e',
   error: '#d9534f',
+  info: '#5bc0de',
+
+  // Diff
   diffHighlight: '#ff6b6b',
+
+  // Gene visualization
+  geneForward: '#5cb85c',
+  geneReverse: '#0275d8',
+  geneHighlight: '#f0ad4e',
+
+  // Analysis gradients
+  gradientLow: '#264653',
+  gradientMid: '#2a9d8f',
+  gradientHigh: '#e9c46a',
+
+  // K-mer
+  kmerNormal: '#6c757d',
+  kmerAnomaly: '#e76f51',
+
+  // Effects
+  shadow: '#0d0d1a',
+  highlight: '#ffffff',
 };
 
 export const CLASSIC_THEME: Theme = {
@@ -139,18 +201,49 @@ const oceanAminoAcids: AminoTheme = {
 };
 
 const oceanHud: HudTheme = {
+  // Core colors
   primary: '#4ecdc4',
   secondary: '#1a535c',
   accent: '#ffe66d',
   background: '#0a1628',
+  backgroundAlt: '#142840',
+
+  // Text hierarchy
   text: '#e0f7fa',
-  textDim: '#5c7080',
+  textDim: '#7ca0b8',
+  textMuted: '#3d5a6d',
+
+  // Borders
   border: '#264653',
   borderFocus: '#4ecdc4',
+  borderLight: '#1a3342',
+
+  // Status colors
   success: '#4ecdc4',
   warning: '#ffe66d',
   error: '#ff6b6b',
+  info: '#48cae4',
+
+  // Diff
   diffHighlight: '#ff9f1c',
+
+  // Gene visualization
+  geneForward: '#4ecdc4',
+  geneReverse: '#1a535c',
+  geneHighlight: '#ffe66d',
+
+  // Analysis gradients
+  gradientLow: '#0a2342',
+  gradientMid: '#2a9d8f',
+  gradientHigh: '#48cae4',
+
+  // K-mer
+  kmerNormal: '#5c7080',
+  kmerAnomaly: '#ff6b6b',
+
+  // Effects
+  shadow: '#050d14',
+  highlight: '#ffffff',
 };
 
 export const OCEAN_THEME: Theme = {
@@ -195,18 +288,49 @@ const matrixAminoAcids: AminoTheme = {
 };
 
 const matrixHud: HudTheme = {
+  // Core colors
   primary: '#00ff00',
   secondary: '#00cc00',
   accent: '#00ff66',
   background: '#000000',
+  backgroundAlt: '#0a1a0a',
+
+  // Text hierarchy
   text: '#00ff00',
-  textDim: '#006600',
+  textDim: '#00aa00',
+  textMuted: '#005500',
+
+  // Borders
   border: '#003300',
   borderFocus: '#00ff00',
+  borderLight: '#002200',
+
+  // Status colors
   success: '#00ff00',
   warning: '#ffff00',
   error: '#ff0000',
+  info: '#00ffff',
+
+  // Diff
   diffHighlight: '#ff6600',
+
+  // Gene visualization
+  geneForward: '#00ff00',
+  geneReverse: '#00cc00',
+  geneHighlight: '#00ff66',
+
+  // Analysis gradients
+  gradientLow: '#001a00',
+  gradientMid: '#00aa00',
+  gradientHigh: '#00ff00',
+
+  // K-mer
+  kmerNormal: '#006600',
+  kmerAnomaly: '#ff3300',
+
+  // Effects
+  shadow: '#000000',
+  highlight: '#33ff33',
 };
 
 export const MATRIX_THEME: Theme = {
@@ -251,18 +375,49 @@ const sunsetAminoAcids: AminoTheme = {
 };
 
 const sunsetHud: HudTheme = {
+  // Core colors
   primary: '#ff6b35',
   secondary: '#f7c59f',
   accent: '#efa00b',
   background: '#1e1e2f',
+  backgroundAlt: '#2a2a42',
+
+  // Text hierarchy
   text: '#fefae0',
-  textDim: '#9a8c98',
+  textDim: '#b8a8b0',
+  textMuted: '#6a5a68',
+
+  // Borders
   border: '#4a4e69',
   borderFocus: '#ff6b35',
+  borderLight: '#3a3a52',
+
+  // Status colors
   success: '#06d6a0',
   warning: '#ffd166',
   error: '#d62246',
+  info: '#118ab2',
+
+  // Diff
   diffHighlight: '#ef476f',
+
+  // Gene visualization
+  geneForward: '#ff6b35',
+  geneReverse: '#f7c59f',
+  geneHighlight: '#efa00b',
+
+  // Analysis gradients
+  gradientLow: '#2d1b30',
+  gradientMid: '#ff6b35',
+  gradientHigh: '#ffd166',
+
+  // K-mer
+  kmerNormal: '#9a8c98',
+  kmerAnomaly: '#d62246',
+
+  // Effects
+  shadow: '#0f0f1a',
+  highlight: '#ffffff',
 };
 
 export const SUNSET_THEME: Theme = {
@@ -307,18 +462,49 @@ const forestAminoAcids: AminoTheme = {
 };
 
 const forestHud: HudTheme = {
+  // Core colors
   primary: '#40916c',
   secondary: '#2d6a4f',
   accent: '#95d5b2',
   background: '#0d1b0f',
+  backgroundAlt: '#1a2e1f',
+
+  // Text hierarchy
   text: '#d8f3dc',
-  textDim: '#6b705c',
+  textDim: '#8fa890',
+  textMuted: '#4a5c4d',
+
+  // Borders
   border: '#344e41',
   borderFocus: '#40916c',
+  borderLight: '#263832',
+
+  // Status colors
   success: '#40916c',
   warning: '#d4a373',
   error: '#bc4749',
+  info: '#588157',
+
+  // Diff
   diffHighlight: '#e9c46a',
+
+  // Gene visualization
+  geneForward: '#40916c',
+  geneReverse: '#2d6a4f',
+  geneHighlight: '#95d5b2',
+
+  // Analysis gradients
+  gradientLow: '#1b4332',
+  gradientMid: '#40916c',
+  gradientHigh: '#95d5b2',
+
+  // K-mer
+  kmerNormal: '#6b705c',
+  kmerAnomaly: '#bc4749',
+
+  // Effects
+  shadow: '#061008',
+  highlight: '#b7e4c7',
 };
 
 export const FOREST_THEME: Theme = {

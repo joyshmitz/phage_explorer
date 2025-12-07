@@ -7,6 +7,19 @@ interface GeneMapProps {
   width?: number;
 }
 
+// Characters for gene visualization
+const GENE_CHARS = {
+  forward: '▶',      // Forward strand gene marker
+  reverse: '◀',      // Reverse strand gene marker
+  both: '◆',         // Overlapping genes
+  empty: '·',        // Empty region (subtle dot)
+  current: '▼',      // Current position marker
+  boundary: '│',     // Gene boundary
+} as const;
+
+// K-mer gradient characters (10 levels)
+const KMER_GRADIENT = ' ░▒▓█';
+
 export function GeneMap({ width = 80 }: GeneMapProps): React.ReactElement {
   const currentPhage = usePhageStore(s => s.currentPhage);
   const scrollPosition = usePhageStore(s => s.scrollPosition);
@@ -19,49 +32,69 @@ export function GeneMap({ width = 80 }: GeneMapProps): React.ReactElement {
   const genomeLength = currentPhage?.genomeLength ?? 1;
 
   // Map width for the gene bar (minus borders and labels)
-  const barWidth = Math.max(1, width - 4);
+  const barWidth = Math.max(1, width - 10);
 
-  // Build the gene bar visualization
+  // Build the gene bar visualization with strand information
   const geneBar = useMemo(() => {
     if (genes.length === 0 || genomeLength === 0) {
-      return { bar: '░'.repeat(barWidth), labels: '' };
+      return {
+        chars: Array(barWidth).fill(GENE_CHARS.empty),
+        colors: Array(barWidth).fill(colors.textMuted),
+        labels: '',
+      };
     }
 
-    // Create bar array
-    const bar: string[] = Array(barWidth).fill('░');
+    // Create arrays for characters and colors
+    const barChars: string[] = Array(barWidth).fill(GENE_CHARS.empty);
+    const barColors: string[] = Array(barWidth).fill(colors.textMuted);
+
+    // Track gene density per pixel for overlap detection
+    const density: { forward: number; reverse: number }[] =
+      Array(barWidth).fill(null).map(() => ({ forward: 0, reverse: 0 }));
 
     // Calculate current view position
     const effectivePos = viewMode === 'aa' ? scrollPosition * 3 : scrollPosition;
     const viewPosInBar = Math.floor((effectivePos / genomeLength) * barWidth);
 
-    // Mark genes
+    // Mark genes with strand information
     for (const gene of genes) {
       const startPos = Math.floor((gene.startPos / genomeLength) * barWidth);
-      const endPos = Math.floor((gene.endPos / genomeLength) * barWidth);
+      const endPos = Math.max(startPos + 1, Math.floor((gene.endPos / genomeLength) * barWidth));
+      const isForward = gene.strand === '+' || gene.strand === undefined;
 
-      // endPos in DB is exclusive, but for rendering pixels we want to include up to the pixel representing the end.
-      // However, if endPos falls exactly on a pixel boundary, we shouldn't paint the next pixel.
-      // Simple approximation: loop i from startPos to endPos - 1
-      // But we are mapping large coords to small bar.
-      // Let's stick to the previous logic but adjust for 0-based exclusive.
-      
-      // If endPos calculation rounds down, it might miss the last partial pixel. 
-      // But typically we fill from start to end.
-      
       for (let i = startPos; i < endPos && i < barWidth; i++) {
         if (i >= 0) {
-          bar[i] = '█';
+          if (isForward) {
+            density[i].forward++;
+          } else {
+            density[i].reverse++;
+          }
         }
-      }
-      // Ensure at least one pixel is drawn for small genes
-      if (startPos === endPos && startPos < barWidth) {
-         bar[startPos] = '█';
       }
     }
 
-    // Mark current position
+    // Convert density to characters and colors
+    for (let i = 0; i < barWidth; i++) {
+      const d = density[i];
+      if (d.forward > 0 && d.reverse > 0) {
+        // Overlapping genes from both strands
+        barChars[i] = GENE_CHARS.both;
+        barColors[i] = colors.warning;
+      } else if (d.forward > 0) {
+        // Forward strand only
+        barChars[i] = d.forward > 1 ? '▓' : '█';
+        barColors[i] = colors.geneForward;
+      } else if (d.reverse > 0) {
+        // Reverse strand only
+        barChars[i] = d.reverse > 1 ? '▓' : '█';
+        barColors[i] = colors.geneReverse;
+      }
+    }
+
+    // Mark current position (overwrites gene marker)
     if (viewPosInBar >= 0 && viewPosInBar < barWidth) {
-      bar[viewPosInBar] = '▼';
+      barChars[viewPosInBar] = GENE_CHARS.current;
+      barColors[viewPosInBar] = colors.highlight;
     }
 
     // Generate labels for notable genes
@@ -100,19 +133,21 @@ export function GeneMap({ width = 80 }: GeneMapProps): React.ReactElement {
     }
 
     return {
-      bar: bar.join(''),
+      chars: barChars,
+      colors: barColors,
       labels: labelsArr.join(''),
     };
-  }, [genes, genomeLength, scrollPosition, viewMode, barWidth]);
+  }, [genes, genomeLength, scrollPosition, viewMode, barWidth, colors]);
 
-  // K-mer anomaly strip aligned to genome
+  // K-mer anomaly strip with gradient coloring
   const kmerStrip = useMemo(() => {
     if (!kmerOverlay || !kmerOverlay.values || kmerOverlay.values.length === 0 || genomeLength === 0) {
       return null;
     }
-    const gradient = ' .:-=+*#%@';
+
     const values = kmerOverlay.values;
-    const stripChars: string[] = Array(barWidth).fill(' ');
+    const chars: string[] = Array(barWidth).fill(' ');
+    const stripColors: string[] = Array(barWidth).fill(colors.textMuted);
 
     for (let i = 0; i < barWidth; i++) {
       const pos = (i / barWidth) * genomeLength;
@@ -121,61 +156,111 @@ export function GeneMap({ width = 80 }: GeneMapProps): React.ReactElement {
         Math.max(0, Math.floor((pos / genomeLength) * values.length))
       );
       const v = values[idx];
-      const gIdx = Math.min(gradient.length - 1, Math.max(0, Math.round(v * (gradient.length - 1))));
-      stripChars[i] = gradient[gIdx];
+
+      // Use gradient character
+      const gIdx = Math.min(KMER_GRADIENT.length - 1, Math.max(0, Math.round(v * (KMER_GRADIENT.length - 1))));
+      chars[i] = KMER_GRADIENT[gIdx];
+
+      // Color based on anomaly level
+      if (v > 0.7) {
+        stripColors[i] = colors.kmerAnomaly;
+      } else if (v > 0.4) {
+        stripColors[i] = colors.warning;
+      } else {
+        stripColors[i] = colors.kmerNormal;
+      }
     }
 
-    return stripChars.join('');
-  }, [kmerOverlay, genomeLength, barWidth]);
+    return { chars, colors: stripColors };
+  }, [kmerOverlay, genomeLength, barWidth, colors]);
 
   // Find current gene
   const currentGene = useMemo(() => {
     const effectivePos = viewMode === 'aa' ? scrollPosition * 3 : scrollPosition;
-    // 0-based coordinates, end is exclusive
     return genes.find(g => effectivePos >= g.startPos && effectivePos < g.endPos);
   }, [genes, scrollPosition, viewMode]);
+
+  // Calculate position percentage
+  const effectivePos = viewMode === 'aa' ? scrollPosition * 3 : scrollPosition;
+  const posPercent = genomeLength > 0 ? ((effectivePos / genomeLength) * 100).toFixed(1) : '0.0';
 
   return (
     <Box
       flexDirection="column"
-      borderStyle="single"
+      borderStyle="round"
       borderColor={colors.border}
       paddingX={1}
     >
-      {/* Gene bar */}
+      {/* Title row with position info */}
+      <Box justifyContent="space-between">
+        <Box gap={1}>
+          <Text color={colors.primary} bold>◉ Gene Map</Text>
+          <Text color={colors.textMuted}>│</Text>
+          <Text color={colors.geneForward}>█ +strand</Text>
+          <Text color={colors.geneReverse}>█ -strand</Text>
+          <Text color={colors.warning}>◆ overlap</Text>
+        </Box>
+        <Box gap={1}>
+          <Text color={colors.textDim}>Position:</Text>
+          <Text color={colors.accent} bold>
+            {effectivePos.toLocaleString()}
+          </Text>
+          <Text color={colors.textMuted}>
+            ({posPercent}%)
+          </Text>
+        </Box>
+      </Box>
+
+      {/* Gene bar with individual character coloring */}
       <Box gap={1}>
-        <Text color={colors.textDim}>Genes:</Text>
-        <Text color={colors.accent}>{geneBar.bar}</Text>
+        <Text color={colors.textDim}>Genes </Text>
+        <Box>
+          {geneBar.chars.map((char, i) => (
+            <Text key={i} color={geneBar.colors[i]}>{char}</Text>
+          ))}
+        </Box>
       </Box>
 
       {/* K-mer anomaly strip */}
       {kmerStrip && (
         <Box gap={1}>
-          <Text color={colors.textDim}>K-mer:</Text>
-          <Text color={colors.warning}>{kmerStrip}</Text>
+          <Text color={colors.textDim}>K-mer </Text>
+          <Box>
+            {kmerStrip.chars.map((char, i) => (
+              <Text key={i} color={kmerStrip.colors[i]}>{char}</Text>
+            ))}
+          </Box>
         </Box>
       )}
 
       {/* Gene labels */}
       <Box gap={1}>
-        <Text color={colors.textDim}>      </Text>
-        <Text color={colors.textDim} dimColor>{geneBar.labels}</Text>
+        <Text color={colors.textDim}>{'      '}</Text>
+        <Text color={colors.textMuted}>{geneBar.labels}</Text>
       </Box>
 
       {/* Current gene info */}
       {currentGene && (
-        <Box gap={1}>
-          <Text color={colors.textDim}>Current:</Text>
+        <Box gap={1} marginTop={0}>
+          <Text color={colors.info}>▶</Text>
           <Text color={colors.text} bold>
             {currentGene.name || currentGene.locusTag || 'Unknown'}
           </Text>
+          <Text color={colors.textMuted}>│</Text>
           <Text color={colors.textDim}>
-            ({currentGene.startPos.toLocaleString()}-{currentGene.endPos.toLocaleString()})
+            {currentGene.startPos.toLocaleString()}-{currentGene.endPos.toLocaleString()} bp
+          </Text>
+          <Text color={currentGene.strand === '+' || currentGene.strand === undefined
+            ? colors.geneForward : colors.geneReverse}>
+            ({currentGene.strand === '+' || currentGene.strand === undefined ? '+' : '-'})
           </Text>
           {currentGene.product && (
-            <Text color={colors.textDim} dimColor>
-              - {currentGene.product.substring(0, 40)}
-            </Text>
+            <>
+              <Text color={colors.textMuted}>│</Text>
+              <Text color={colors.textDim}>
+                {currentGene.product.substring(0, 50)}{currentGene.product.length > 50 ? '…' : ''}
+              </Text>
+            </>
           )}
         </Box>
       )}

@@ -8,6 +8,14 @@ interface SearchOverlayProps {
   repository: PhageRepository;
 }
 
+// Format genome size compactly
+function formatSize(bp: number | null | undefined): string {
+  if (!bp) return '';
+  if (bp >= 100_000) return `${(bp / 1000).toFixed(0)}k`;
+  if (bp >= 1_000) return `${(bp / 1000).toFixed(1)}k`;
+  return `${bp}`;
+}
+
 export function SearchOverlay({ repository }: SearchOverlayProps): React.ReactElement {
   const theme = usePhageStore(s => s.currentTheme);
   const searchQuery = usePhageStore(s => s.searchQuery);
@@ -56,63 +64,125 @@ export function SearchOverlay({ repository }: SearchOverlayProps): React.ReactEl
     }
   });
 
+  const maxResults = 8;
+
   return (
     <Box
       flexDirection="column"
-      borderStyle="double"
-      borderColor={colors.accent}
+      borderStyle="round"
+      borderColor={colors.borderFocus}
       paddingX={2}
       paddingY={1}
-      width={60}
+      width={65}
     >
-      <Box justifyContent="center" marginBottom={1}>
-        <Text color={colors.accent} bold>
-          SEARCH PHAGES
-        </Text>
+      {/* Header */}
+      <Box justifyContent="space-between" marginBottom={1}>
+        <Box gap={1}>
+          <Text color={colors.primary} bold>◉ SEARCH PHAGES</Text>
+          <Text color={colors.accent}>[S]</Text>
+        </Box>
+        <Text color={colors.textMuted}>ESC to close</Text>
+      </Box>
+
+      {/* Separator */}
+      <Box marginBottom={1}>
+        <Text color={colors.borderLight}>{'─'.repeat(59)}</Text>
       </Box>
 
       {/* Search input */}
-      <Box marginBottom={1}>
-        <Text color={colors.textDim}>Search: </Text>
-        <TextInput
-          value={searchQuery}
-          onChange={setSearchQuery}
-          placeholder="Type to search..."
-        />
+      <Box marginBottom={1} gap={1}>
+        <Text color={colors.info}>🔍</Text>
+        <Text color={colors.textDim}>Query:</Text>
+        <Box borderStyle="single" borderColor={colors.border} paddingX={1}>
+          <TextInput
+            value={searchQuery}
+            onChange={setSearchQuery}
+            placeholder="name, host, family, or accession..."
+          />
+        </Box>
       </Box>
 
-      {/* Results */}
-      <Box flexDirection="column" height={10}>
-        {searchResults.length === 0 && searchQuery.length > 0 ? (
-          <Text color={colors.textDim}>No results found</Text>
-        ) : searchResults.length === 0 ? (
-          <Text color={colors.textDim}>
-            Search by name, host, family, or accession
+      {/* Results count */}
+      {searchQuery.length > 0 && (
+        <Box marginBottom={1}>
+          <Text color={colors.textMuted}>
+            {searchResults.length === 0
+              ? 'No matches'
+              : `${searchResults.length} match${searchResults.length === 1 ? '' : 'es'}`}
           </Text>
+        </Box>
+      )}
+
+      {/* Results list */}
+      <Box flexDirection="column" height={maxResults + 1}>
+        {searchResults.length === 0 && searchQuery.length === 0 ? (
+          <Box flexDirection="column">
+            <Text color={colors.textDim}>Start typing to search...</Text>
+            <Text color={colors.textMuted}>
+              Examples: "lambda", "E. coli", "T7", "NC_"
+            </Text>
+          </Box>
+        ) : searchResults.length === 0 ? (
+          <Box gap={1}>
+            <Text color={colors.warning}>⚠</Text>
+            <Text color={colors.textDim}>No phages match "{searchQuery}"</Text>
+          </Box>
         ) : (
-          searchResults.slice(0, 10).map((phage, i) => (
-            <Box key={phage.id}>
-              <Text
-                color={i === selectedIndex ? colors.accent : colors.text}
-                backgroundColor={i === selectedIndex ? colors.background : undefined}
-                bold={i === selectedIndex}
-              >
-                {i === selectedIndex ? '▶ ' : '  '}
-                {phage.name}
-              </Text>
-              <Text color={colors.textDim}>
-                {phage.host ? ` (${phage.host.split(' ')[0]})` : ''}
-              </Text>
-            </Box>
-          ))
+          searchResults.slice(0, maxResults).map((phage, i) => {
+            const isSelected = i === selectedIndex;
+            const hostAbbr = phage.host ? phage.host.split(/[\s,]+/)[0] : '';
+
+            return (
+              <Box key={phage.id} justifyContent="space-between">
+                <Box gap={0}>
+                  <Text
+                    color={isSelected ? colors.accent : colors.textMuted}
+                    bold={isSelected}
+                  >
+                    {isSelected ? '▶ ' : '  '}
+                  </Text>
+                  <Text
+                    color={isSelected ? colors.text : colors.textDim}
+                    bold={isSelected}
+                    backgroundColor={isSelected ? colors.backgroundAlt : undefined}
+                  >
+                    {phage.name}
+                  </Text>
+                </Box>
+                <Box gap={2}>
+                  {hostAbbr && (
+                    <Text color={colors.textMuted}>{hostAbbr}</Text>
+                  )}
+                  <Text color={isSelected ? colors.info : colors.textMuted}>
+                    {formatSize(phage.genomeLength)} bp
+                  </Text>
+                </Box>
+              </Box>
+            );
+          })
+        )}
+
+        {/* Show "more results" indicator */}
+        {searchResults.length > maxResults && (
+          <Text color={colors.textMuted}>
+            ... and {searchResults.length - maxResults} more
+          </Text>
         )}
       </Box>
 
+      {/* Separator */}
+      <Box marginTop={1}>
+        <Text color={colors.borderLight}>{'─'.repeat(59)}</Text>
+      </Box>
+
       {/* Instructions */}
-      <Box justifyContent="center" marginTop={1}>
-        <Text color={colors.textDim}>
-          ↑↓ navigate | Enter select | Esc cancel
-        </Text>
+      <Box justifyContent="center" marginTop={1} gap={2}>
+        <Text color={colors.info}>[↑↓]</Text>
+        <Text color={colors.textDim}>navigate</Text>
+        <Text color={colors.success}>[Enter]</Text>
+        <Text color={colors.textDim}>select</Text>
+        <Text color={colors.warning}>[Esc]</Text>
+        <Text color={colors.textDim}>cancel</Text>
       </Box>
     </Box>
   );

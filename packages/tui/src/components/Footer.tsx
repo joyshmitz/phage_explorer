@@ -1,87 +1,173 @@
 import React from 'react';
 import { Box, Text } from 'ink';
 import { usePhageStore } from '@phage-explorer/state';
+import type { HudTheme } from '@phage-explorer/core';
+
+// Key hint categories with associated colors
+type HintCategory = 'navigation' | 'view' | 'analysis' | 'overlay' | 'system';
+
+interface KeyHint {
+  key: string;
+  action: string;
+  category: HintCategory;
+}
+
+// Get color for category
+function getCategoryColor(category: HintCategory, colors: HudTheme): string {
+  switch (category) {
+    case 'navigation': return colors.info;
+    case 'view': return colors.success;
+    case 'analysis': return colors.warning;
+    case 'overlay': return colors.accent;
+    case 'system': return colors.textDim;
+    default: return colors.text;
+  }
+}
+
+// Get overlay display character
+function getOverlayChar(o: string): string {
+  const map: Record<string, string> = {
+    gcSkew: 'G',
+    complexity: 'X',
+    bendability: 'B',
+    kmerAnomaly: 'J',
+    modules: 'L',
+    promoter: 'P',
+    repeats: 'R',
+    pressure: 'V',
+    transcriptionFlow: 'Y',
+  };
+  return map[o] ?? o.charAt(0).toUpperCase();
+}
+
+// Get overlay display name
+function getOverlayName(o: string): string {
+  const map: Record<string, string> = {
+    analysisMenu: 'Analysis',
+    simulationHub: 'Simulations',
+    commandPalette: 'Palette',
+    comparison: 'Compare',
+    help: 'Help',
+    search: 'Search',
+    aaKey: 'AA Key',
+    simulationView: 'Sim View',
+  };
+  return map[o] ?? o;
+}
 
 export function Footer(): React.ReactElement {
   const theme = usePhageStore(s => s.currentTheme);
   const viewMode = usePhageStore(s => s.viewMode);
   const overlays = usePhageStore(s => s.overlays);
   const experienceLevel = usePhageStore(s => s.experienceLevel);
+
+  // Find active modal (top-level menu-like overlay)
   const modal = (() => {
     for (let i = overlays.length - 1; i >= 0; i--) {
       const o = overlays[i];
-      if (o === 'analysisMenu' || o === 'simulationHub' || o === 'commandPalette' || o === 'comparison') {
+      if (o === 'analysisMenu' || o === 'simulationHub' || o === 'commandPalette' || o === 'comparison' || o === 'help' || o === 'search') {
         return o;
       }
     }
     return null;
   })();
+
   const colors = theme.colors;
 
-  const keyHints = [
-    { key: '↑↓', action: 'phages' },
-    { key: '←→', action: 'scroll' },
-    { key: viewMode === 'dna' ? 'N' : 'C', action: viewMode === 'dna' ? 'AA view' : 'DNA view' },
-    { key: 'F', action: 'frame' },
-    { key: 'T', action: 'theme' },
-    { key: 'D', action: 'diff' },
-    { key: 'W', action: 'compare' },
-    { key: 'M', action: '3D' },
-    { key: 'O', action: '3D pause' },
-    { key: 'Z', action: '3D fullscreen' },
-    { key: 'R', action: '3D quality' },
-    ...(experienceLevel === 'novice' ? [] : [
-      { key: 'V', action: 'Pressure gauge' },
-      { key: 'G', action: 'GC skew' },
-      { key: 'X', action: 'complexity' },
-      { key: 'J', action: 'k-mer anomaly' },
-      { key: 'L', action: 'modules' },
-    ]),
-    { key: 'S / /', action: 'search' },
-    { key: '?', action: 'help' },
+  // Active data overlays
+  const dataOverlays = overlays.filter(o =>
+    ['gcSkew', 'complexity', 'bendability', 'promoter', 'repeats', 'kmerAnomaly', 'modules', 'pressure', 'transcriptionFlow'].includes(o)
+  );
+
+  // Build key hints based on experience level
+  const keyHints: KeyHint[] = [
+    // Navigation (always shown)
+    { key: '↑↓', action: 'phage', category: 'navigation' },
+    { key: '←→', action: 'scroll', category: 'navigation' },
+
+    // View controls
+    { key: viewMode === 'dna' ? 'N' : 'C', action: viewMode === 'dna' ? 'AA' : 'DNA', category: 'view' },
+    { key: 'F', action: 'frame', category: 'view' },
+    { key: 'T', action: 'theme', category: 'view' },
+    { key: 'D', action: 'diff', category: 'view' },
+
+    // 3D model controls
+    { key: 'M', action: '3D', category: 'view' },
+    { key: 'Z', action: 'fullscreen', category: 'view' },
+
+    // Analysis overlays (intermediate+)
+    ...(experienceLevel !== 'novice' ? [
+      { key: 'G', action: 'GC', category: 'analysis' } as KeyHint,
+      { key: 'X', action: 'complexity', category: 'analysis' } as KeyHint,
+      { key: 'V', action: 'pressure', category: 'analysis' } as KeyHint,
+    ] : []),
+
+    // System controls
+    { key: 'W', action: 'compare', category: 'overlay' },
+    { key: 'S', action: 'search', category: 'overlay' },
+    { key: '?', action: 'help', category: 'system' },
   ];
 
   return (
     <Box
-      borderStyle="single"
+      borderStyle="round"
       borderColor={colors.border}
       paddingX={1}
       justifyContent="space-between"
     >
-      <Box gap={2} flexWrap="wrap">
-        {keyHints.map(hint => (
+      {/* Key hints grouped by visual category */}
+      <Box gap={1} flexWrap="wrap">
+        {keyHints.map((hint, idx) => (
           <Box key={hint.key} gap={0}>
-            <Text color={colors.accent}>[{hint.key}]</Text>
-            <Text color={colors.textDim}> {hint.action}</Text>
+            <Text color={getCategoryColor(hint.category, colors)} bold>
+              [{hint.key}]
+            </Text>
+            <Text color={colors.textDim}>{hint.action}</Text>
+            {idx < keyHints.length - 1 && (
+              <Text color={colors.borderLight}> </Text>
+            )}
           </Box>
         ))}
       </Box>
 
+      {/* Status section */}
       <Box gap={2} alignItems="center">
-        <Text color={colors.textDim}>
-          Overlays: {overlays.filter(o =>
-            o === 'gcSkew' || o === 'complexity' || o === 'bendability' || o === 'promoter' || o === 'repeats' || o === 'kmerAnomaly' || o === 'modules' || o === 'pressure'
-          ).map(o => {
-            if (o === 'gcSkew') return 'G';
-            if (o === 'complexity') return 'X';
-            if (o === 'bendability') return 'B';
-            if (o === 'kmerAnomaly') return 'J';
-            if (o === 'modules') return 'L';
-            if (o === 'promoter') return 'P';
-            if (o === 'repeats') return 'R';
-            if (o === 'pressure') return 'V';
-            return o;
-          }).join(' ') || 'none'}
-        </Text>
-        <Text color={colors.textDim}>
-          Modal: {modal ? (
-            modal === 'analysisMenu' ? 'Analysis' :
-            modal === 'simulationHub' ? 'Simulation' :
-            modal === 'commandPalette' ? 'Palette' :
-            modal === 'comparison' ? 'Comparison' : modal
-          ) : 'none'}
-        </Text>
-        <Text color={colors.textDim}>[Ctrl+C] quit</Text>
+        {/* Active data overlays */}
+        {dataOverlays.length > 0 && (
+          <Box gap={1}>
+            <Text color={colors.textMuted}>◈</Text>
+            <Text color={colors.textDim}>Layers:</Text>
+            <Box gap={0}>
+              {dataOverlays.map((o, i) => (
+                <Text key={o} color={colors.warning} bold>
+                  {getOverlayChar(o)}{i < dataOverlays.length - 1 ? '·' : ''}
+                </Text>
+              ))}
+            </Box>
+          </Box>
+        )}
+
+        {/* Active modal */}
+        {modal && (
+          <Box gap={1}>
+            <Text color={colors.textMuted}>◉</Text>
+            <Text color={colors.accent} bold>
+              {getOverlayName(modal)}
+            </Text>
+          </Box>
+        )}
+
+        {/* Experience level badge */}
+        <Box gap={0}>
+          <Text
+            color={experienceLevel === 'power' ? colors.accent :
+                   experienceLevel === 'intermediate' ? colors.info : colors.textMuted}
+            backgroundColor={colors.backgroundAlt}
+          >
+            {experienceLevel === 'power' ? ' ◆ Power ' :
+             experienceLevel === 'intermediate' ? ' ◇ Mid ' : ' ○ New '}
+          </Text>
+        </Box>
       </Box>
     </Box>
   );

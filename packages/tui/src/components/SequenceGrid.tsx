@@ -40,7 +40,7 @@ function groupCellsByColor(
       : getAminoAcidColor(theme, cell.char);
 
     // Modify colors for diff highlighting
-    let fg = colorPair.fg;
+    const fg = colorPair.fg;
     let bg = colorPair.bg;
 
     if (diffEnabled && cell.diff === 'different') {
@@ -135,7 +135,7 @@ export function SequenceGrid({
         kmerOverlay.values.length - 1,
         Math.max(0, Math.floor((pos / genomeLength) * kmerOverlay.values.length))
       );
-      const v = kmerOverlay.values[idx];
+      const v = kmerOverlay.values[idx] ?? 0; // Default to 0 if undefined
       const gIdx = Math.min(gradient.length - 1, Math.max(0, Math.round(v * (gradient.length - 1))));
       strip[col] = gradient[gIdx];
     }
@@ -156,18 +156,31 @@ export function SequenceGrid({
   return (
     <Box
       flexDirection="column"
-      borderStyle="single"
+      borderStyle="round"
       borderColor={colors.border}
       width={width + 2}
     >
-      {/* Title bar */}
+      {/* Title bar with better styling */}
       <Box paddingX={1} justifyContent="space-between">
-        <Text color={colors.primary} bold>
-          {viewMode === 'dna' ? 'DNA Sequence' : `Amino Acids (Frame ${readingFrame + 1})`}
-        </Text>
-        <Text color={colors.textDim}>
-          {scrollPosition.toLocaleString()} / {effectiveLength.toLocaleString()} ({positionPercent}%)
-        </Text>
+        <Box gap={1}>
+          <Text color={colors.primary} bold>◉</Text>
+          <Text color={colors.primary} bold>
+            {viewMode === 'dna' ? 'DNA Sequence' : 'Amino Acids'}
+          </Text>
+          {viewMode === 'aa' && (
+            <Text color={colors.accent}>(Frame {readingFrame + 1})</Text>
+          )}
+        </Box>
+        <Box gap={1}>
+          <Text color={colors.textMuted}>
+            {scrollPosition.toLocaleString()}
+          </Text>
+          <Text color={colors.textMuted}>/</Text>
+          <Text color={colors.text}>
+            {effectiveLength.toLocaleString()}
+          </Text>
+          <Text color={colors.accent}>({positionPercent}%)</Text>
+        </Box>
       </Box>
 
       {/* Sequence grid */}

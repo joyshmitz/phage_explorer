@@ -2,6 +2,25 @@ import React from 'react';
 import { Box, Text } from 'ink';
 import { usePhageStore } from '@phage-explorer/state';
 
+// Unicode decorative elements for visual polish
+const ICONS = {
+  dna: '🧬',
+  phage: '🦠',
+  arrow: '▶',
+  bullet: '●',
+  diamond: '◆',
+  gene: '◉',
+  diff: '⇄',
+  frame: '◫',
+} as const;
+
+// Format large numbers with K/M suffixes
+function formatNumber(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 10_000) return `${(n / 1_000).toFixed(1)}K`;
+  return n.toLocaleString();
+}
+
 export function Header(): React.ReactElement {
   const theme = usePhageStore(s => s.currentTheme);
   const phage = usePhageStore(s => s.currentPhage);
@@ -10,77 +29,159 @@ export function Header(): React.ReactElement {
   const viewMode = usePhageStore(s => s.viewMode);
   const readingFrame = usePhageStore(s => s.readingFrame);
   const diffEnabled = usePhageStore(s => s.diffEnabled);
+  const experienceLevel = usePhageStore(s => s.experienceLevel);
 
   const colors = theme.colors;
+
+  // Create visual experience level indicator
+  const levelIndicator = experienceLevel === 'power' ? '★★★' :
+                         experienceLevel === 'intermediate' ? '★★☆' : '★☆☆';
 
   return (
     <Box
       flexDirection="column"
-      borderStyle="single"
+      borderStyle="round"
       borderColor={colors.border}
       paddingX={1}
     >
-      {/* Title row */}
+      {/* Title bar with branding */}
       <Box justifyContent="space-between">
-        <Text color={colors.primary} bold>
-          PHAGE-EXPLORER v1.0
-        </Text>
+        <Box gap={1}>
+          <Text color={colors.primary} bold>
+            ═══
+          </Text>
+          <Text color={colors.accent} bold>
+            PHAGE EXPLORER
+          </Text>
+          <Text color={colors.textDim}>v1.0</Text>
+          <Text color={colors.primary} bold>
+            ═══
+          </Text>
+        </Box>
         <Box gap={2}>
-          <Text color={colors.textDim}>[T] Theme</Text>
-          <Text color={colors.textDim}>[?] Help</Text>
-          <Text color={colors.textDim}>[Q] Quit</Text>
+          <Text color={colors.textMuted}>{levelIndicator}</Text>
+          <Text color={colors.textDim}>
+            <Text color={colors.accent}>[T]</Text> Theme
+          </Text>
+          <Text color={colors.textDim}>
+            <Text color={colors.accent}>[?]</Text> Help
+          </Text>
+          <Text color={colors.textDim}>
+            <Text color={colors.accent}>[Q]</Text> Quit
+          </Text>
         </Box>
       </Box>
 
       {/* Phage info row */}
-      <Box justifyContent="space-between">
+      <Box justifyContent="space-between" marginTop={0}>
         <Box gap={1}>
-          <Text color={colors.accent}>▶</Text>
+          <Text color={colors.accent}>{ICONS.arrow}</Text>
           <Text color={colors.text} bold>
             {phage?.name ?? 'Loading...'}
           </Text>
+          {phage?.family && (
+            <Text color={colors.textMuted}>
+              [{phage.family}]
+            </Text>
+          )}
         </Box>
-        <Text color={colors.textDim}>
-          {phageIndex + 1} / {phages.length}
-        </Text>
+        <Box gap={1}>
+          <Text color={colors.textMuted}>Phage</Text>
+          <Text color={colors.primary} bold>
+            {phageIndex + 1}
+          </Text>
+          <Text color={colors.textMuted}>of</Text>
+          <Text color={colors.text}>
+            {phages.length}
+          </Text>
+        </Box>
       </Box>
 
-      {/* Stats row */}
-      <Box gap={2} flexWrap="wrap">
+      {/* Stats row with better visual separation */}
+      <Box gap={3} flexWrap="wrap">
         {phage && (
           <>
-            <Text color={colors.textDim}>
-              Family: <Text color={colors.text}>{phage.family ?? 'Unknown'}</Text>
-            </Text>
-            <Text color={colors.textDim}>
-              Host: <Text color={colors.text}>{phage.host ?? 'Unknown'}</Text>
-            </Text>
-            <Text color={colors.textDim}>
-              Size: <Text color={colors.text}>{phage.genomeLength?.toLocaleString() ?? '?'} bp</Text>
-            </Text>
-            <Text color={colors.textDim}>
-              GC: <Text color={colors.text}>{phage.gcContent?.toFixed(1) ?? '?'}%</Text>
-            </Text>
+            <Box gap={1}>
+              <Text color={colors.info}>{ICONS.bullet}</Text>
+              <Text color={colors.textDim}>Host:</Text>
+              <Text color={colors.text}>{phage.host ?? 'Unknown'}</Text>
+            </Box>
+            <Box gap={1}>
+              <Text color={colors.success}>{ICONS.bullet}</Text>
+              <Text color={colors.textDim}>Size:</Text>
+              <Text color={colors.text} bold>{formatNumber(phage.genomeLength ?? 0)}</Text>
+              <Text color={colors.textMuted}>bp</Text>
+            </Box>
+            <Box gap={1}>
+              <Text color={colors.warning}>{ICONS.bullet}</Text>
+              <Text color={colors.textDim}>GC:</Text>
+              <Text color={colors.text}>{phage.gcContent?.toFixed(1) ?? '?'}%</Text>
+            </Box>
+            <Box gap={1}>
+              <Text color={colors.secondary}>{ICONS.bullet}</Text>
+              <Text color={colors.textDim}>Genes:</Text>
+              <Text color={colors.text}>{phage.genes?.length ?? '?'}</Text>
+            </Box>
           </>
         )}
       </Box>
 
-      {/* Mode row */}
-      <Box gap={2}>
-        <Text color={colors.textDim}>
-          Mode: <Text color={colors.accent}>{viewMode === 'dna' ? 'DNA' : 'AA'}</Text>
-        </Text>
-        {viewMode === 'aa' && (
-          <Text color={colors.textDim}>
-            Frame: <Text color={colors.accent}>{readingFrame + 1}</Text>
+      {/* Mode row with visual indicators */}
+      <Box gap={3} marginTop={0}>
+        {/* View mode indicator */}
+        <Box gap={1}>
+          <Text
+            color={viewMode === 'dna' ? colors.success : colors.textMuted}
+            bold={viewMode === 'dna'}
+            backgroundColor={viewMode === 'dna' ? colors.backgroundAlt : undefined}
+          >
+            {' DNA '}
           </Text>
+          <Text color={colors.textMuted}>│</Text>
+          <Text
+            color={viewMode === 'aa' ? colors.accent : colors.textMuted}
+            bold={viewMode === 'aa'}
+            backgroundColor={viewMode === 'aa' ? colors.backgroundAlt : undefined}
+          >
+            {' AA '}
+          </Text>
+        </Box>
+
+        {/* Reading frame (only shown in AA mode) */}
+        {viewMode === 'aa' && (
+          <Box gap={1}>
+            <Text color={colors.info}>{ICONS.frame}</Text>
+            <Text color={colors.textDim}>Frame:</Text>
+            <Box>
+              {[0, 1, 2].map(f => (
+                <Text
+                  key={f}
+                  color={readingFrame === f ? colors.accent : colors.textMuted}
+                  bold={readingFrame === f}
+                  backgroundColor={readingFrame === f ? colors.backgroundAlt : undefined}
+                >
+                  {` ${f + 1} `}
+                </Text>
+              ))}
+            </Box>
+          </Box>
         )}
+
+        {/* Diff mode indicator */}
         {diffEnabled && (
-          <Text color={colors.warning}>DIFF MODE</Text>
+          <Box gap={1}>
+            <Text color={colors.warning} bold backgroundColor={colors.backgroundAlt}>
+              {' '}{ICONS.diff} DIFF MODE{' '}
+            </Text>
+          </Box>
         )}
-        <Text color={colors.textDim}>
-          Theme: <Text color={colors.accent}>{theme.name}</Text>
-        </Text>
+
+        {/* Theme indicator */}
+        <Box gap={1}>
+          <Text color={colors.textMuted}>{ICONS.diamond}</Text>
+          <Text color={colors.textDim}>Theme:</Text>
+          <Text color={colors.accent} bold>{theme.name}</Text>
+        </Box>
       </Box>
     </Box>
   );

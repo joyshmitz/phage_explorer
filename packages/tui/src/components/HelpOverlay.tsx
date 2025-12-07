@@ -1,25 +1,55 @@
 import React, { useMemo } from 'react';
 import { Box, Text, useInput } from 'ink';
 import { usePhageStore } from '@phage-explorer/state';
+import type { HudTheme } from '@phage-explorer/core';
 
 type HelpRow = { key: string; desc: string; note?: string };
 
-function Section({ title, rows }: { title: string; rows: HelpRow[] }): React.ReactElement {
-  const colors = usePhageStore.getState().currentTheme.colors;
+// Category colors for different types of keys
+type KeyCategory = 'navigation' | 'view' | 'analysis' | 'overlay' | 'system';
+
+function getCategoryColor(category: KeyCategory, colors: HudTheme): string {
+  switch (category) {
+    case 'navigation': return colors.info;
+    case 'view': return colors.success;
+    case 'analysis': return colors.warning;
+    case 'overlay': return colors.accent;
+    case 'system': return colors.textDim;
+  }
+}
+
+function Section({
+  title,
+  rows,
+  category,
+  colors,
+}: {
+  title: string;
+  rows: HelpRow[];
+  category: KeyCategory;
+  colors: HudTheme;
+}): React.ReactElement {
+  const catColor = getCategoryColor(category, colors);
+
   return (
     <Box flexDirection="column" marginBottom={1}>
-      <Text color={colors.primary} bold underline>
-        {title}
-      </Text>
-      {rows.map(({ key, desc, note }) => (
-        <Box key={key} gap={2}>
-          <Text color={colors.accent}>{key.padEnd(12)}</Text>
-          <Text color={colors.text}>{desc}</Text>
-          {note ? (
-            <Text color={colors.textDim}> · {note}</Text>
-          ) : null}
-        </Box>
-      ))}
+      <Box gap={1} marginBottom={0}>
+        <Text color={catColor}>◉</Text>
+        <Text color={colors.primary} bold>
+          {title}
+        </Text>
+      </Box>
+      <Box paddingLeft={2} flexDirection="column">
+        {rows.map(({ key, desc, note }) => (
+          <Box key={key} gap={1}>
+            <Text color={catColor} bold>{key.padEnd(12)}</Text>
+            <Text color={colors.text}>{desc}</Text>
+            {note && (
+              <Text color={colors.textMuted}> · {note}</Text>
+            )}
+          </Box>
+        ))}
+      </Box>
     </Box>
   );
 }
@@ -31,6 +61,7 @@ export function HelpOverlay(): React.ReactElement {
   const diffEnabled = usePhageStore(s => s.diffEnabled);
   const helpDetail = usePhageStore(s => s.helpDetail);
   const overlays = usePhageStore(s => s.overlays);
+  const experienceLevel = usePhageStore(s => s.experienceLevel);
   const setHelpDetail = usePhageStore(s => s.setHelpDetail);
   const closeOverlay = usePhageStore(s => s.closeOverlay);
   const colors = theme.colors;
@@ -45,149 +76,181 @@ export function HelpOverlay(): React.ReactElement {
     }
   });
 
-  const overlayRows: HelpRow[] = [
-    { key: 'X', desc: 'Sequence complexity (entropy)', note: 'HGT / repeats' },
-    { key: 'G', desc: 'GC skew overlay', note: 'origin / terminus' },
-    { key: 'Y', desc: 'Transcription flow', note: 'promoter/terminator flux' },
-    { key: 'V', desc: 'Packaging pressure gauge', note: 'force / atm' },
-    { key: 'B', desc: 'DNA bendability (AT proxy)' },
-    { key: 'J', desc: 'K-mer anomaly map', note: 'local composition shifts' },
-    { key: 'L', desc: 'Module coherence / stoichiometry', note: 'capsid/tail/lysis' },
-    { key: 'Ctrl+F', desc: 'Fold quickview (embeddings)', note: 'structure novelty' },
-    { key: 'P', desc: 'Promoter / RBS motifs' },
-    { key: 'R', desc: 'Repeats / palindromes' },
-    { key: 'K', desc: 'AA legend (AA view)', note: 'AA only' },
-    { key: 'W', desc: 'Comparison overlay', note: 'pairwise' },
-    { key: ': / Ctrl+P', desc: 'Command palette', note: 'Fuzzy commands' },
-  ];
-
   const essential = useMemo(() => {
     return {
       left: [
         {
-          title: 'Navigate',
+          title: 'Navigation',
+          category: 'navigation' as KeyCategory,
           rows: [
             { key: '↑ / ↓', desc: 'Previous / next phage' },
             { key: '← / →', desc: 'Scroll sequence left / right' },
-            { key: 'PgUp / PgDn', desc: 'Scroll by page' },
-            { key: 'Home / End', desc: 'Jump to start / end' },
+            { key: 'PgUp/PgDn', desc: 'Scroll by page' },
+            { key: 'Home/End', desc: 'Jump to start / end' },
+            { key: '[ / ]', desc: 'Jump to prev / next gene' },
           ],
         },
         {
-          title: 'View & diff',
+          title: 'View Controls',
+          category: 'view' as KeyCategory,
           rows: [
-            { key: 'N / C / Space', desc: 'Toggle DNA / AA view' },
-            { key: 'F', desc: `Reading frame (now ${readingFrame + 1})`, note: 'AA view only' },
-            { key: 'T', desc: 'Cycle theme' },
-            { key: 'D', desc: `Diff mode (${diffEnabled ? 'on' : 'off'})` },
+            { key: 'N / C', desc: 'Toggle DNA / AA view' },
+            { key: 'F', desc: `Reading frame (${readingFrame + 1})`, note: 'AA only' },
+            { key: 'T', desc: `Theme: ${theme.name}` },
+            { key: 'D', desc: `Diff mode ${diffEnabled ? '●' : '○'}` },
+          ],
+        },
+        {
+          title: '3D Model',
+          category: 'view' as KeyCategory,
+          rows: [
             { key: 'M', desc: 'Toggle 3D model' },
-            { key: 'O', desc: 'Pause/resume 3D model' },
+            { key: 'O', desc: 'Pause / resume' },
+            { key: 'Z', desc: 'Fullscreen mode' },
+            { key: 'R', desc: 'Cycle quality' },
           ],
         },
       ],
       right: [
         {
-          title: 'Quick overlays',
+          title: 'Quick Overlays',
+          category: 'analysis' as KeyCategory,
           rows: [
-            { key: 'X', desc: 'Complexity (HGT / repeats)' },
-            { key: 'G', desc: 'GC skew (origin/terminus)' },
-            { key: 'B', desc: 'Bendability (AT proxy)' },
-            { key: 'J', desc: 'K-mer anomaly (composition islands)' },
-            { key: 'L', desc: 'Module coherence (stoichiometry)' },
-            { key: 'Ctrl+F', desc: 'Fold quickview (embeddings)' },
-            { key: 'P', desc: 'Promoter / RBS motifs' },
-            { key: 'R', desc: 'Repeats / palindromes' },
-            { key: 'W', desc: 'Comparison overlay' },
-            { key: 'K', desc: 'AA legend (AA view)' },
-            { key: ': / Ctrl+P', desc: 'Command palette (fuzzy commands)' },
+            { key: 'G', desc: 'GC skew', note: 'origin/terminus' },
+            { key: 'X', desc: 'Complexity', note: 'HGT/repeats' },
+            { key: 'V', desc: 'Packaging pressure' },
+            { key: 'B', desc: 'Bendability', note: 'AT proxy' },
+            { key: 'J', desc: 'K-mer anomaly' },
+            { key: 'P', desc: 'Promoter/RBS motifs' },
           ],
         },
         {
-          title: 'Find & exit',
+          title: 'Menus & Search',
+          category: 'overlay' as KeyCategory,
           rows: [
             { key: 'S / /', desc: 'Search phages' },
-            { key: '?', desc: 'More help detail' },
-            { key: 'A', desc: 'Analysis menu (unlocks at intermediate)' },
-            { key: 'Esc', desc: 'Close top overlay' },
+            { key: 'W', desc: 'Compare genomes' },
+            { key: 'A', desc: 'Analysis menu' },
+            { key: 'Shift+S', desc: 'Simulation hub' },
+            { key: ': / Ctrl+P', desc: 'Command palette' },
+          ],
+        },
+        {
+          title: 'System',
+          category: 'system' as KeyCategory,
+          rows: [
+            { key: '?', desc: 'Toggle help detail' },
+            { key: 'K', desc: 'AA color legend' },
+            { key: 'Esc', desc: 'Close overlay' },
             { key: 'Q', desc: 'Quit' },
           ],
         },
       ],
     };
-  }, [readingFrame, diffEnabled]);
+  }, [readingFrame, diffEnabled, theme.name]);
 
   const detailed = useMemo(() => {
-    const left: { title: string; rows: HelpRow[] }[] = [
-      ...essential.left,
-      {
-        title: 'Context',
-        rows: [
-          { key: 'Mode', desc: viewMode === 'aa' ? 'Amino acids (translated)' : 'DNA (nucleotides)' },
-          { key: 'Diff', desc: diffEnabled ? 'Comparing vs reference' : 'Single genome view' },
-          { key: '3D', desc: 'M toggles, O pause/resume, Z fullscreen, R quality' },
-          { key: 'Overlays', desc: overlays.join(', ') || 'None' },
-        ],
-      },
-    ];
-
-    const right: { title: string; rows: HelpRow[] }[] = [
-      ...essential.right,
-      {
-        title: 'Analysis & menus',
-        rows: [
-          { key: 'A', desc: 'Analysis menu' },
-          { key: 'Shift+S', desc: 'Simulation hub' },
-          { key: 'W', desc: 'Genome comparison overlay' },
-          { key: 'K', desc: 'Amino acid key' },
-          { key: ': / Ctrl+P', desc: 'Command palette (future)' },
-        ],
-      },
-      {
-        title: '3D & model controls',
-        rows: [
-            { key: 'M', desc: 'Toggle 3D model' },
-            { key: 'O', desc: 'Pause/resume model' },
-            { key: 'Z', desc: 'Fullscreen model' },
-            { key: 'R', desc: 'Cycle model quality' },
-        ],
-      },
-      {
-        title: 'Quick overlays (full list)',
-        rows: overlayRows,
-      },
-    ];
-
-    return { left, right };
-  }, [essential, viewMode, diffEnabled, overlays, overlayRows]);
+    return {
+      left: [
+        ...essential.left,
+        {
+          title: 'Current State',
+          category: 'system' as KeyCategory,
+          rows: [
+            { key: 'Mode', desc: viewMode === 'aa' ? 'Amino acids' : 'DNA nucleotides' },
+            { key: 'Level', desc: experienceLevel },
+            { key: 'Overlays', desc: overlays.length > 0 ? overlays.join(', ') : 'None' },
+          ],
+        },
+      ],
+      right: [
+        ...essential.right,
+        {
+          title: 'Advanced Analysis',
+          category: 'analysis' as KeyCategory,
+          rows: [
+            { key: 'L', desc: 'Module coherence' },
+            { key: 'Y', desc: 'Transcription flow' },
+            { key: 'R', desc: 'Repeats/palindromes' },
+            { key: 'Ctrl+F', desc: 'Fold quickview' },
+          ],
+        },
+      ],
+    };
+  }, [essential, viewMode, experienceLevel, overlays]);
 
   const layout = helpDetail === 'essential' ? essential : detailed;
+
+  // Level indicator
+  const levelBadge = experienceLevel === 'power' ? '◆ Power' :
+                     experienceLevel === 'intermediate' ? '◇ Mid' : '○ New';
 
   return (
     <Box
       flexDirection="column"
-      borderStyle="double"
-      borderColor={colors.accent}
+      borderStyle="round"
+      borderColor={colors.borderFocus}
       paddingX={2}
       paddingY={1}
     >
+      {/* Header */}
       <Box justifyContent="space-between" marginBottom={1}>
-        <Text color={colors.accent} bold>
-          HELP {helpDetail === 'essential' ? '(essentials)' : '(detailed)'}
-        </Text>
-        <Text color={colors.textDim}>?: expand/close · Esc: close</Text>
+        <Box gap={1}>
+          <Text color={colors.primary} bold>◉ HELP</Text>
+          <Text color={colors.accent}>
+            [{helpDetail === 'essential' ? 'Essentials' : 'Detailed'}]
+          </Text>
+        </Box>
+        <Box gap={2}>
+          <Text
+            color={experienceLevel === 'power' ? colors.accent :
+                   experienceLevel === 'intermediate' ? colors.info : colors.textMuted}
+          >
+            {levelBadge}
+          </Text>
+          <Text color={colors.textMuted}>? toggle │ ESC close</Text>
+        </Box>
       </Box>
 
+      {/* Separator */}
+      <Box marginBottom={1}>
+        <Text color={colors.borderLight}>{'─'.repeat(76)}</Text>
+      </Box>
+
+      {/* Two-column layout */}
       <Box gap={4}>
-        <Box flexDirection="column" width={40}>
+        <Box flexDirection="column" width={38}>
           {layout.left.map(section => (
-            <Section key={section.title} title={section.title} rows={section.rows} />
+            <Section
+              key={section.title}
+              title={section.title}
+              rows={section.rows}
+              category={section.category}
+              colors={colors}
+            />
           ))}
         </Box>
-        <Box flexDirection="column" width={40}>
+        <Box flexDirection="column" width={38}>
           {layout.right.map(section => (
-            <Section key={section.title} title={section.title} rows={section.rows} />
+            <Section
+              key={section.title}
+              title={section.title}
+              rows={section.rows}
+              category={section.category}
+              colors={colors}
+            />
           ))}
         </Box>
+      </Box>
+
+      {/* Footer hint */}
+      <Box marginTop={1}>
+        <Text color={colors.borderLight}>{'─'.repeat(76)}</Text>
+      </Box>
+      <Box justifyContent="center" marginTop={0}>
+        <Text color={colors.textMuted}>
+          Features unlock as you explore: 5 min → intermediate, 60 min → power
+        </Text>
       </Box>
     </Box>
   );
