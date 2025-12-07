@@ -14,6 +14,7 @@ export interface MarkOverlay {
   id: OverlayId;
   label: string;
   positions: number[]; // absolute base positions of marks
+  motifs?: string[]; // optional motif labels aligned to positions
 }
 
 export type OverlayResult = NumericOverlay | MarkOverlay;
@@ -88,14 +89,16 @@ export function computeBendability(sequence: string, window = 400): NumericOverl
 
 export function computePromoterMarks(sequence: string): MarkOverlay {
   const marks: number[] = [];
+  const motifsFound: string[] = [];
   const motifs = ['TATAAT', 'TTGACA', 'AGGAGG']; // -10, -35, RBS Shine-Dalgarno
   for (let i = 0; i < sequence.length - 6; i++) {
     const sub = sequence.slice(i, i + 6).toUpperCase();
     if (motifs.includes(sub)) {
       marks.push(i);
+      motifsFound.push(sub);
     }
   }
-  return { id: 'promoter', label: 'Promoter/RBS motifs', positions: marks };
+  return { id: 'promoter', label: 'Promoter/RBS motifs', positions: marks, motifs: motifsFound };
 }
 
 export function computeRepeatMarks(sequence: string, minLen = 6): MarkOverlay {

@@ -41,7 +41,10 @@ export function PromoterOverlay({ sequence }: Props): React.ReactElement {
 
   const hits = useMemo(() => {
     const baseHits = overlayData && 'positions' in overlayData
-      ? overlayData.positions.map(pos => ({ pos, motif: 'motif' })) // motif unknown when precomputed; keep placeholder
+      ? overlayData.positions.map((pos, idx) => ({
+          pos,
+          motif: overlayData.motifs?.[idx] ?? 'motif',
+        }))
       : findMotifs(sequence.toUpperCase()).map(h => ({ pos: h.pos, motif: h.motif }));
     return baseHits.slice(0, 12);
   }, [sequence, overlayData]);
