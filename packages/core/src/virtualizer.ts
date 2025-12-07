@@ -34,7 +34,6 @@ export interface GridBuilderConfig {
   viewportRows: number;
   mode: ViewMode;
   frame: ReadingFrame;
-  showCodonBoundaries?: boolean;
 }
 
 // Build grid from sequence data
@@ -43,7 +42,7 @@ export function buildGrid(
   startIndex: number,
   config: GridBuilderConfig
 ): GridRow[] {
-  const { viewportCols, viewportRows, mode, frame, showCodonBoundaries } = config;
+  const { viewportCols, viewportRows, mode, frame } = config;
   const rows: GridRow[] = [];
 
   if (mode === 'dna') {

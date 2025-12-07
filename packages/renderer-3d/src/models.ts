@@ -10,31 +10,6 @@ export interface Model3D {
   name: string;
 }
 
-// Generate points on a sphere (for icosahedral capsid approximation)
-function generateSphere(radius: number, segments: number): Vector3[] {
-  const vertices: Vector3[] = [];
-
-  for (let lat = 0; lat <= segments; lat++) {
-    const theta = (lat * Math.PI) / segments;
-    const sinTheta = Math.sin(theta);
-    const cosTheta = Math.cos(theta);
-
-    for (let lon = 0; lon <= segments; lon++) {
-      const phi = (lon * 2 * Math.PI) / segments;
-      const sinPhi = Math.sin(phi);
-      const cosPhi = Math.cos(phi);
-
-      vertices.push({
-        x: radius * cosPhi * sinTheta,
-        y: radius * cosTheta,
-        z: radius * sinPhi * sinTheta,
-      });
-    }
-  }
-
-  return vertices;
-}
-
 // Generate icosahedron vertices (for capsid)
 function generateIcosahedron(radius: number): Vector3[] {
   const phi = (1 + Math.sqrt(5)) / 2; // Golden ratio
@@ -78,31 +53,6 @@ function generateCylinder(
       });
     }
   }
-
-  return vertices;
-}
-
-// Generate cone points (for tail tip/baseplate)
-function generateCone(
-  radius: number,
-  height: number,
-  segments: number,
-  yOffset: number = 0
-): Vector3[] {
-  const vertices: Vector3[] = [];
-
-  // Base ring
-  for (let i = 0; i < segments; i++) {
-    const angle = (i * 2 * Math.PI) / segments;
-    vertices.push({
-      x: radius * Math.cos(angle),
-      y: yOffset,
-      z: radius * Math.sin(angle),
-    });
-  }
-
-  // Tip
-  vertices.push(vec3(0, yOffset - height, 0));
 
   return vertices;
 }
