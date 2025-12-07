@@ -1,0 +1,425 @@
+/**
+ * Database Loader for Phage Explorer Web
+ *
+ * Handles loading the SQLite database from network or IndexedDB cache,
+ * initializing sql.js, and providing load progress callbacks.
+ */
+
+import initSqlJs, { type Database } from 'sql.js';
+import { SqlJsRepository } from './SqlJsRepository';
+import type {
+  PhageRepository,
+  DatabaseLoaderConfig,
+  DatabaseLoadProgress,
+  DatabaseManifest,
+} from './types';
+
+const INDEXEDDB_NAME = 'phage-explorer-db';
+const INDEXEDDB_STORE = 'database';
+const INDEXEDDB_VERSION = 1;
+
+/**
+ * Open IndexedDB database
+ */
+function openIndexedDB(): Promise<IDBDatabase> {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open(INDEXEDDB_NAME, INDEXEDDB_VERSION);
+
+    request.onerror = () => reject(request.error);
+    request.onsuccess = () => resolve(request.result);
+
+    request.onupgradeneeded = (event) => {
+      const db = (event.target as IDBOpenDBRequest).result;
+      if (!db.objectStoreNames.contains(INDEXEDDB_STORE)) {
+        db.createObjectStore(INDEXEDDB_STORE);
+      }
+    };
+  });
+}
+
+/**
+ * Get value from IndexedDB
+ */
+async function getFromIndexedDB<T>(key: string): Promise<T | null> {
+  const db = await openIndexedDB();
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(INDEXEDDB_STORE, 'readonly');
+    const store = transaction.objectStore(INDEXEDDB_STORE);
+    const request = store.get(key);
+
+    request.onerror = () => reject(request.error);
+    request.onsuccess = () => resolve(request.result ?? null);
+
+    transaction.oncomplete = () => db.close();
+  });
+}
+
+/**
+ * Set value in IndexedDB
+ */
+async function setInIndexedDB<T>(key: string, value: T): Promise<void> {
+  const db = await openIndexedDB();
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(INDEXEDDB_STORE, 'readwrite');
+    const store = transaction.objectStore(INDEXEDDB_STORE);
+    const request = store.put(value, key);
+
+    request.onerror = () => reject(request.error);
+    transaction.oncomplete = () => {
+      db.close();
+      resolve();
+    };
+  });
+}
+
+/**
+ * Delete value from IndexedDB
+ */
+async function deleteFromIndexedDB(key: string): Promise<void> {
+  const db = await openIndexedDB();
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(INDEXEDDB_STORE, 'readwrite');
+    const store = transaction.objectStore(INDEXEDDB_STORE);
+    const request = store.delete(key);
+
+    request.onerror = () => reject(request.error);
+    transaction.oncomplete = () => {
+      db.close();
+      resolve();
+    };
+  });
+}
+
+/**
+ * Decompress Brotli-compressed data using DecompressionStream API
+ * Falls back to gzip if Brotli not supported
+ */
+async function decompressData(
+  compressedData: ArrayBuffer,
+  format: 'br' | 'gzip' = 'br'
+): Promise<ArrayBuffer> {
+  // Check if DecompressionStream is available
+  if (typeof DecompressionStream === 'undefined') {
+    // Fallback: assume data is uncompressed
+    console.warn('DecompressionStream not available, assuming uncompressed data');
+    return compressedData;
+  }
+
+  try {
+    const ds = new DecompressionStream(format === 'br' ? 'deflate-raw' : 'gzip');
+    const stream = new Response(compressedData).body;
+    if (!stream) throw new Error('No response body');
+
+    const decompressedStream = stream.pipeThrough(ds);
+    const response = new Response(decompressedStream);
+    return response.arrayBuffer();
+  } catch (error) {
+    // Brotli not supported in DecompressionStream, try as-is
+    console.warn('Decompression failed, assuming uncompressed data:', error);
+    return compressedData;
+  }
+}
+
+/**
+ * Database loader class
+ */
+export class DatabaseLoader {
+  private config: Required<DatabaseLoaderConfig>;
+  private repository: SqlJsRepository | null = null;
+  private sqlPromise: ReturnType<typeof initSqlJs> | null = null;
+
+  constructor(config: DatabaseLoaderConfig) {
+    this.config = {
+      databaseUrl: config.databaseUrl,
+      manifestUrl: config.manifestUrl ?? `${config.databaseUrl}.manifest.json`,
+      dbName: config.dbName ?? 'phage-db',
+      onProgress: config.onProgress ?? (() => {}),
+    };
+  }
+
+  /**
+   * Initialize sql.js (lazy, cached)
+   */
+  private async initSqlJs(): Promise<typeof import('sql.js')['default'] extends (config?: infer C) => Promise<infer R> ? R : never> {
+    if (!this.sqlPromise) {
+      this.sqlPromise = initSqlJs({
+        // Load WASM from CDN
+        locateFile: (file: string) =>
+          `https://sql.js.org/dist/${file}`,
+      });
+    }
+    return this.sqlPromise;
+  }
+
+  /**
+   * Report progress
+   */
+  private progress(
+    stage: DatabaseLoadProgress['stage'],
+    percent: number,
+    message: string,
+    cached = false
+  ): void {
+    this.config.onProgress({ stage, percent, message, cached });
+  }
+
+  /**
+   * Check if cached database is valid
+   */
+  async checkCache(): Promise<{ valid: boolean; hash?: string }> {
+    this.progress('checking', 0, 'Checking cache...');
+
+    try {
+      // Check if we have a cached database
+      const cachedData = await getFromIndexedDB<Uint8Array>(`${this.config.dbName}:data`);
+      const cachedHash = await getFromIndexedDB<string>(`${this.config.dbName}:hash`);
+
+      if (!cachedData || !cachedHash) {
+        return { valid: false };
+      }
+
+      // Try to fetch manifest to check for updates
+      try {
+        const manifestResponse = await fetch(this.config.manifestUrl, {
+          cache: 'no-store',
+        });
+
+        if (manifestResponse.ok) {
+          const manifest: DatabaseManifest = await manifestResponse.json();
+          if (manifest.hash !== cachedHash) {
+            return { valid: false, hash: cachedHash };
+          }
+        }
+      } catch {
+        // Offline or manifest unavailable - use cached version
+      }
+
+      return { valid: true, hash: cachedHash };
+    } catch {
+      return { valid: false };
+    }
+  }
+
+  /**
+   * Load database from cache
+   */
+  async loadFromCache(): Promise<Database | null> {
+    try {
+      const cachedData = await getFromIndexedDB<Uint8Array>(`${this.config.dbName}:data`);
+      if (!cachedData) {
+        return null;
+      }
+
+      this.progress('initializing', 90, 'Initializing from cache...', true);
+      const SQL = await this.initSqlJs();
+      return new SQL.Database(cachedData);
+    } catch (error) {
+      console.error('Failed to load from cache:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Save database to cache
+   */
+  async saveToCache(db: Database, hash: string): Promise<void> {
+    try {
+      const data = db.export();
+      await setInIndexedDB(`${this.config.dbName}:data`, data);
+      await setInIndexedDB(`${this.config.dbName}:hash`, hash);
+    } catch (error) {
+      console.error('Failed to save to cache:', error);
+      // Non-fatal - continue without caching
+    }
+  }
+
+  /**
+   * Clear the cache
+   */
+  async clearCache(): Promise<void> {
+    await deleteFromIndexedDB(`${this.config.dbName}:data`);
+    await deleteFromIndexedDB(`${this.config.dbName}:hash`);
+  }
+
+  /**
+   * Download and initialize the database
+   */
+  async downloadDatabase(): Promise<{ db: Database; hash: string }> {
+    this.progress('downloading', 10, 'Downloading database...');
+
+    // Fetch the database
+    const response = await fetch(this.config.databaseUrl);
+    if (!response.ok) {
+      throw new Error(`Failed to download database: ${response.statusText}`);
+    }
+
+    const contentLength = response.headers.get('content-length');
+    const total = contentLength ? parseInt(contentLength, 10) : 0;
+    let loaded = 0;
+
+    // Stream the download with progress
+    const reader = response.body?.getReader();
+    if (!reader) {
+      throw new Error('No response body');
+    }
+
+    const chunks: Uint8Array[] = [];
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      chunks.push(value);
+      loaded += value.length;
+
+      if (total > 0) {
+        const percent = Math.round((loaded / total) * 40) + 10;
+        this.progress('downloading', percent, `Downloading: ${Math.round(loaded / 1024)}KB`);
+      }
+    }
+
+    // Combine chunks
+    const totalLength = chunks.reduce((sum, chunk) => sum + chunk.length, 0);
+    const combined = new Uint8Array(totalLength);
+    let offset = 0;
+    for (const chunk of chunks) {
+      combined.set(chunk, offset);
+      offset += chunk.length;
+    }
+
+    this.progress('decompressing', 60, 'Processing database...');
+
+    // Check if data is compressed (Brotli-compressed files usually don't have a magic header we can check easily)
+    // For now, try to use as-is since DecompressionStream Brotli support varies
+    let dbData = combined;
+
+    // Try to decompress if it looks compressed (heuristic: raw SQLite starts with "SQLite format 3")
+    const header = new TextDecoder().decode(combined.slice(0, 16));
+    if (!header.startsWith('SQLite format 3')) {
+      // Might be compressed, but DecompressionStream doesn't support Brotli well
+      // For production, consider using a JS Brotli decoder like 'brotli-wasm'
+      console.log('Database might be compressed, using as-is');
+    }
+
+    this.progress('initializing', 80, 'Initializing database...');
+    const SQL = await this.initSqlJs();
+
+    // Calculate hash from data
+    const hashBuffer = await crypto.subtle.digest('SHA-256', dbData);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    const hash = hashArray.map((b) => b.toString(16).padStart(2, '0')).join('');
+
+    const db = new SQL.Database(dbData);
+    return { db, hash };
+  }
+
+  /**
+   * Load the database (from cache or network)
+   */
+  async load(): Promise<PhageRepository> {
+    if (this.repository) {
+      return this.repository;
+    }
+
+    try {
+      // Check cache first
+      const cacheStatus = await this.checkCache();
+
+      if (cacheStatus.valid) {
+        this.progress('initializing', 80, 'Loading from cache...', true);
+        const db = await this.loadFromCache();
+        if (db) {
+          this.progress('ready', 100, 'Database ready (cached)', true);
+          this.repository = new SqlJsRepository(db);
+
+          // Check for updates in background
+          void this.checkForUpdates();
+
+          return this.repository;
+        }
+      }
+
+      // Download fresh copy
+      const { db, hash } = await this.downloadDatabase();
+
+      // Save to cache
+      this.progress('initializing', 95, 'Saving to cache...');
+      await this.saveToCache(db, hash);
+
+      this.progress('ready', 100, 'Database ready');
+      this.repository = new SqlJsRepository(db);
+      return this.repository;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      this.progress('error', 0, `Failed to load database: ${message}`);
+      throw error;
+    }
+  }
+
+  /**
+   * Check for database updates in background
+   */
+  async checkForUpdates(): Promise<boolean> {
+    try {
+      const manifestResponse = await fetch(this.config.manifestUrl, {
+        cache: 'no-store',
+      });
+
+      if (!manifestResponse.ok) {
+        return false;
+      }
+
+      const manifest: DatabaseManifest = await manifestResponse.json();
+      const cachedHash = await getFromIndexedDB<string>(`${this.config.dbName}:hash`);
+
+      if (manifest.hash !== cachedHash) {
+        console.log('Database update available, downloading in background...');
+        // Download new version
+        const { db, hash } = await this.downloadDatabase();
+        await this.saveToCache(db, hash);
+
+        // Note: The old repository is still valid until reload
+        console.log('Database updated, reload to use new version');
+        return true;
+      }
+
+      return false;
+    } catch {
+      // Offline or error - ignore
+      return false;
+    }
+  }
+
+  /**
+   * Get the repository (must call load() first)
+   */
+  getRepository(): PhageRepository {
+    if (!this.repository) {
+      throw new Error('Database not loaded. Call load() first.');
+    }
+    return this.repository;
+  }
+
+  /**
+   * Close the database
+   */
+  async close(): Promise<void> {
+    if (this.repository) {
+      await this.repository.close();
+      this.repository = null;
+    }
+  }
+}
+
+/**
+ * Create a database loader with default configuration
+ */
+export function createDatabaseLoader(
+  databaseUrl: string,
+  onProgress?: (progress: DatabaseLoadProgress) => void
+): DatabaseLoader {
+  return new DatabaseLoader({
+    databaseUrl,
+    onProgress,
+  });
+}
+
+export default DatabaseLoader;

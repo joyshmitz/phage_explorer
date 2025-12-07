@@ -20,13 +20,25 @@ export interface ModifierState {
 }
 
 /**
- * Key combination descriptor
+ * Single key combo
  */
-export interface KeyCombo {
+export interface SingleKeyCombo {
   key: string;           // The key (e.g., 'g', 'Enter', 'Escape')
   modifiers?: Partial<ModifierState>;
-  sequence?: string[];   // For multi-key sequences like 'gg'
 }
+
+/**
+ * Multi-key sequence combo (like 'gg' in vim)
+ */
+export interface SequenceKeyCombo {
+  sequence: string[];    // For multi-key sequences like ['g', 'g']
+  modifiers?: Partial<ModifierState>;
+}
+
+/**
+ * Key combination descriptor - either single key or sequence
+ */
+export type KeyCombo = SingleKeyCombo | SequenceKeyCombo;
 
 /**
  * Hotkey definition
@@ -135,6 +147,13 @@ export const HotkeyCategories = {
 } as const;
 
 /**
+ * Type guard for sequence key combo
+ */
+export function isSequenceCombo(combo: KeyCombo): combo is SequenceKeyCombo {
+  return 'sequence' in combo;
+}
+
+/**
  * Format a key combo for display
  */
 export function formatKeyCombo(combo: KeyCombo): string {
@@ -145,7 +164,7 @@ export function formatKeyCombo(combo: KeyCombo): string {
   if (combo.modifiers?.alt) parts.push('Alt');
   if (combo.modifiers?.shift) parts.push('Shift');
 
-  if (combo.sequence) {
+  if (isSequenceCombo(combo)) {
     parts.push(combo.sequence.join(''));
   } else {
     // Format special keys nicely

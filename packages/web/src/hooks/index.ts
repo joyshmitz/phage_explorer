@@ -12,3 +12,4 @@ export {
   useAllHotkeys,
   useKeyboardActive,
 } from './useHotkey';
+export { useDatabase, type UseDatabaseOptions, type UseDatabaseResult } from './useDatabase';
