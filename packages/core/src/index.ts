@@ -12,3 +12,9 @@ export * from './virtualizer';
 
 // Simulation framework
 export * from './simulation';
+
+// Functional module coherence
+export * from './module-coherence';
+
+// Fold embeddings quickview
+export * from './fold-embeddings';
