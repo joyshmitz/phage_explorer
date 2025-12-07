@@ -1,6 +1,7 @@
 import React, { useMemo } from 'react';
 import { Box, Text, useInput } from 'ink';
 import { usePhageStore } from '@phage-explorer/state';
+import type { MarkOverlay } from '@phage-explorer/tui/overlay-computations';
 
 interface Props {
   sequence: string;
@@ -24,13 +25,33 @@ function findPalindromes(seq: string, minLen = 6): Array<{ pos: number; len: num
   return hits;
 }
 
+function densitySparkline(positions: number[], genomeLength: number, bins = 60): string {
+  const SPARK = ['▁', '▂', '▃', '▄', '▅', '▆', '▇', '█'];
+  if (genomeLength === 0) return '';
+  const counts = new Array(bins).fill(0);
+  const binSize = genomeLength / bins;
+  for (const p of positions) {
+    const idx = Math.min(bins - 1, Math.floor((p - 1) / binSize));
+    counts[idx]++;
+  }
+  const max = Math.max(1, ...counts);
+  return counts.map(c => SPARK[Math.floor((c / max) * (SPARK.length - 1))]).join('');
+}
+
 export function RepeatOverlay({ sequence }: Props): React.ReactElement {
   const theme = usePhageStore(s => s.currentTheme);
   const closeOverlay = usePhageStore(s => s.closeOverlay);
   const colors = theme.colors;
+  const overlayData = usePhageStore(s => s.overlayData.repeats) as MarkOverlay | undefined;
 
-  const hits = useMemo(() => findPalindromes(sequence), [sequence]);
+  const hits = useMemo(() => {
+    if (overlayData && 'positions' in overlayData) {
+      return overlayData.positions.map(pos => ({ pos, len: 0 }));
+    }
+    return findPalindromes(sequence);
+  }, [sequence, overlayData]);
   const topHits = hits.slice(0, 12);
+  const spark = useMemo(() => densitySparkline(hits.map(h => h.pos), sequence.length), [hits, sequence.length]);
 
   useInput((input, key) => {
     if (key.escape || input === 'r' || input === 'R') closeOverlay('repeats');
@@ -55,6 +76,7 @@ export function RepeatOverlay({ sequence }: Props): React.ReactElement {
         <Text color={colors.textDim}>No palindromic repeats ≥6 bp detected</Text>
       ) : (
         <>
+          <Text color={colors.textDim}>Density: {spark}</Text>
           <Text color={colors.textDim}>Total hits: {hits.length}. Showing first {topHits.length}.</Text>
           {topHits.map(hit => (
             <Text key={`${hit.pos}-${hit.len}`} color={colors.text}>

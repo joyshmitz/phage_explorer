@@ -1,6 +1,7 @@
 import React, { useMemo } from 'react';
 import { Box, Text, useInput } from 'ink';
 import { usePhageStore } from '@phage-explorer/state';
+import type { MarkOverlay } from '@phage-explorer/tui/overlay-computations';
 
 const MOTIFS = ['TATAAT', 'TTGACA', 'AGGAGG'];
 
@@ -19,12 +20,38 @@ function findMotifs(seq: string): Array<{ pos: number; motif: string }> {
   return hits;
 }
 
+function densitySparkline(positions: number[], genomeLength: number, bins = 60): string {
+  const SPARK = ['▁', '▂', '▃', '▄', '▅', '▆', '▇', '█'];
+  if (genomeLength === 0) return '';
+  const counts = new Array(bins).fill(0);
+  const binSize = genomeLength / bins;
+  for (const p of positions) {
+    const idx = Math.min(bins - 1, Math.floor((p - 1) / binSize));
+    counts[idx]++;
+  }
+  const max = Math.max(1, ...counts);
+  return counts.map(c => SPARK[Math.floor((c / max) * (SPARK.length - 1))]).join('');
+}
+
 export function PromoterOverlay({ sequence }: Props): React.ReactElement {
   const theme = usePhageStore(s => s.currentTheme);
   const closeOverlay = usePhageStore(s => s.closeOverlay);
   const colors = theme.colors;
+  const overlayData = usePhageStore(s => s.overlayData.promoter) as MarkOverlay | undefined;
 
-  const hits = useMemo(() => findMotifs(sequence.toUpperCase()).slice(0, 12), [sequence]);
+  const hits = useMemo(() => {
+    const baseHits = overlayData && 'positions' in overlayData
+      ? overlayData.positions.map(pos => ({ pos, motif: 'motif' })) // motif unknown when precomputed; keep placeholder
+      : findMotifs(sequence.toUpperCase()).map(h => ({ pos: h.pos, motif: h.motif }));
+    return baseHits.slice(0, 12);
+  }, [sequence, overlayData]);
+
+  const spark = useMemo(() => {
+    const positions = overlayData && 'positions' in overlayData
+      ? overlayData.positions
+      : findMotifs(sequence.toUpperCase()).map(h => h.pos);
+    return densitySparkline(positions, sequence.length);
+  }, [sequence, overlayData]);
 
   useInput((input, key) => {
     if (key.escape || input === 'p' || input === 'P') closeOverlay('promoter');
@@ -49,6 +76,7 @@ export function PromoterOverlay({ sequence }: Props): React.ReactElement {
         <Text color={colors.textDim}>No canonical -10/-35/RBS motifs found (quick scan)</Text>
       ) : (
         <>
+          <Text color={colors.textDim}>Density: {spark}</Text>
           <Text color={colors.textDim}>Showing first {hits.length} hits (pos, motif):</Text>
           {hits.map(hit => (
             <Text key={`${hit.pos}-${hit.motif}`} color={colors.text}>

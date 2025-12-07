@@ -16,7 +16,7 @@ import {
   nextSpeed,
   prevSpeed,
 } from '@phage-explorer/core';
-import type { OverlayData, OverlayResult } from '@phage-explorer/tui/overlay-computations';
+type OverlayData = Partial<Record<'gcSkew' | 'complexity' | 'bendability' | 'promoter' | 'repeats', unknown>>;
 import type { GenomeComparisonResult } from '@phage-explorer/comparison';
 
 // Overlay states
