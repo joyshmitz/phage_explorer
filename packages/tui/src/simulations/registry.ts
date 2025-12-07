@@ -272,14 +272,14 @@ let registryCache: SimulationRegistry | null = null;
 export function getSimulationRegistry(): SimulationRegistry {
   if (registryCache) return registryCache;
   const reg: SimulationRegistry = new Map();
-  const sims: Simulation[] = [
+  const sims: Array<Simulation<SimState>> = [
     makeLysogenySimulation(),
     makeRibosomeSimulation(),
     makePlaqueSimulation(),
     makeEvolutionSimulation(),
     makePackagingSimulation(),
-  ];
-  sims.forEach(sim => reg.set(sim.id as SimulationId, sim as unknown as Simulation));
+  ].map(sim => sim as unknown as Simulation<SimState>);
+  sims.forEach(sim => reg.set(sim.id as SimulationId, sim as Simulation));
   registryCache = reg;
   return reg;
 }

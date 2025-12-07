@@ -31,8 +31,6 @@ export function HelpOverlay(): React.ReactElement {
   const diffEnabled = usePhageStore(s => s.diffEnabled);
   const helpDetail = usePhageStore(s => s.helpDetail);
   const overlays = usePhageStore(s => s.overlays);
-  const model3DFullscreen = usePhageStore(s => s.model3DFullscreen);
-  const experienceLevel = usePhageStore(s => s.experienceLevel);
   const setHelpDetail = usePhageStore(s => s.setHelpDetail);
   const closeOverlay = usePhageStore(s => s.closeOverlay);
   const colors = theme.colors;
@@ -151,7 +149,7 @@ export function HelpOverlay(): React.ReactElement {
     ];
 
     return { left, right };
-  }, [essential, viewMode, diffEnabled, model3DFullscreen, overlays, overlayRows]);
+  }, [essential, viewMode, diffEnabled, overlays, overlayRows]);
 
   const layout = helpDetail === 'essential' ? essential : detailed;
 
