@@ -9,10 +9,11 @@ export interface CommandItem {
 let commands: CommandItem[] = [];
 
 export function setCommands(next: CommandItem[]): void {
-  commands = next;
+  // Store a shallow copy to avoid external mutations
+  commands = [...next];
 }
 
 export function getCommands(): CommandItem[] {
-  return commands;
+  // Return a copy to avoid accidental external mutation
+  return [...commands];
 }
-
