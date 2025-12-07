@@ -12949,59 +12949,968 @@ Watching the fit converge with uncertainty bands, then seeing lysis genes "light
 
 ## 34) Lysogeny/Lysis Decision Circuit Reconstructor
 
-### Concept
-Rebuild the CI/Cro-like regulatory switch from sequence motifs and simulate bistable decisions under varying MOI/damage.
+### Extended Concept
 
-### How to Build
-- **Motifs**: Promoter/operator/terminator scans in TS; HMMER for CI/Cro-family clustering (precompute).
-- **Simulation**: Boolean fast mode in TS; ODE/Hill kinetics in Rust+WASM for smooth trajectories; parameters from motif strengths.
-- **Inputs**: MOI, UV/damage, inducer; outputs: CI/Cro trajectories, final state.
-- **Overlay**: Operators/promoters highlighted on genome; active elements blink during sim.
+The **lysogeny-lysis decision** is one of the most elegant examples of a biological switch—a bistable circuit that determines whether a temperate phage integrates into the host chromosome (lysogeny) or immediately replicates and kills the cell (lysis). The Lambda phage genetic switch, with its CI repressor and Cro protein, has been studied for decades and remains a paradigm for understanding gene regulatory networks.
 
-### Why It’s Good
-Explains lytic vs lysogenic outcomes; aids design of strictly lytic derivatives.
+This feature reconstructs the decision circuit from sequence by:
+1. **Finding regulatory elements**: Promoters (PRM, PR, PL), operators (OR1, OR2, OR3, OL), and terminators
+2. **Identifying key proteins**: CI repressor, Cro, N antiterminator, RecA (host)
+3. **Building a mathematical model**: Hill kinetics for cooperative binding
+4. **Simulating outcomes**: Phase portraits showing lytic vs lysogenic attractors
 
-### Novelty
-High—interactive regulatory switch tied to predicted sites in-terminal is new.
+Users can manipulate inputs (MOI, UV damage, nutrient levels) and watch the circuit flip between states in real time—providing intuition about bistability, cooperativity, and the stochastic nature of fate decisions.
 
-### Pedagogical Value
-Bistability, Hill coefficients, feedback loops, and the role of operator spacing.
+### Mathematical Foundations
 
-### Wow / TUI Visualization
-ASCII phase portrait (CI vs Cro) with attractors; sliders flip basins; promoter/operator bars animate as state flips.
+**Cooperative Binding (Hill Equation):**
+
+For a repressor R binding to an operator with cooperativity n:
+
+```
+f(R) = R^n / (K_D^n + R^n)
+```
+
+Where:
+- `R` = repressor concentration
+- `K_D` = dissociation constant
+- `n` = Hill coefficient (cooperativity)
+
+**CI/Cro Mutual Repression Model:**
+
+```
+d[CI]/dt = α_CI × f_rep(Cro, OR) - δ_CI × [CI]
+d[Cro]/dt = α_Cro × f_rep(CI, OR) - δ_Cro × [Cro]
+```
+
+Where:
+- `f_rep(X, OR)` = repression function based on operator occupancy
+- `α` = maximal synthesis rate
+- `δ` = degradation rate
+
+**Operator Occupancy (Three-Site Model):**
+
+For Lambda OR region with OR1, OR2, OR3:
+
+```
+P(OR1 bound by CI) = [CI]² × K₁ / Z
+P(OR2 bound by CI) = [CI]² × K₂ × (1 + ω×P(OR1)) / Z
+P(OR3 bound by CI) = [CI]² × K₃ / Z
+
+Z = 1 + [CI]²K₁ + [CI]²K₂ + [CI]²K₃ + [CI]⁴K₁K₂ω + ...
+```
+
+Where `ω` = cooperativity factor for adjacent binding.
+
+**SOS Response (UV Damage):**
+
+```
+d[RecA*]/dt = k_UV × UV - k_off × [RecA*]
+
+CI_cleavage_rate = k_cleave × [RecA*] × [CI]
+```
+
+**Lysogeny Probability (Stochastic):**
+
+```
+P(lysogeny) = 1 / (1 + exp(-β × (CII - threshold)))
+```
+
+Where CII is the integration-promoting factor, dependent on MOI and cell state.
+
+### Implementation Approach
+
+```typescript
+// packages/regulation/src/lysogeny-switch.ts
+
+import type { GeneInfo } from '@phage-explorer/core';
+
+/**
+ * Regulatory element types
+ */
+interface Promoter {
+  name: string;
+  position: number;
+  strength: number;      // 0-1, relative to consensus
+  direction: '+' | '-';
+  sigmaFactor?: string;
+}
+
+interface Operator {
+  name: string;
+  position: number;
+  sequence: string;
+  bindingAffinity: number;  // K_D in nM
+  boundBy: 'CI' | 'Cro' | 'both';
+}
+
+interface RegulatoryCircuit {
+  promoters: Promoter[];
+  operators: Operator[];
+  genes: {
+    ci?: GeneInfo;
+    cro?: GeneInfo;
+    cII?: GeneInfo;
+    cIII?: GeneInfo;
+    n?: GeneInfo;
+    recA?: GeneInfo;
+  };
+  cooperativity: number;  // Hill coefficient
+  architecture: 'lambda-like' | 'p22-like' | 'unknown';
+}
+
+/**
+ * Simulation state
+ */
+interface SwitchState {
+  CI: number;           // nM
+  Cro: number;          // nM
+  CII: number;          // nM (integration factor)
+  RecAStar: number;     // nM (activated RecA)
+  time: number;         // minutes
+}
+
+/**
+ * Simulation parameters
+ */
+interface SwitchParameters {
+  // Synthesis rates (nM/min)
+  alphaCi: number;
+  alphaCro: number;
+  alphaCII: number;
+
+  // Degradation rates (1/min)
+  deltaCi: number;
+  deltaCro: number;
+  deltaCII: number;
+
+  // Binding constants (nM)
+  KdCiOR1: number;
+  KdCiOR2: number;
+  KdCiOR3: number;
+  KdCroOR: number;
+
+  // Cooperativity
+  omega: number;         // CI dimer cooperativity
+  hillN: number;         // Hill coefficient
+
+  // SOS/cleavage
+  kCleavage: number;     // CI cleavage rate constant
+  uvDamage: number;      // UV intensity (0-1)
+
+  // External inputs
+  moi: number;           // Multiplicity of infection
+  nutrientLevel: number; // 0-1
+}
+
+const DEFAULT_PARAMS: SwitchParameters = {
+  alphaCi: 50,
+  alphaCro: 30,
+  alphaCII: 20,
+  deltaCi: 0.02,
+  deltaCro: 0.05,
+  deltaCII: 0.1,
+  KdCiOR1: 5,
+  KdCiOR2: 50,
+  KdCiOR3: 100,
+  KdCroOR: 30,
+  omega: 10,
+  hillN: 2,
+  kCleavage: 0.01,
+  uvDamage: 0,
+  moi: 1,
+  nutrientLevel: 1.0,
+};
+
+/**
+ * Calculate operator occupancy probabilities
+ */
+function calculateOperatorOccupancy(
+  CI: number,
+  Cro: number,
+  params: SwitchParameters
+): { OR1_CI: number; OR2_CI: number; OR3_CI: number; OR_Cro: number } {
+  const { KdCiOR1, KdCiOR2, KdCiOR3, KdCroOR, omega, hillN } = params;
+
+  // CI binding (as dimers, hence CI²)
+  const CI2 = Math.pow(CI, hillN);
+  const k1 = CI2 / Math.pow(KdCiOR1, hillN);
+  const k2 = CI2 / Math.pow(KdCiOR2, hillN);
+  const k3 = CI2 / Math.pow(KdCiOR3, hillN);
+
+  // Partition function (simplified)
+  const Z = 1 + k1 + k2 + k3 + omega * k1 * k2;
+
+  const OR1_CI = k1 / Z;
+  const OR2_CI = k2 * (1 + omega * k1) / Z;
+  const OR3_CI = k3 / Z;
+
+  // Cro binding (competes with CI)
+  const CroN = Math.pow(Cro, hillN);
+  const kCro = CroN / Math.pow(KdCroOR, hillN);
+  const OR_Cro = kCro / (1 + kCro + k1 + k2);
+
+  return { OR1_CI, OR2_CI, OR3_CI, OR_Cro };
+}
+
+/**
+ * Calculate synthesis rates based on operator occupancy
+ */
+function calculateSynthesisRates(
+  occupancy: ReturnType<typeof calculateOperatorOccupancy>,
+  params: SwitchParameters
+): { ciRate: number; croRate: number; cIIRate: number } {
+  // CI synthesis: activated by CI at OR2, repressed by CI at OR3 or Cro
+  // PRM is active when OR1+OR2 bound but OR3 free
+  const prmActivity = occupancy.OR2_CI * (1 - occupancy.OR3_CI) * (1 - occupancy.OR_Cro);
+  const ciRate = params.alphaCi * prmActivity;
+
+  // Cro synthesis: from PR, repressed by CI at OR1
+  const prActivity = (1 - occupancy.OR1_CI) * (1 - occupancy.OR2_CI);
+  const croRate = params.alphaCro * prActivity;
+
+  // CII synthesis: from PR/PL, affected by MOI and nutrients
+  const cIIRate = params.alphaCII * prActivity * Math.sqrt(params.moi) * params.nutrientLevel;
+
+  return { ciRate, croRate, cIIRate };
+}
+
+/**
+ * ODE system for the genetic switch
+ */
+function switchODE(
+  state: SwitchState,
+  params: SwitchParameters
+): { dCI: number; dCro: number; dCII: number; dRecA: number } {
+  const { CI, Cro, CII, RecAStar } = state;
+
+  // Calculate operator occupancy
+  const occupancy = calculateOperatorOccupancy(CI, Cro, params);
+
+  // Calculate synthesis rates
+  const rates = calculateSynthesisRates(occupancy, params);
+
+  // UV-induced RecA activation
+  const dRecA = params.uvDamage * 10 - 0.1 * RecAStar;
+
+  // CI cleavage by activated RecA
+  const cleavageRate = params.kCleavage * RecAStar;
+
+  // ODEs
+  const dCI = rates.ciRate - params.deltaCi * CI - cleavageRate * CI;
+  const dCro = rates.croRate - params.deltaCro * Cro;
+  const dCII = rates.cIIRate - params.deltaCII * CII;
+
+  return { dCI, dCro, dCII, dRecA };
+}
+
+/**
+ * Simulate switch dynamics
+ */
+export function simulateSwitch(
+  initialState: Partial<SwitchState>,
+  params: Partial<SwitchParameters>,
+  duration: number,
+  dt: number = 0.5
+): Array<SwitchState & { fate: 'lytic' | 'lysogenic' | 'undecided' }> {
+  const fullParams = { ...DEFAULT_PARAMS, ...params };
+  let state: SwitchState = {
+    CI: initialState.CI ?? 0,
+    Cro: initialState.Cro ?? 0,
+    CII: initialState.CII ?? 0,
+    RecAStar: initialState.RecAStar ?? 0,
+    time: 0,
+  };
+
+  const trajectory: Array<SwitchState & { fate: 'lytic' | 'lysogenic' | 'undecided' }> = [];
+
+  while (state.time <= duration) {
+    // Determine current fate
+    let fate: 'lytic' | 'lysogenic' | 'undecided' = 'undecided';
+    if (state.CI > 100 && state.Cro < 20) fate = 'lysogenic';
+    else if (state.Cro > 50 && state.CI < 20) fate = 'lytic';
+
+    trajectory.push({ ...state, fate });
+
+    // Euler integration (simple but sufficient for visualization)
+    const d = switchODE(state, fullParams);
+    state = {
+      CI: Math.max(0, state.CI + d.dCI * dt),
+      Cro: Math.max(0, state.Cro + d.dCro * dt),
+      CII: Math.max(0, state.CII + d.dCII * dt),
+      RecAStar: Math.max(0, state.RecAStar + d.dRecA * dt),
+      time: state.time + dt,
+    };
+  }
+
+  return trajectory;
+}
+
+/**
+ * Generate phase portrait data
+ */
+export function generatePhasePortrait(
+  params: Partial<SwitchParameters>,
+  gridSize: number = 20
+): Array<{ CI: number; Cro: number; dCI: number; dCro: number; fate: 'lytic' | 'lysogenic' }> {
+  const fullParams = { ...DEFAULT_PARAMS, ...params };
+  const points: Array<{ CI: number; Cro: number; dCI: number; dCro: number; fate: 'lytic' | 'lysogenic' }> = [];
+
+  for (let i = 0; i <= gridSize; i++) {
+    for (let j = 0; j <= gridSize; j++) {
+      const CI = (i / gridSize) * 200;
+      const Cro = (j / gridSize) * 100;
+
+      const state: SwitchState = { CI, Cro, CII: 10, RecAStar: 0, time: 0 };
+      const d = switchODE(state, fullParams);
+
+      const fate = d.dCI > 0 && d.dCro < 0 ? 'lysogenic' : 'lytic';
+
+      points.push({
+        CI, Cro,
+        dCI: d.dCI,
+        dCro: d.dCro,
+        fate,
+      });
+    }
+  }
+
+  return points;
+}
+
+/**
+ * Find regulatory elements in sequence
+ */
+export function findRegulatoryElements(
+  sequence: string,
+  genes: GeneInfo[]
+): RegulatoryCircuit {
+  const promoters: Promoter[] = [];
+  const operators: Operator[] = [];
+
+  // Consensus motifs (simplified)
+  const SIGMA70_MINUS35 = /TTGACA/gi;
+  const SIGMA70_MINUS10 = /TATAAT/gi;
+  const OPERATOR_CONSENSUS = /[AT]{2}[CG][AT]{4}[CG][AT]{2}/gi;
+
+  // Find -35/-10 promoter pairs
+  let match;
+  while ((match = SIGMA70_MINUS35.exec(sequence)) !== null) {
+    const minus35Pos = match.index;
+    // Look for -10 box ~17bp downstream
+    const searchRegion = sequence.substring(minus35Pos + 10, minus35Pos + 25);
+    if (SIGMA70_MINUS10.test(searchRegion)) {
+      promoters.push({
+        name: `P_${minus35Pos}`,
+        position: minus35Pos,
+        strength: 0.8,
+        direction: '+',
+        sigmaFactor: 'sigma70',
+      });
+    }
+  }
+
+  // Find operator-like sequences
+  while ((match = OPERATOR_CONSENSUS.exec(sequence)) !== null) {
+    operators.push({
+      name: `O_${match.index}`,
+      position: match.index,
+      sequence: match[0],
+      bindingAffinity: 50,  // Default K_D
+      boundBy: 'both',
+    });
+  }
+
+  // Identify key regulatory genes
+  const circuit: RegulatoryCircuit = {
+    promoters,
+    operators,
+    genes: {},
+    cooperativity: 2,
+    architecture: 'unknown',
+  };
+
+  for (const gene of genes) {
+    const name = (gene.name ?? '').toLowerCase();
+    const product = (gene.product ?? '').toLowerCase();
+
+    if (name.includes('ci') || name === 'c1' || product.includes('repressor')) {
+      circuit.genes.ci = gene;
+    } else if (name.includes('cro') || product.includes('antirepressor')) {
+      circuit.genes.cro = gene;
+    } else if (name === 'cii' || name === 'c2') {
+      circuit.genes.cII = gene;
+    } else if (name === 'ciii' || name === 'c3') {
+      circuit.genes.cIII = gene;
+    } else if (name === 'n' && product.includes('antiterminator')) {
+      circuit.genes.n = gene;
+    }
+  }
+
+  // Determine architecture
+  if (circuit.genes.ci && circuit.genes.cro) {
+    circuit.architecture = 'lambda-like';
+  }
+
+  return circuit;
+}
+
+/**
+ * Predict lysogeny probability based on conditions
+ */
+export function predictLysogenyProbability(
+  params: Partial<SwitchParameters>
+): { probability: number; factors: string[] } {
+  const fullParams = { ...DEFAULT_PARAMS, ...params };
+  const factors: string[] = [];
+
+  let logOdds = 0;
+
+  // MOI effect: high MOI favors lysogeny
+  if (fullParams.moi >= 5) {
+    logOdds += 2;
+    factors.push('High MOI (≥5) strongly favors lysogeny');
+  } else if (fullParams.moi >= 2) {
+    logOdds += 1;
+    factors.push('Moderate MOI favors lysogeny');
+  } else {
+    logOdds -= 1;
+    factors.push('Low MOI (single infection) favors lytic');
+  }
+
+  // Nutrient effect: low nutrients favor lysogeny
+  if (fullParams.nutrientLevel < 0.3) {
+    logOdds += 1.5;
+    factors.push('Poor nutrient conditions favor lysogeny (dormancy)');
+  } else if (fullParams.nutrientLevel > 0.8) {
+    logOdds -= 0.5;
+    factors.push('Rich nutrients slightly favor lytic growth');
+  }
+
+  // UV damage: favors prophage induction (lytic)
+  if (fullParams.uvDamage > 0.3) {
+    logOdds -= 2;
+    factors.push('UV damage triggers SOS response and prophage induction');
+  }
+
+  const probability = 1 / (1 + Math.exp(-logOdds));
+
+  return { probability, factors };
+}
+```
+
+### Why This Is a Good Idea
+
+1. **Classic Paradigm Made Interactive**: The Lambda switch is taught in every molecular biology course but rarely experienced dynamically. This feature transforms static diagrams into explorable phase space.
+
+2. **Engineering Applications**: Designing strictly lytic phages for therapy requires understanding and disrupting lysogeny circuits. This tool helps identify the key genes and predict the effects of deletions.
+
+3. **Quantitative Intuition**: Users develop intuition for bistability, cooperativity, and how small parameter changes (mutations) can flip a switch between stable states.
+
+4. **SOS Response Integration**: Showing how UV damage triggers prophage induction connects the genetic switch to DNA damage response—crucial for understanding phage-host dynamics.
+
+5. **Predictive Power**: The lysogeny probability calculator helps researchers anticipate outcomes based on infection conditions (MOI, nutrients).
+
+### Innovation Assessment
+**Novelty**: Very High — Interactive genetic switch simulators exist in research tools, but embedding one in a TUI genome browser with live phase portraits is novel.
+
+### Pedagogical Value: 10/10
+The Lambda switch is one of biology's most important regulatory paradigms. Making it interactive with real-time feedback is transformative for education.
+
+### Cool/Wow Factor: 9/10
+Watching the phase portrait shift as you drag the MOI slider, with trajectories spiraling into different attractors, provides genuine "aha" moments about bistability.
+
+### TUI Visualization
+
+```
+╭───────────────────────── Lysogeny/Lysis Decision Circuit ──────────────────────────╮
+│  Phage: Lambda (λ)            Circuit: Classical CI/Cro switch                     │
+├────────────────────────────────────────────────────────────────────────────────────┤
+│                                                                                    │
+│  ┌─ Phase Portrait (CI vs Cro) ────────────────────────────────────────────────┐  │
+│  │ Cro                                                                          │  │
+│  │ 100│                         LYTIC ATTRACTOR                                │  │
+│  │    │ ←  ←  ←  ←  ←  ←  ←  ←  ●  →  →  →                                     │  │
+│  │  80│ ←  ←  ←  ←  ↖  ↖  ↑  ↗  →  →  →  →                                     │  │
+│  │    │ ↙  ↙  ↙  ↖  ↖  ↑  ↗  ↗  →  →  →  →                                     │  │
+│  │  60│ ↙  ↙  ↙  ↙  ↑  ↑  ↗  ↗  →  →  →  →                                     │  │
+│  │    │ ↓  ↓  ↙  ×  ↑  ↗  ↗  →  →  →  →  →      × = separatrix                │  │
+│  │  40│ ↓  ↓  ↓  ↙  ×  ↗  ↗  →  →  →  →  →                                     │  │
+│  │    │ ↓  ↓  ↓  ↓  ↙  ×  ↗  →  →  →  →  →                                     │  │
+│  │  20│ ↓  ↓  ↓  ↓  ↓  ↘  ↘  ↘  →  →  →  →                                     │  │
+│  │    │ ↓  ↓  ↓  ↓  ↓  ↘  ↘  ↘  ↘  →  →  →                                     │  │
+│  │   0│ ●  ←  ←  ←  ←  ←  ←  ←  ←  ←  ←  ←                                     │  │
+│  │    └─────────────────────────────────────────────────────────── CI            │  │
+│  │      0       50      100      150      200                                    │  │
+│  │    LYSOGENIC ATTRACTOR                                                        │  │
+│  └──────────────────────────────────────────────────────────────────────────────┘  │
+│                                                                                    │
+│  ┌─ Genetic Map ───────────────────────────────────────────────────────────────┐  │
+│  │    PL          OL        cI       PRM  PR    cro      N                      │  │
+│  │  ◀━━━━━━╋━━━━━╋━━━━━━━━━━━━━━╋━━━━━╋━━━━━━━━━━╋━━━━━━━━━━━▶                  │  │
+│  │         █▓▓▓██              ██▓▓█      ████████      ██████                   │  │
+│  │         OR3   OR2   OR1     ↑                                                 │  │
+│  │                            CI activates PRM,                                  │  │
+│  │                            represses PR                                       │  │
+│  └──────────────────────────────────────────────────────────────────────────────┘  │
+│                                                                                    │
+│  ┌─ Parameters ──────────────────┐  ┌─ Trajectory Simulation ─────────────────┐  │
+│  │                               │  │                                          │  │
+│  │  MOI:        [▓▓▓▓░░░░░░] 3   │  │  Time: 0 ─────────────────────── 120 min│  │
+│  │  Nutrients:  [▓▓▓▓▓▓▓░░░] 0.7 │  │                                          │  │
+│  │  UV Damage:  [░░░░░░░░░░] 0   │  │  CI:  ▁▂▃▄▅▆▇███████████████████  → 180  │  │
+│  │                               │  │  Cro: █▇▆▅▄▃▂▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁  → 5    │  │
+│  │  ─────────────────────────    │  │                                          │  │
+│  │  Prediction:                  │  │  Current State: ● (marked on phase plot) │  │
+│  │  P(lysogeny) = 78%            │  │  Fate: LYSOGENIC ✓                       │  │
+│  │  ► High MOI favors lysogeny   │  │                                          │  │
+│  └───────────────────────────────┘  └──────────────────────────────────────────┘  │
+│                                                                                    │
+├────────────────────────────────────────────────────────────────────────────────────┤
+│  [M]OI slider  [U]V damage  [N]utrients  [R]eset  [P]lay simulation  [J]ump gene  │
+╰────────────────────────────────────────────────────────────────────────────────────╯
+```
 
 ### Implementation Stack
-Rust+WASM ODE core; TS UI; HMMER precompute cached in SQLite; lightweight, no GPU.
+- **ODE Solver**: Rust + WASM for smooth trajectories with adaptive stepping
+- **Phase Portrait**: Precomputed vector field cached in SQLite, updated when parameters change
+- **Motif Scanning**: TypeScript PWM matching for promoters/operators
+- **UI**: Ink/React with real-time slider updates and trajectory animation
+- **Gene Linking**: Click on phase portrait to highlight corresponding regulatory elements
 
 ---
 
 ## 35) Host–Phage Protein Interaction & Effector Docking Map
 
-### Concept
-Predict host targets of phage effectors (anti-defense, RBPs) by fusing embeddings, domains, and optional docking.
+### Extended Concept
 
-### How to Build
-- **Embeddings**: Precompute ESM/ProtT5 vectors offline; store in SQLite as float32 blobs.
-- **Search**: Cosine ANN (Rust+WASM or TS) to shortlist host targets.
-- **Domains**: PFAM/HHPred annotations to filter plausible interactions.
-- **Docking (optional)**: Coarse rigid docking via lightdock/pydock3 offline; store top ranks.
-- **Scoring**: Fuse embedding sim + docking + domain compatibility → confidence.
-- **UI**: Bipartite graph; edges encode confidence; tooltips show docking score, residues; filters for receptor/defense/metabolism.
+Phage-host interactions extend far beyond receptor binding—phages encode **effector proteins** that manipulate host metabolism, counter defense systems, and redirect cellular machinery. Understanding these interactions reveals the molecular basis of host range, explains why certain phages overcome specific bacterial defenses, and guides engineering of enhanced therapeutics.
 
-### Why It’s Good
-Generates mechanistic host-range and anti-defense hypotheses beyond BLAST.
+This feature constructs a **protein interaction network** between phage proteins and predicted host targets using:
+1. **Protein language model embeddings** (ESM2/ProtT5) for sequence-based similarity
+2. **Domain annotations** (PFAM/HMM) for functional compatibility
+3. **Optional structural docking** for binding interface predictions
+4. **Bayesian fusion** of evidence sources into confidence scores
 
-### Novelty
-High—interaction wiring + docking hints in a TUI is rare.
+The result is a bipartite graph showing which phage proteins likely interact with which host proteins, enabling hypothesis generation about host range determinants and anti-defense mechanisms.
 
-### Pedagogical Value
-Embeddings, docking, domain-function mapping; shows limits of sequence identity.
+### Mathematical Foundations
 
-### Wow / TUI Visualization
-Interactive “wiring” board; hover to see residues/contact score; hit `f` to filter by functional class.
+**Embedding Similarity:**
+
+For phage protein embedding `e_p` and host protein embedding `e_h`:
+
+```
+sim_embed(p, h) = cos(e_p, e_h) = (e_p · e_h) / (||e_p|| × ||e_h||)
+```
+
+**Domain Compatibility Score:**
+
+Using domain co-occurrence statistics from curated PPI databases:
+
+```
+sim_domain(p, h) = Σᵢⱼ P(interact | domain_i, domain_j) × I(domain_i ∈ p) × I(domain_j ∈ h)
+```
+
+**Docking Score Transformation:**
+
+Convert docking energy to probability:
+
+```
+P(bind | E_dock) = 1 / (1 + exp((E_dock - E_threshold) / kT))
+```
+
+**Bayesian Evidence Fusion:**
+
+```
+log P(interact | embed, domain, dock) =
+    w₁ × log(sim_embed) + w₂ × log(sim_domain) + w₃ × log(P_dock) + prior
+
+Confidence = σ(log_odds)  # Sigmoid to [0, 1]
+```
+
+### Implementation Approach
+
+```typescript
+// packages/interaction/src/ppi-network.ts
+
+import type { GeneInfo } from '@phage-explorer/core';
+
+/**
+ * Protein embedding from language model
+ */
+interface ProteinEmbedding {
+  proteinId: string;
+  embedding: Float32Array;  // 1280-dim for ESM2
+  length: number;
+}
+
+/**
+ * Domain annotation
+ */
+interface DomainHit {
+  proteinId: string;
+  domainId: string;
+  domainName: string;
+  start: number;
+  end: number;
+  eValue: number;
+  functionalCategory: 'receptor' | 'defense' | 'metabolism' | 'unknown';
+}
+
+/**
+ * Predicted interaction
+ */
+interface PredictedInteraction {
+  phageProtein: string;
+  hostProtein: string;
+
+  // Evidence scores
+  embeddingSimilarity: number;
+  domainCompatibility: number;
+  dockingScore?: number;
+
+  // Combined confidence
+  confidence: number;
+  evidenceLevel: 'high' | 'medium' | 'low';
+
+  // Biological context
+  interactionType: 'receptor-binding' | 'anti-defense' | 'metabolic' | 'unknown';
+  supportingDomains: string[];
+  predictedInterface?: { phageResidues: number[]; hostResidues: number[] };
+}
+
+/**
+ * Host protein database entry
+ */
+interface HostProtein {
+  id: string;
+  name: string;
+  organism: string;
+  function: string;
+  embedding?: Float32Array;
+  domains: DomainHit[];
+  isSurfaceExposed: boolean;
+  isDefenseSystem: boolean;
+}
+
+/**
+ * Compute cosine similarity between embeddings
+ */
+function cosineSimilarity(a: Float32Array, b: Float32Array): number {
+  if (a.length !== b.length) return 0;
+
+  let dot = 0, normA = 0, normB = 0;
+  for (let i = 0; i < a.length; i++) {
+    dot += a[i] * b[i];
+    normA += a[i] * a[i];
+    normB += b[i] * b[i];
+  }
+
+  return dot / (Math.sqrt(normA) * Math.sqrt(normB) + 1e-8);
+}
+
+/**
+ * Domain interaction priors from curated databases
+ */
+const DOMAIN_INTERACTION_PRIORS: Map<string, Map<string, number>> = new Map([
+  ['Phage_tail_fiber', new Map([
+    ['LPS_biosyn', 0.8],
+    ['Porin', 0.7],
+    ['OMP_b-brl', 0.6],
+  ])],
+  ['Anti_CRISPR', new Map([
+    ['CRISPR_Cas', 0.9],
+    ['Cas_Cmr6gr7', 0.85],
+  ])],
+  ['Methyltransf', new Map([
+    ['Restriction', 0.7],
+    ['RE_Mrr', 0.75],
+  ])],
+]);
+
+/**
+ * Calculate domain compatibility score
+ */
+function domainCompatibility(
+  phageDomains: DomainHit[],
+  hostDomains: DomainHit[]
+): { score: number; supportingPairs: Array<[string, string]> } {
+  let score = 0;
+  const supportingPairs: Array<[string, string]> = [];
+
+  for (const pd of phageDomains) {
+    const priors = DOMAIN_INTERACTION_PRIORS.get(pd.domainId);
+    if (!priors) continue;
+
+    for (const hd of hostDomains) {
+      const prior = priors.get(hd.domainId);
+      if (prior) {
+        score += prior;
+        supportingPairs.push([pd.domainName, hd.domainName]);
+      }
+    }
+  }
+
+  return { score: Math.min(score, 1), supportingPairs };
+}
+
+/**
+ * Classify interaction type based on domains and host protein function
+ */
+function classifyInteractionType(
+  phageDomains: DomainHit[],
+  hostProtein: HostProtein
+): PredictedInteraction['interactionType'] {
+  // Check for anti-defense
+  if (hostProtein.isDefenseSystem) {
+    const antiDefenseDomains = phageDomains.filter(d =>
+      d.domainName.includes('Anti') || d.functionalCategory === 'defense'
+    );
+    if (antiDefenseDomains.length > 0) return 'anti-defense';
+  }
+
+  // Check for receptor binding
+  if (hostProtein.isSurfaceExposed) {
+    const rbpDomains = phageDomains.filter(d =>
+      d.domainName.includes('tail') || d.domainName.includes('fiber') ||
+      d.functionalCategory === 'receptor'
+    );
+    if (rbpDomains.length > 0) return 'receptor-binding';
+  }
+
+  // Check for metabolic
+  const metabolicDomains = phageDomains.filter(d =>
+    d.functionalCategory === 'metabolism'
+  );
+  if (metabolicDomains.length > 0) return 'metabolic';
+
+  return 'unknown';
+}
+
+/**
+ * Fuse evidence sources into final confidence
+ */
+function fuseEvidence(
+  embeddingSim: number,
+  domainScore: number,
+  dockingScore?: number
+): { confidence: number; evidenceLevel: 'high' | 'medium' | 'low' } {
+  // Weights learned from validation set
+  const w1 = 0.4;  // Embedding
+  const w2 = 0.35; // Domain
+  const w3 = 0.25; // Docking
+  const prior = -2; // Base log-odds
+
+  let logOdds = prior;
+  logOdds += w1 * Math.log(embeddingSim + 0.1);
+  logOdds += w2 * Math.log(domainScore + 0.1);
+
+  if (dockingScore !== undefined) {
+    logOdds += w3 * Math.log(dockingScore + 0.1);
+  }
+
+  const confidence = 1 / (1 + Math.exp(-logOdds));
+
+  let evidenceLevel: 'high' | 'medium' | 'low';
+  if (confidence > 0.7 && domainScore > 0.5) evidenceLevel = 'high';
+  else if (confidence > 0.4) evidenceLevel = 'medium';
+  else evidenceLevel = 'low';
+
+  return { confidence, evidenceLevel };
+}
+
+/**
+ * Build interaction network
+ */
+export function buildInteractionNetwork(
+  phageProteins: Array<{ gene: GeneInfo; embedding: Float32Array; domains: DomainHit[] }>,
+  hostDatabase: HostProtein[],
+  options: {
+    topK?: number;
+    minConfidence?: number;
+    includeTypes?: PredictedInteraction['interactionType'][];
+  } = {}
+): PredictedInteraction[] {
+  const { topK = 10, minConfidence = 0.3, includeTypes } = options;
+  const interactions: PredictedInteraction[] = [];
+
+  for (const phage of phageProteins) {
+    // Find top-K similar host proteins by embedding
+    const similarities: Array<{ host: HostProtein; sim: number }> = [];
+
+    for (const host of hostDatabase) {
+      if (!host.embedding) continue;
+      const sim = cosineSimilarity(phage.embedding, host.embedding);
+      similarities.push({ host, sim });
+    }
+
+    similarities.sort((a, b) => b.sim - a.sim);
+    const topHosts = similarities.slice(0, topK);
+
+    for (const { host, sim: embeddingSim } of topHosts) {
+      // Domain compatibility
+      const { score: domainScore, supportingPairs } = domainCompatibility(
+        phage.domains,
+        host.domains
+      );
+
+      // Fuse evidence
+      const { confidence, evidenceLevel } = fuseEvidence(embeddingSim, domainScore);
+
+      if (confidence < minConfidence) continue;
+
+      // Classify interaction type
+      const interactionType = classifyInteractionType(phage.domains, host);
+
+      if (includeTypes && !includeTypes.includes(interactionType)) continue;
+
+      interactions.push({
+        phageProtein: phage.gene.name ?? phage.gene.locusTag ?? 'unknown',
+        hostProtein: host.id,
+        embeddingSimilarity: embeddingSim,
+        domainCompatibility: domainScore,
+        confidence,
+        evidenceLevel,
+        interactionType,
+        supportingDomains: supportingPairs.map(([p, h]) => `${p}↔${h}`),
+      });
+    }
+  }
+
+  return interactions.sort((a, b) => b.confidence - a.confidence);
+}
+
+/**
+ * Filter network by interaction type
+ */
+export function filterByType(
+  interactions: PredictedInteraction[],
+  type: PredictedInteraction['interactionType']
+): PredictedInteraction[] {
+  return interactions.filter(i => i.interactionType === type);
+}
+
+/**
+ * Get network statistics
+ */
+export function networkStats(interactions: PredictedInteraction[]): {
+  totalInteractions: number;
+  byType: Record<string, number>;
+  byEvidence: Record<string, number>;
+  avgConfidence: number;
+  hubPhageProteins: string[];
+  hubHostProteins: string[];
+} {
+  const byType: Record<string, number> = {};
+  const byEvidence: Record<string, number> = {};
+  const phageDegree: Record<string, number> = {};
+  const hostDegree: Record<string, number> = {};
+
+  let totalConf = 0;
+
+  for (const i of interactions) {
+    byType[i.interactionType] = (byType[i.interactionType] ?? 0) + 1;
+    byEvidence[i.evidenceLevel] = (byEvidence[i.evidenceLevel] ?? 0) + 1;
+    phageDegree[i.phageProtein] = (phageDegree[i.phageProtein] ?? 0) + 1;
+    hostDegree[i.hostProtein] = (hostDegree[i.hostProtein] ?? 0) + 1;
+    totalConf += i.confidence;
+  }
+
+  const hubPhageProteins = Object.entries(phageDegree)
+    .sort(([, a], [, b]) => b - a)
+    .slice(0, 5)
+    .map(([p]) => p);
+
+  const hubHostProteins = Object.entries(hostDegree)
+    .sort(([, a], [, b]) => b - a)
+    .slice(0, 5)
+    .map(([p]) => p);
+
+  return {
+    totalInteractions: interactions.length,
+    byType,
+    byEvidence,
+    avgConfidence: totalConf / interactions.length,
+    hubPhageProteins,
+    hubHostProteins,
+  };
+}
+```
+
+### Why This Is a Good Idea
+
+1. **Beyond BLAST**: Sequence identity alone misses interactions between structurally similar but sequence-divergent proteins. Embeddings capture functional similarity that BLAST cannot.
+
+2. **Mechanistic Hypotheses**: Knowing that a phage protein likely targets a host defense system generates testable hypotheses and guides experimental validation.
+
+3. **Host Range Prediction**: The receptor-binding interactions reveal which host surface proteins are targeted, informing host range breadth.
+
+4. **Engineering Targets**: Anti-defense interactions highlight which phage proteins to preserve (or enhance) when engineering therapeutic phages.
+
+5. **Multi-Evidence Integration**: Combining embeddings, domains, and docking provides more robust predictions than any single method.
+
+### Innovation Assessment
+**Novelty**: High — Protein interaction networks exist, but embedding-based prediction with domain fusion in a TUI genome context is novel.
+
+### Pedagogical Value: 8/10
+Teaches protein embeddings, domain-based inference, evidence fusion, and the complexity of host-phage molecular interactions.
+
+### Cool/Wow Factor: 8/10
+The bipartite graph visualization with colored edges by interaction type and real-time filtering creates an intuitive "wiring diagram" of phage-host molecular warfare.
+
+### TUI Visualization
+
+```
+╭───────────────────────── Host-Phage Protein Interaction Map ───────────────────────╮
+│  Phage: T4                 Host: E. coli K-12              Interactions: 47        │
+├────────────────────────────────────────────────────────────────────────────────────┤
+│                                                                                    │
+│  ┌─ Bipartite Network ─────────────────────────────────────────────────────────┐  │
+│  │                                                                              │  │
+│  │   PHAGE PROTEINS              INTERACTIONS           HOST PROTEINS          │  │
+│  │   ──────────────              ────────────           ─────────────          │  │
+│  │                                                                              │  │
+│  │   ┌─────────────┐      ══════════════════════      ┌─────────────┐          │  │
+│  │   │   gp37      │━━━━━━━━━━●●●●●●●●●●━━━━━━━━━━━━━│   OmpC      │ receptor │  │
+│  │   │ (tail fiber)│      ════════════════            └─────────────┘          │  │
+│  │   └─────────────┘          ╲                                                │  │
+│  │                             ╲══════════════════    ┌─────────────┐          │  │
+│  │   ┌─────────────┐            ━━━━━━━●●●●━━━━━━━━━━│   LamB      │ receptor │  │
+│  │   │   gp38      │━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━│             │          │  │
+│  │   └─────────────┘                                  └─────────────┘          │  │
+│  │                                                                              │  │
+│  │   ┌─────────────┐      ─ ─ ─ ─●●─ ─ ─ ─            ┌─────────────┐          │  │
+│  │   │   AsiA      │━━━━━━━━━●●●●●●●●━━━━━━━━━━━━━━━━│   σ70       │ anti-def │  │
+│  │   │(anti-sigma) │                                  └─────────────┘          │  │
+│  │   └─────────────┘                                                           │  │
+│  │                                                                              │  │
+│  │   ┌─────────────┐      ━━━━━━━●●●━━━━━━━━          ┌─────────────┐          │  │
+│  │   │   Arn       │━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━│   Cas3      │ anti-def │  │
+│  │   │(anti-CRISPR)│                                  └─────────────┘          │  │
+│  │   └─────────────┘                                                           │  │
+│  │                                                                              │  │
+│  │   Legend: ━━●●●━━ = high confidence   ─ ─●─ ─ = low confidence              │  │
+│  └──────────────────────────────────────────────────────────────────────────────┘  │
+│                                                                                    │
+│  ┌─ Selected: gp37 ↔ OmpC ──────────────────────────────────────────────────────┐  │
+│  │  Confidence: 0.87 (HIGH)    Type: receptor-binding                           │  │
+│  │  Embedding sim: 0.72    Domain compat: 0.91                                  │  │
+│  │  Supporting: Phage_tail_fiber ↔ Porin, T4_gp37 ↔ OMP_b-brl                   │  │
+│  │  Predicted interface: gp37 res 234-289 ↔ OmpC loops L2, L3                   │  │
+│  └──────────────────────────────────────────────────────────────────────────────┘  │
+│                                                                                    │
+├────────────────────────────────────────────────────────────────────────────────────┤
+│ [F]ilter: All  [R]eceptor  [A]nti-defense  [M]etabolic  [T]hreshold: 0.3  [E]xport│
+╰────────────────────────────────────────────────────────────────────────────────────╯
+```
 
 ### Implementation Stack
-Offline Python for embeddings/docking; SQLite cache; Rust+WASM or TS ANN; TS/Ink UI.
+- **Embeddings**: ESM2/ProtT5 via Python sidecar, cached to SQLite as float32 blobs
+- **ANN Search**: HNSW index in Rust+WASM or hnswlib-js for fast similarity
+- **Domain DB**: PFAM/HMM profiles with precomputed domain-interaction priors
+- **Docking**: Optional LightDock/pyDock3 batch jobs, results cached
+- **UI**: Ink/React bipartite graph with force-directed layout hints
 
 ---
 
