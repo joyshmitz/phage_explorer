@@ -16,7 +16,7 @@ import {
   nextSpeed,
   prevSpeed,
 } from '@phage-explorer/core';
-type OverlayData = Partial<Record<'gcSkew' | 'complexity' | 'bendability' | 'promoter' | 'repeats', unknown>>;
+type OverlayData = Partial<Record<'gcSkew' | 'complexity' | 'bendability' | 'promoter' | 'repeats' | 'kmerAnomaly', unknown>>;
 import type { GenomeComparisonResult } from '@phage-explorer/comparison';
 
 // Overlay states
@@ -34,6 +34,7 @@ export type OverlayId =
   | 'bendability'
   | 'promoter'
   | 'repeats'
+  | 'kmerAnomaly'
   | 'commandPalette';
 
 export type HelpDetailLevel = 'essential' | 'detailed';

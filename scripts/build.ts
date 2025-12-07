@@ -25,6 +25,14 @@ const outfile = values.target
 
 console.log(`Building${target ? ` for ${target}` : ""}...`);
 
+console.log("Building Rust core...");
+try {
+  await $`cd packages/rust-core && wasm-pack build --target nodejs`;
+} catch (e) {
+  console.error("Failed to build Rust core:", e);
+  process.exit(1);
+}
+
 // Create stub for react-devtools-core
 const stubPath = new URL("./react-devtools-stub.js", import.meta.url).pathname;
 

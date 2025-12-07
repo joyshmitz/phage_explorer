@@ -9,6 +9,7 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
-    "@phage-explorer/core": "workspace:*"
+    "@phage-explorer/core": "workspace:*",
+    "@phage/rust-core": "workspace:*"
   }
 }

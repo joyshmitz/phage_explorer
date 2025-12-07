@@ -13,6 +13,7 @@
  */
 
 import type { EditDistanceMetrics } from './types';
+import { levenshtein_distance as wasmLevenshtein } from '@phage/rust-core';
 
 /**
  * Compute Levenshtein distance using dynamic programming.
@@ -21,6 +22,25 @@ import type { EditDistanceMetrics } from './types';
  * For sequences > maxLength, returns approximate result.
  */
 export function levenshteinDistance(
+  a: string,
+  b: string,
+  maxLength: number = 10000
+): { distance: number; isApproximate: boolean } {
+  // Try using Rust implementation first
+  try {
+    // Rust is significantly faster, so we can increase the exact calculation threshold.
+    // 100kb x 100kb is feasible in Wasm/Rust whereas it would choke JS.
+    if (a.length <= 100000 && b.length <= 100000) {
+      return { distance: wasmLevenshtein(a, b), isApproximate: false };
+    }
+  } catch (e) {
+    // Fallback silently to JS implementation
+  }
+
+  return levenshteinDistanceJS(a, b, maxLength);
+}
+
+function levenshteinDistanceJS(
   a: string,
   b: string,
   maxLength: number = 10000

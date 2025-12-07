@@ -5391,75 +5391,647 @@ Watching related phage genomes "rearrange" in real-time — seeing inversions fl
 
 ### Concept
 
-For temperate phages, predict the exact **attL** and **attR** sites that flank the integrated prophage, and model the excision product.
+Temperate phages have dual lives: they can replicate lytically (destroying the host) or integrate into the bacterial chromosome as **prophages**, lying dormant until induced. The integration and excision events are mediated by site-specific recombination at **attachment sites** — the phage attP site recombines with the bacterial attB site during integration, creating hybrid attL and attR sites that flank the prophage.
 
-### Implementation
+**The biochemistry of integration:**
+```
+attP (phage) + attB (bacteria) → attL (left hybrid) + attR (right hybrid)
+
+Example for Lambda:
+  attB: ...host...GCTTTTTTATACTAA...host...
+  attP: ...phage...GCTTTTTTATACTAA...phage...
+                   ^^^^^^^^^^^^^^^^
+                   15 bp "core" where crossing over occurs
+
+After integration:
+  ...host...[attL]═══[prophage]═══[attR]...host...
+```
+
+**The integrase family:**
+- **Tyrosine recombinases** (Int, Cre, Flp): Form transient covalent intermediate with tyrosine
+- **Serine recombinases** (PhiC31, Bxb1): Form different topological products
+- **Accessory factors**: Xis (excisionase), IHF, Fis bend DNA to activate specific reactions
+
+**Why excision prediction matters:**
+1. **Prophage induction**: Stress triggers excision — predicting att sites predicts inducibility
+2. **Defective prophages**: Many prophages have damaged att sites and are "cryptic" (permanently integrated)
+3. **Biotechnology**: PhiC31 and Bxb1 integrases are used for transgene integration; knowing att sites is essential
+4. **Evolutionary remnants**: att-site scars reveal ancient integration events
+
+### Mathematical Foundations
+
+**Att Site Architecture:**
+```
+Lambda-type attP (240 bp total):
+  ├── P arm (left)──┤──core──┤──P' arm (right)──┤
+         ~150 bp       15 bp       ~75 bp
+
+Binding sites in arms:
+  - Int arm-type binding sites (recognize DNA bends)
+  - Int core-type binding sites (catalytic)
+  - IHF/Xis binding sites (architectural proteins)
+```
+
+**Core Sequence Alignment:**
+```
+For imperfect att site detection:
+
+Smith-Waterman local alignment between flanking sequences:
+  Score(i,j) = max{
+    Score(i-1,j-1) + match/mismatch(i,j),
+    Score(i-1,j) + gap_penalty,
+    Score(i,j-1) + gap_penalty,
+    0  (local alignment can restart)
+  }
+
+Core similarity threshold: typically 12-15 bp with ≤2 mismatches
+```
+
+**Imperfect Repeat Detection:**
+```
+For finding attL/attR from prophage boundaries:
+
+1. Extract 500 bp from each boundary
+2. Find longest common subsequence (LCS) with mismatches
+3. Extend using k-mer anchoring
+
+Scoring: S = matches - 2×mismatches - 5×gaps
+Accept if S > threshold (typically 20 for 25+ bp cores)
+```
+
+**Holliday Junction Topology:**
+```
+During recombination, DNA forms a four-way Holliday junction:
+
+         attP
+          │
+    ══════╪══════
+          │
+    ──────┼──────
+          │
+         attB
+
+Branch migration window = core sequence length
+Resolution creates reciprocal products (attL + attR)
+```
+
+### Implementation Approach
 
 ```typescript
-interface AttSites {
-  attL: { sequence: string; position: number };
-  attR: { sequence: string; position: number };
-  attB: string;  // Reconstituted bacterial site
-  attP: string;  // Reconstituted phage site
-  integrase: Gene;
+// Comprehensive prophage excision site prediction
+
+interface AttSite {
+  sequence: string;           // Full att site sequence (50-200 bp)
+  coreSequence: string;       // 12-25 bp core where crossover occurs
+  corePosition: number;       // Position of core within site
+  genomicPosition: number;    // Position in genome
+  strand: '+' | '-';          // Orientation
+  armBindingSites: {          // Protein binding sites in arms
+    name: string;             // Int, IHF, Xis, etc.
+    position: number;
+    sequence: string;
+    consensus: string;
+    score: number;
+  }[];
 }
 
-function findAttSites(
-  prophageRegion: string,
-  genes: Gene[]
-): AttSites | null {
-  // Find integrase gene
-  const integrase = genes.find(g =>
-    g.product?.toLowerCase().includes('integrase') ||
-    g.product?.toLowerCase().includes('recombinase')
-  );
+interface ExcisionPrediction {
+  prophageId: string;
+  integrase: GeneInfo | null;
+  integraseFamily: 'tyrosine' | 'serine' | 'unknown';
 
-  if (!integrase) return null;
+  attL: AttSite | null;
+  attR: AttSite | null;
 
-  // Search for imperfect direct repeats at prophage boundaries
-  const leftFlank = prophageRegion.slice(0, 500);
-  const rightFlank = prophageRegion.slice(-500);
+  // Reconstructed sites after excision
+  attB: string | null;        // Bacterial site restored
+  attP: string | null;        // Phage site restored
 
-  const repeats = findImperfectRepeats(leftFlank, rightFlank, {
-    minLength: 15,
-    maxMismatches: 3
-  });
+  excisionCompetent: boolean; // Can this prophage excise?
+  defects: string[];          // What's wrong if not
 
-  if (repeats.length === 0) return null;
+  excisionProducts: {
+    circularPhage: {          // Excised phage circle
+      length: number;
+      sequence?: string;
+    };
+    healedChromosome: {       // Restored chromosome
+      genesCured: GeneInfo[]; // Genes removed
+      attBSequence: string;
+    };
+  };
 
-  const best = repeats[0];
+  confidence: 'high' | 'medium' | 'low';
+}
+
+// Known integrase binding site motifs
+const BINDING_SITE_PATTERNS = {
+  // Lambda Int arm-type sites
+  lambdaIntArm: {
+    consensus: 'CAACTTNNT',
+    allowedMismatches: 2,
+  },
+  // Lambda Int core-type sites
+  lambdaIntCore: {
+    consensus: 'WTTCWCW',
+    allowedMismatches: 1,
+  },
+  // IHF binding site
+  ihf: {
+    consensus: 'WATCAANNNNTTR',
+    allowedMismatches: 3,
+  },
+  // Xis binding sites
+  xis: {
+    consensus: 'NGWWWWWNRT',
+    allowedMismatches: 2,
+  },
+  // Fis binding sites
+  fis: {
+    consensus: 'GNNYWNNYRNNC',
+    allowedMismatches: 3,
+  },
+};
+
+// Identify integrase gene and classify
+function classifyIntegrase(gene: GeneInfo, sequence: string): {
+  isIntegrase: boolean;
+  family: 'tyrosine' | 'serine' | 'unknown';
+  catalyticResidue?: string;
+} {
+  const product = (gene.product || '').toLowerCase();
+
+  if (!product.includes('integrase') &&
+      !product.includes('recombinase') &&
+      !product.includes('transposase')) {
+    return { isIntegrase: false, family: 'unknown' };
+  }
+
+  // Get protein sequence (translate gene)
+  const proteinSeq = translateGene(sequence, gene);
+
+  // Look for catalytic motifs
+  // Tyrosine recombinases have R-H-R-Y catalytic tetrad
+  const tyrosineMotif = /R[A-Z]{50,150}H[A-Z]{20,40}R[A-Z]{10,30}Y/;
+
+  // Serine recombinases have S-R catalytic dyad
+  const serineMotif = /S[A-Z]{5,15}R/;
+
+  if (tyrosineMotif.test(proteinSeq)) {
+    return { isIntegrase: true, family: 'tyrosine', catalyticResidue: 'Y' };
+  } else if (serineMotif.test(proteinSeq)) {
+    return { isIntegrase: true, family: 'serine', catalyticResidue: 'S' };
+  }
+
+  return { isIntegrase: true, family: 'unknown' };
+}
+
+// Find imperfect direct repeats between two regions
+function findAttCores(
+  leftFlank: string,
+  rightFlank: string,
+  minLength: number = 12,
+  maxMismatches: number = 2
+): Array<{
+  leftSeq: string;
+  rightSeq: string;
+  leftPos: number;
+  rightPos: number;
+  length: number;
+  mismatches: number;
+  score: number;
+}> {
+  const results: Array<{
+    leftSeq: string;
+    rightSeq: string;
+    leftPos: number;
+    rightPos: number;
+    length: number;
+    mismatches: number;
+    score: number;
+  }> = [];
+
+  // Seed with exact k-mer matches, then extend
+  const k = 8;
+  const leftKmers = new Map<string, number[]>();
+
+  for (let i = 0; i <= leftFlank.length - k; i++) {
+    const kmer = leftFlank.slice(i, i + k);
+    if (!leftKmers.has(kmer)) leftKmers.set(kmer, []);
+    leftKmers.get(kmer)!.push(i);
+  }
+
+  // Find seeds in right flank
+  for (let j = 0; j <= rightFlank.length - k; j++) {
+    const kmer = rightFlank.slice(j, j + k);
+    const leftPositions = leftKmers.get(kmer);
+
+    if (leftPositions) {
+      for (const i of leftPositions) {
+        // Extend match in both directions
+        let extendLeft = 0;
+        let extendRight = 0;
+        let mismatches = 0;
+
+        // Extend right
+        while (i + k + extendRight < leftFlank.length &&
+               j + k + extendRight < rightFlank.length) {
+          if (leftFlank[i + k + extendRight] === rightFlank[j + k + extendRight]) {
+            extendRight++;
+          } else {
+            mismatches++;
+            if (mismatches > maxMismatches) break;
+            extendRight++;
+          }
+        }
+
+        // Extend left
+        mismatches = 0;
+        while (i - extendLeft > 0 && j - extendLeft > 0) {
+          if (leftFlank[i - extendLeft - 1] === rightFlank[j - extendLeft - 1]) {
+            extendLeft++;
+          } else {
+            mismatches++;
+            if (mismatches > maxMismatches) break;
+            extendLeft++;
+          }
+        }
+
+        const totalLength = k + extendLeft + extendRight;
+        if (totalLength >= minLength) {
+          const leftSeq = leftFlank.slice(i - extendLeft, i + k + extendRight);
+          const rightSeq = rightFlank.slice(j - extendLeft, j + k + extendRight);
+
+          // Count actual mismatches
+          let actualMismatches = 0;
+          for (let m = 0; m < leftSeq.length; m++) {
+            if (leftSeq[m] !== rightSeq[m]) actualMismatches++;
+          }
+
+          if (actualMismatches <= maxMismatches) {
+            results.push({
+              leftSeq,
+              rightSeq,
+              leftPos: i - extendLeft,
+              rightPos: j - extendLeft,
+              length: totalLength,
+              mismatches: actualMismatches,
+              score: totalLength - 3 * actualMismatches
+            });
+          }
+        }
+      }
+    }
+  }
+
+  // Sort by score and deduplicate overlapping
+  return results
+    .sort((a, b) => b.score - a.score)
+    .filter((r, i, arr) => {
+      // Keep only non-overlapping
+      for (let j = 0; j < i; j++) {
+        if (Math.abs(r.leftPos - arr[j].leftPos) < 20 &&
+            Math.abs(r.rightPos - arr[j].rightPos) < 20) {
+          return false;
+        }
+      }
+      return true;
+    });
+}
+
+// Find binding sites in att site arms
+function findBindingSites(
+  sequence: string,
+  patterns: typeof BINDING_SITE_PATTERNS
+): AttSite['armBindingSites'] {
+  const sites: AttSite['armBindingSites'] = [];
+
+  for (const [name, pattern] of Object.entries(patterns)) {
+    const consensusRegex = iupacToRegex(pattern.consensus);
+    const matches = sequence.matchAll(new RegExp(consensusRegex, 'gi'));
+
+    for (const match of matches) {
+      sites.push({
+        name,
+        position: match.index!,
+        sequence: match[0],
+        consensus: pattern.consensus,
+        score: scoreConsensusMatch(match[0], pattern.consensus)
+      });
+    }
+  }
+
+  return sites.sort((a, b) => a.position - b.position);
+}
+
+// Reconstruct attB/attP from attL/attR
+function reconstructExcisionProducts(
+  attL: AttSite,
+  attR: AttSite
+): { attB: string; attP: string } {
+  // attL = bacterial left arm + core + phage right arm
+  // attR = phage left arm + core + bacterial right arm
+  // attB = bacterial left arm + core + bacterial right arm
+  // attP = phage left arm + core + phage right arm
+
+  const coreL = attL.coreSequence;
+  const coreR = attR.coreSequence;
+
+  // Core sequences should be identical or very similar
+  const core = coreL; // Use left core (should equal right)
+
+  // Split arms at core position
+  const attLLeft = attL.sequence.slice(0, attL.corePosition);  // Bacterial left
+  const attLRight = attL.sequence.slice(attL.corePosition + core.length); // Phage right
+
+  const attRLeft = attR.sequence.slice(0, attR.corePosition);  // Phage left
+  const attRRight = attR.sequence.slice(attR.corePosition + core.length); // Bacterial right
 
   return {
-    attL: { sequence: best.left, position: best.leftPos },
-    attR: { sequence: best.right, position: best.rightPos },
-    attB: reconstructAttB(best.left, best.right),
-    attP: reconstructAttP(best.left, best.right),
-    integrase
+    attB: attLLeft + core + attRRight,  // Restored bacterial site
+    attP: attRLeft + core + attLRight   // Restored phage site
   };
 }
+
+function predictExcision(
+  prophageRegion: string,
+  genes: GeneInfo[],
+  leftFlankHost: string,   // 500 bp of host upstream
+  rightFlankHost: string,  // 500 bp of host downstream
+  fullGenomeSequence: string,
+  prophageStart: number,
+  prophageEnd: number
+): ExcisionPrediction {
+  const defects: string[] = [];
+
+  // Find integrase
+  let integrase: GeneInfo | null = null;
+  let integraseFamily: 'tyrosine' | 'serine' | 'unknown' = 'unknown';
+
+  for (const gene of genes) {
+    const classification = classifyIntegrase(gene, fullGenomeSequence);
+    if (classification.isIntegrase) {
+      integrase = gene;
+      integraseFamily = classification.family;
+      break;
+    }
+  }
+
+  if (!integrase) {
+    defects.push('No integrase gene found');
+  }
+
+  // Find att cores at prophage boundaries
+  const leftBoundary = prophageRegion.slice(0, 500);
+  const rightBoundary = prophageRegion.slice(-500);
+
+  const coreMatches = findAttCores(leftBoundary, rightBoundary, 12, 2);
+
+  if (coreMatches.length === 0) {
+    defects.push('No att core sequence found at boundaries');
+  }
+
+  // Build att sites from best core match
+  let attL: AttSite | null = null;
+  let attR: AttSite | null = null;
+  let attB: string | null = null;
+  let attP: string | null = null;
+
+  if (coreMatches.length > 0) {
+    const bestCore = coreMatches[0];
+
+    // Extract extended att site sequences (100 bp on each side of core)
+    const attLStart = Math.max(0, bestCore.leftPos - 100);
+    const attLEnd = Math.min(leftBoundary.length, bestCore.leftPos + bestCore.length + 100);
+    const attLSeq = leftBoundary.slice(attLStart, attLEnd);
+
+    const attRStart = Math.max(0, bestCore.rightPos - 100);
+    const attREnd = Math.min(rightBoundary.length, bestCore.rightPos + bestCore.length + 100);
+    const attRSeq = rightBoundary.slice(attRStart, attREnd);
+
+    attL = {
+      sequence: attLSeq,
+      coreSequence: bestCore.leftSeq,
+      corePosition: bestCore.leftPos - attLStart,
+      genomicPosition: prophageStart + bestCore.leftPos,
+      strand: '+',
+      armBindingSites: findBindingSites(attLSeq, BINDING_SITE_PATTERNS)
+    };
+
+    attR = {
+      sequence: attRSeq,
+      coreSequence: bestCore.rightSeq,
+      corePosition: bestCore.rightPos - attRStart,
+      genomicPosition: prophageEnd - 500 + bestCore.rightPos,
+      strand: '+',
+      armBindingSites: findBindingSites(attRSeq, BINDING_SITE_PATTERNS)
+    };
+
+    // Reconstruct bacterial and phage att sites
+    const products = reconstructExcisionProducts(attL, attR);
+    attB = products.attB;
+    attP = products.attP;
+  }
+
+  // Check for excision competence
+  const excisionCompetent =
+    integrase !== null &&
+    attL !== null &&
+    attR !== null &&
+    defects.length === 0;
+
+  // Calculate excision products
+  const circularPhageLength = prophageEnd - prophageStart;
+  const genesCured = genes.filter(g =>
+    g.start >= prophageStart && g.end <= prophageEnd
+  );
+
+  return {
+    prophageId: `prophage_${prophageStart}_${prophageEnd}`,
+    integrase,
+    integraseFamily,
+    attL,
+    attR,
+    attB,
+    attP,
+    excisionCompetent,
+    defects,
+    excisionProducts: {
+      circularPhage: {
+        length: circularPhageLength,
+        sequence: attP ? attP + prophageRegion.slice(200, -200) : undefined
+      },
+      healedChromosome: {
+        genesCured,
+        attBSequence: attB || ''
+      }
+    },
+    confidence: defects.length === 0 ? 'high' : defects.length === 1 ? 'medium' : 'low'
+  };
+}
+
+// Convert IUPAC codes to regex
+function iupacToRegex(consensus: string): string {
+  const iupac: Record<string, string> = {
+    'A': 'A', 'C': 'C', 'G': 'G', 'T': 'T',
+    'R': '[AG]', 'Y': '[CT]', 'S': '[GC]', 'W': '[AT]',
+    'K': '[GT]', 'M': '[AC]', 'B': '[CGT]', 'D': '[AGT]',
+    'H': '[ACT]', 'V': '[ACG]', 'N': '[ACGT]'
+  };
+  return consensus.split('').map(c => iupac[c] || c).join('');
+}
+
+function scoreConsensusMatch(sequence: string, consensus: string): number {
+  let score = 0;
+  for (let i = 0; i < Math.min(sequence.length, consensus.length); i++) {
+    const regex = new RegExp(iupacToRegex(consensus[i]));
+    if (regex.test(sequence[i])) score++;
+  }
+  return score / consensus.length;
+}
+
+function translateGene(sequence: string, gene: GeneInfo): string {
+  const start = gene.start;
+  const end = gene.end;
+  const dnaSeq = gene.strand === '-'
+    ? reverseComplement(sequence.slice(start, end))
+    : sequence.slice(start, end);
+
+  // Simple translation (would use codon table in real implementation)
+  let protein = '';
+  for (let i = 0; i < dnaSeq.length - 2; i += 3) {
+    protein += translateCodon(dnaSeq.slice(i, i + 3));
+  }
+  return protein;
+}
+
+function translateCodon(codon: string): string {
+  const table: Record<string, string> = {
+    'TTT': 'F', 'TTC': 'F', 'TTA': 'L', 'TTG': 'L',
+    'TCT': 'S', 'TCC': 'S', 'TCA': 'S', 'TCG': 'S',
+    'TAT': 'Y', 'TAC': 'Y', 'TAA': '*', 'TAG': '*',
+    'TGT': 'C', 'TGC': 'C', 'TGA': '*', 'TGG': 'W',
+    'CTT': 'L', 'CTC': 'L', 'CTA': 'L', 'CTG': 'L',
+    'CCT': 'P', 'CCC': 'P', 'CCA': 'P', 'CCG': 'P',
+    'CAT': 'H', 'CAC': 'H', 'CAA': 'Q', 'CAG': 'Q',
+    'CGT': 'R', 'CGC': 'R', 'CGA': 'R', 'CGG': 'R',
+    'ATT': 'I', 'ATC': 'I', 'ATA': 'I', 'ATG': 'M',
+    'ACT': 'T', 'ACC': 'T', 'ACA': 'T', 'ACG': 'T',
+    'AAT': 'N', 'AAC': 'N', 'AAA': 'K', 'AAG': 'K',
+    'AGT': 'S', 'AGC': 'S', 'AGA': 'R', 'AGG': 'R',
+    'GTT': 'V', 'GTC': 'V', 'GTA': 'V', 'GTG': 'V',
+    'GCT': 'A', 'GCC': 'A', 'GCA': 'A', 'GCG': 'A',
+    'GAT': 'D', 'GAC': 'D', 'GAA': 'E', 'GAG': 'E',
+    'GGT': 'G', 'GGC': 'G', 'GGA': 'G', 'GGG': 'G',
+  };
+  return table[codon.toUpperCase()] || 'X';
+}
+
+function reverseComplement(seq: string): string {
+  const comp: Record<string, string> = { 'A': 'T', 'T': 'A', 'G': 'C', 'C': 'G' };
+  return seq.split('').reverse().map(c => comp[c] || c).join('');
+}
 ```
+
+### Why This Is a Good Idea
+
+1. **Prophage Induction Prediction**: Knowing whether a prophage can excise tells you whether it's "armed" — capable of producing infectious particles when the host is stressed. Critical for understanding lysogenic bacteria.
+
+2. **Defective Prophage Detection**: Many bacterial genomes harbor cryptic prophages with damaged att sites. This feature identifies them and explains why they're stuck.
+
+3. **Biotechnology Applications**: Site-specific integrases (PhiC31, Bxb1) are tools for genome engineering. Precise att site prediction is essential for designing integration vectors.
+
+4. **Evolutionary Reconstruction**: att-site scars reveal ancient integration events. Even after a prophage decays completely, the attB scar remains — a fossil record.
+
+5. **Phage-Host Coevolution**: Integration site preferences reflect host adaptation. Some phages integrate into tRNA genes (Lambda into attB in tRNAarg); others target intergenic regions.
+
+### Innovation Assessment
+
+**Novelty**: 7/10 — PHASTER and similar tools find prophages, but detailed att site reconstruction with binding site annotation and excision product modeling is rare, especially in a TUI.
+
+### Pedagogical Value: 9/10
+
+Teaches:
+- Site-specific recombination biochemistry
+- Holliday junction formation and resolution
+- Tyrosine vs. serine recombinase mechanisms
+- Prophage biology and lysogeny decisions
+- How bacterial genomes accumulate "genetic scars"
+- DNA architecture and protein-DNA interactions
+
+### Cool/Wow Factor: 8/10
+
+Animating the excision reaction — watching attL + attR recombine to produce a circular phage and a "healed" chromosome — is deeply satisfying and makes abstract biochemistry tangible.
 
 ### TUI Visualization
 
 ```
-Prophage excision prediction: Lambda
-
-Integrated state:
-────[gal]───[attL]════[λ prophage]════[attR]───[bio]────
-              │                          │
-              GCTTTTTTATACTAA             GCTTTTTTATACTAA
-              (core sequence)
-
-              ↓ Int-mediated excision
-
-Excised products:
-Chromosome: ────[gal]───[attB]───[bio]────  (restored)
-                         │
-                    GCTTTTTTATACTAA
-
-Lambda circle:     ╭──[attP]──╮
-                   │          │
-                   ╰──────────╯
+┌─────────────────────────────────────────────────────────────────────────┐
+│  PROPHAGE EXCISION MAPPER                           Lambda Prophage    │
+├─────────────────────────────────────────────────────────────────────────┤
+│                                                                         │
+│  Prophage Status: EXCISION COMPETENT ✓                                  │
+│  Integrase: Int (tyrosine recombinase, gene at 27,812-28,987)          │
+│                                                                         │
+│  ═══════════════════════════════════════════════════════════════════    │
+│  INTEGRATED STATE (prophage in chromosome)                              │
+│  ═══════════════════════════════════════════════════════════════════    │
+│                                                                         │
+│  Chromosome:                                                            │
+│  ───[gal operon]───[attL]═══════[λ prophage (48 kb)]═══════[attR]───[bio]───
+│                      │                                        │         │
+│                      ▼                                        ▼         │
+│                                                                         │
+│  attL (left junction):           attR (right junction):                │
+│  5'-GAGCTCTTTTTTA∙TACTAACGGG-3'  5'-GAGCTCTTTTTTA∙TACTAATGGA-3'        │
+│     ├──host arm──┤├──core──┤├─phage─┤  ├─phage─┤├──core──┤├─host arm──┤ │
+│                    ▲ crossover        ▲ crossover                       │
+│                                                                         │
+│  Protein binding sites detected:                                        │
+│  attL: [IHF]─────[Int]──╬──[Int]────  (5 sites)                         │
+│  attR: ────[Xis]─[Int]──╬──[Int]───[IHF] (6 sites)                      │
+│                                                                         │
+│  ═══════════════════════════════════════════════════════════════════    │
+│  EXCISION REACTION (Int + Xis mediated)                                 │
+│  ═══════════════════════════════════════════════════════════════════    │
+│                                                                         │
+│         attL                            attR                            │
+│           │                               │                             │
+│    ───────╬───══════════════════════════──╬───────                      │
+│           │      Holliday Junction        │                             │
+│           └──────────────╬────────────────┘                             │
+│                          │                                              │
+│                          ▼                                              │
+│                                                                         │
+│  EXCISION PRODUCTS:                                                     │
+│                                                                         │
+│  1. Circular Lambda phage (48,502 bp):                                  │
+│     ╭────[attP]─────────────────────────────────╮                       │
+│     │   5'-GAGCTCTTTTTTA∙TACTAACGGG...TGGA-3'   │                       │
+│     │      (reconstituted phage att site)       │                       │
+│     ╰───────────────────────────────────────────╯                       │
+│                                                                         │
+│  2. Healed chromosome:                                                  │
+│     ───[gal operon]───[attB]───[bio operon]───                          │
+│                         │                                               │
+│              5'-GAGCTCTTTTTTA∙TACTAATGGA-3'                             │
+│                 (reconstituted bacterial att site)                      │
+│                                                                         │
+│  Genes removed by excision: 73 genes                                    │
+│  Host genes restored: gal-bio linkage                                   │
+│                                                                         │
+├─────────────────────────────────────────────────────────────────────────┤
+│  Core Sequence Alignment (15 bp crossover region)                       │
+│  ═══════════════════════════════════════════════════════════════════    │
+│                                                                         │
+│  attL core: G C T T T T T T A T A C T A A                               │
+│             │ │ │ │ │ │ │ │ │ │ │ │ │ │ │                               │
+│  attR core: G C T T T T T T A T A C T A A                               │
+│                                                                         │
+│  Identity: 15/15 (100%) - Clean excision expected                       │
+│                                                                         │
+└─────────────────────────────────────────────────────────────────────────┘
+[E] Animate excision  [B] Show binding sites  [C] Compare att sites  [?] Help
 ```
 
 ---
@@ -5468,65 +6040,571 @@ Lambda circle:     ╭──[attP]──╮
 
 ### Concept
 
-Predict phage particle stability (temperature, pH, ionic strength) from capsid protein properties — critical for therapy formulation.
+Phage therapy requires phages that remain viable during storage, shipping, and administration. **Virion stability** — the ability of phage particles to maintain infectivity over time and under stress — is determined by the biophysical properties of the capsid and tail proteins that form the particle.
 
-### Implementation
+**Why stability matters:**
+- **Storage**: Phages must survive months in buffers, often lyophilized
+- **Delivery**: GI tract (pH 2-8), bloodstream (37°C), skin (variable)
+- **Manufacturing**: Purification steps expose phages to harsh conditions
+- **Cocktail formulation**: Different phages have different optima
+
+**Structural determinants of stability:**
+
+1. **Capsid architecture**: Icosahedral symmetry, triangulation number (T-number), decoration proteins
+2. **Protein stability**: Disulfide bonds, salt bridges, hydrophobic cores
+3. **DNA packaging**: Internal pressure (~60 atm) stresses the capsid
+4. **Tail components**: Contractile vs. non-contractile tails have different sensitivities
+
+**Environmental stressors:**
+- **Temperature**: Protein denaturation, DNA ejection
+- **pH**: Charge neutralization, conformational changes
+- **Ionic strength**: Electrostatic interactions, osmotic stress
+- **UV light**: DNA damage, protein cross-linking
+- **Desiccation**: Loss of structural water
+
+### Mathematical Foundations
+
+**Protein Thermodynamic Stability:**
+```
+ΔG_folding = ΔH - TΔS
+
+For a stable fold:
+  ΔG < 0 at operating temperature
+
+Empirical estimates from sequence:
+  ΔG ≈ Σ(hydrophobic contacts) - Σ(exposed hydrophobic area)
+     + Σ(hydrogen bonds) + Σ(salt bridges)
+     + RT·ln(disulfide count + 1)
+```
+
+**Thermal Denaturation:**
+```
+Fraction unfolded: fᵤ = 1 / (1 + exp((Tₘ - T) / width))
+
+Where:
+  Tₘ = melting temperature (50% unfolded)
+  width = transition sharpness
+
+For virions, Tₘ correlates with:
+  - Cysteine content (disulfides)
+  - Proline content (rigidity)
+  - Hydrophobic core size
+```
+
+**pH Stability - Henderson-Hasselbalch:**
+```
+For ionizable residues:
+  Fraction charged = 1 / (1 + 10^(pKₐ - pH))  for acids
+  Fraction charged = 1 / (1 + 10^(pH - pKₐ))  for bases
+
+pKₐ values:
+  Asp/Glu: 4.0    Cys: 8.3
+  His: 6.0        Lys: 10.5
+  Tyr: 10.1       Arg: 12.5
+
+Isoelectric point: pI = pH where net charge = 0
+```
+
+**Ionic Strength Effects:**
+```
+Debye-Hückel screening length:
+  κ⁻¹ = √(ε₀εᵣkT / 2NAe²I)
+
+Where I = ionic strength = ½ Σ cᵢzᵢ²
+
+Electrostatic interactions screened at distances > κ⁻¹
+High salt → shorter screening → weaker electrostatics
+```
+
+**Shelf Life Prediction (Arrhenius):**
+```
+Rate of inactivation: k = A·exp(-Eₐ/RT)
+
+For log reduction over time t:
+  log₁₀(N₀/N) = k·t
+
+Shelf life (1 log loss): t = 1/k
+
+Q₁₀ rule: rate doubles for every 10°C increase
+```
+
+### Implementation Approach
 
 ```typescript
-interface StabilityProfile {
-  temperatureRange: { min: number; max: number; optimal: number };
-  pHRange: { min: number; max: number; optimal: number };
-  ionicSensitivity: 'low' | 'medium' | 'high';
-  shelfLife: string;
-  concerns: string[];
+// Comprehensive virion stability prediction
+
+interface AminoAcidProperties {
+  hydropathy: number;      // Kyte-Doolittle scale (-4.5 to +4.5)
+  volume: number;          // Å³
+  charge: number;          // At pH 7
+  pKa: number | null;      // For ionizable residues
+  isAromatic: boolean;
+  isCysteine: boolean;
+  isProline: boolean;
 }
 
-function predictStability(capsidProteins: Protein[]): StabilityProfile {
-  // Aggregate properties across structural proteins
-  let totalCharge = 0;
-  let hydrophobicFraction = 0;
-  let cysteineCount = 0;
-  let totalLength = 0;
+const AA_PROPERTIES: Record<string, AminoAcidProperties> = {
+  'A': { hydropathy: 1.8, volume: 88.6, charge: 0, pKa: null, isAromatic: false, isCysteine: false, isProline: false },
+  'R': { hydropathy: -4.5, volume: 173.4, charge: 1, pKa: 12.5, isAromatic: false, isCysteine: false, isProline: false },
+  'N': { hydropathy: -3.5, volume: 114.1, charge: 0, pKa: null, isAromatic: false, isCysteine: false, isProline: false },
+  'D': { hydropathy: -3.5, volume: 111.1, charge: -1, pKa: 3.9, isAromatic: false, isCysteine: false, isProline: false },
+  'C': { hydropathy: 2.5, volume: 108.5, charge: 0, pKa: 8.3, isAromatic: false, isCysteine: true, isProline: false },
+  'E': { hydropathy: -3.5, volume: 138.4, charge: -1, pKa: 4.1, isAromatic: false, isCysteine: false, isProline: false },
+  'Q': { hydropathy: -3.5, volume: 143.8, charge: 0, pKa: null, isAromatic: false, isCysteine: false, isProline: false },
+  'G': { hydropathy: -0.4, volume: 60.1, charge: 0, pKa: null, isAromatic: false, isCysteine: false, isProline: false },
+  'H': { hydropathy: -3.2, volume: 153.2, charge: 0.1, pKa: 6.0, isAromatic: true, isCysteine: false, isProline: false },
+  'I': { hydropathy: 4.5, volume: 166.7, charge: 0, pKa: null, isAromatic: false, isCysteine: false, isProline: false },
+  'L': { hydropathy: 3.8, volume: 166.7, charge: 0, pKa: null, isAromatic: false, isCysteine: false, isProline: false },
+  'K': { hydropathy: -3.9, volume: 168.6, charge: 1, pKa: 10.5, isAromatic: false, isCysteine: false, isProline: false },
+  'M': { hydropathy: 1.9, volume: 162.9, charge: 0, pKa: null, isAromatic: false, isCysteine: false, isProline: false },
+  'F': { hydropathy: 2.8, volume: 189.9, charge: 0, pKa: null, isAromatic: true, isCysteine: false, isProline: false },
+  'P': { hydropathy: -1.6, volume: 112.7, charge: 0, pKa: null, isAromatic: false, isCysteine: false, isProline: true },
+  'S': { hydropathy: -0.8, volume: 89.0, charge: 0, pKa: null, isAromatic: false, isCysteine: false, isProline: false },
+  'T': { hydropathy: -0.7, volume: 116.1, charge: 0, pKa: null, isAromatic: false, isCysteine: false, isProline: false },
+  'W': { hydropathy: -0.9, volume: 227.8, charge: 0, pKa: null, isAromatic: true, isCysteine: false, isProline: false },
+  'Y': { hydropathy: -1.3, volume: 193.6, charge: 0, pKa: 10.1, isAromatic: true, isCysteine: false, isProline: false },
+  'V': { hydropathy: 4.2, volume: 140.0, charge: 0, pKa: null, isAromatic: false, isCysteine: false, isProline: false },
+};
 
-  for (const protein of capsidProteins) {
-    const props = computeProteinProperties(protein.sequence);
-    totalCharge += props.netCharge;
-    hydrophobicFraction += props.hydrophobicFraction * protein.sequence.length;
-    cysteineCount += (protein.sequence.match(/C/g) || []).length;
-    totalLength += protein.sequence.length;
+interface ProteinStats {
+  length: number;
+  molecularWeight: number;
+  pI: number;                    // Isoelectric point
+  gravy: number;                 // Grand average of hydropathy
+  netCharge7: number;            // Net charge at pH 7
+  cysteineCount: number;
+  potentialDisulfides: number;
+  prolineCount: number;
+  aromaticFraction: number;
+  instabilityIndex: number;      // Guruprasad et al.
+  aliphaticIndex: number;        // Ikai
+}
+
+interface StabilityProfile {
+  // Temperature stability
+  thermalStability: {
+    predictedTm: number;         // Melting temperature (°C)
+    safeStorageMax: number;      // Max recommended storage temp
+    shortTermMax: number;        // Max for <1 hour exposure
+    coldSensitivity: boolean;    // Unstable below 4°C?
+  };
+
+  // pH stability
+  pHStability: {
+    optimalRange: { min: number; max: number };
+    toleratedRange: { min: number; max: number };
+    pI: number;                  // Isoelectric point
+    acidSensitive: boolean;
+    baseSensitive: boolean;
+  };
+
+  // Ionic strength
+  ionicStability: {
+    optimalNaCl: number;         // mM
+    toleratedRange: { min: number; max: number };
+    sensitivity: 'low' | 'medium' | 'high';
+    divalentSensitive: boolean;  // Sensitive to Mg²⁺, Ca²⁺
+  };
+
+  // Other stresses
+  otherStabilities: {
+    uvSensitivity: 'low' | 'medium' | 'high';
+    desiccationTolerance: 'poor' | 'moderate' | 'good';
+    freezeThawTolerance: 'poor' | 'moderate' | 'good';
+  };
+
+  // Shelf life
+  shelfLife: {
+    at4C: string;                // "12+ months", "6-12 months", etc.
+    at25C: string;
+    lyophilized: string;
+    inSMBuffer: string;          // Standard phage buffer
+  };
+
+  // Formulation recommendations
+  recommendations: {
+    buffer: string;
+    pH: number;
+    additives: string[];
+    storageTemp: number;
+    notes: string[];
+  };
+
+  // Risk assessment
+  concerns: string[];
+  overallStability: 'excellent' | 'good' | 'moderate' | 'poor';
+  confidenceLevel: 'high' | 'medium' | 'low';
+}
+
+function analyzeProtein(sequence: string): ProteinStats {
+  const length = sequence.length;
+
+  // Molecular weight (average)
+  let mw = 18.015; // Water lost per peptide bond correction
+  let gravy = 0;
+  let netCharge7 = 0;
+  let cysteineCount = 0;
+  let prolineCount = 0;
+  let aromaticCount = 0;
+  let aliphaticSum = 0;
+
+  const counts: Record<string, number> = {};
+
+  for (const aa of sequence) {
+    const props = AA_PROPERTIES[aa];
+    if (!props) continue;
+
+    counts[aa] = (counts[aa] || 0) + 1;
+    gravy += props.hydropathy;
+
+    if (props.charge !== 0) {
+      netCharge7 += props.charge;
+    }
+    if (props.isCysteine) cysteineCount++;
+    if (props.isProline) prolineCount++;
+    if (props.isAromatic) aromaticCount++;
+    if (['A', 'V', 'I', 'L'].includes(aa)) {
+      const aliCoeffs: Record<string, number> = { 'A': 1, 'V': 2.9, 'I': 3.9, 'L': 3.9 };
+      aliphaticSum += (aliCoeffs[aa] * 100) / length;
+    }
   }
 
-  hydrophobicFraction /= totalLength;
-  const chargePerResidue = totalCharge / totalLength;
+  // Calculate molecular weight
+  const mwTable: Record<string, number> = {
+    'A': 89.09, 'R': 174.20, 'N': 132.12, 'D': 133.10, 'C': 121.16,
+    'E': 147.13, 'Q': 146.15, 'G': 75.07, 'H': 155.16, 'I': 131.17,
+    'L': 131.17, 'K': 146.19, 'M': 149.21, 'F': 165.19, 'P': 115.13,
+    'S': 105.09, 'T': 119.12, 'W': 204.23, 'Y': 181.19, 'V': 117.15,
+  };
+  for (const [aa, count] of Object.entries(counts)) {
+    mw += (mwTable[aa] || 0) * count;
+  }
+  mw -= 18.015 * (length - 1); // Water loss
 
-  // Empirical rules from literature
-  const tempMax = 55 + cysteineCount * 2;  // Disulfides stabilize
-  const pHMin = chargePerResidue > 0.1 ? 5 : 4;
-  const pHMax = chargePerResidue < -0.1 ? 9 : 10;
+  // Isoelectric point (approximate)
+  const pI = calculatePI(sequence);
+
+  // Instability index (Guruprasad)
+  const instabilityIndex = calculateInstabilityIndex(sequence);
 
   return {
-    temperatureRange: { min: 4, max: tempMax, optimal: 20 },
-    pHRange: { min: pHMin, max: pHMax, optimal: 7 },
-    ionicSensitivity: hydrophobicFraction > 0.4 ? 'high' : 'medium',
-    shelfLife: tempMax > 60 ? '12+ months' : '6-12 months',
-    concerns: []
+    length,
+    molecularWeight: mw,
+    pI,
+    gravy: gravy / length,
+    netCharge7,
+    cysteineCount,
+    potentialDisulfides: Math.floor(cysteineCount / 2),
+    prolineCount,
+    aromaticFraction: aromaticCount / length,
+    instabilityIndex,
+    aliphaticIndex: aliphaticSum,
+  };
+}
+
+function calculatePI(sequence: string): number {
+  // Bisection method to find pH where net charge = 0
+  let pHLow = 0;
+  let pHHigh = 14;
+
+  while (pHHigh - pHLow > 0.01) {
+    const pHMid = (pHLow + pHHigh) / 2;
+    const charge = calculateChargeAtPH(sequence, pHMid);
+
+    if (charge > 0) {
+      pHLow = pHMid;
+    } else {
+      pHHigh = pHMid;
+    }
+  }
+
+  return (pHLow + pHHigh) / 2;
+}
+
+function calculateChargeAtPH(sequence: string, pH: number): number {
+  let charge = 0;
+
+  // N-terminus (pKa ~ 9.6)
+  charge += 1 / (1 + Math.pow(10, pH - 9.6));
+
+  // C-terminus (pKa ~ 2.3)
+  charge -= 1 / (1 + Math.pow(10, 2.3 - pH));
+
+  for (const aa of sequence) {
+    const props = AA_PROPERTIES[aa];
+    if (!props || !props.pKa) continue;
+
+    if (props.charge > 0) { // Basic
+      charge += 1 / (1 + Math.pow(10, pH - props.pKa));
+    } else if (props.charge < 0) { // Acidic
+      charge -= 1 / (1 + Math.pow(10, props.pKa - pH));
+    }
+  }
+
+  return charge;
+}
+
+function calculateInstabilityIndex(sequence: string): number {
+  // DIWV table for dipeptide instability weights
+  const DIWV: Record<string, number> = {
+    'WW': 1.0, 'WC': 1.0, 'WM': 24.68, 'WF': 1.0, 'WL': 13.34,
+    // ... (abbreviated - full table has 400 entries)
+    'LL': 1.0, 'LM': 1.0, 'LA': 1.0, 'LG': 1.0,
+  };
+
+  let sum = 0;
+  for (let i = 0; i < sequence.length - 1; i++) {
+    const dipeptide = sequence.slice(i, i + 2);
+    sum += DIWV[dipeptide] || 1.0;
+  }
+
+  return (10 / sequence.length) * sum;
+}
+
+function predictVirionStability(
+  capsidProteins: Array<{ name: string; sequence: string; copies: number }>,
+  tailProteins: Array<{ name: string; sequence: string; copies: number }>,
+  genomeLength: number,
+  morphology: 'icosahedral' | 'filamentous' | 'complex'
+): StabilityProfile {
+  // Analyze all structural proteins
+  const allProteins = [...capsidProteins, ...tailProteins];
+  const proteinStats = allProteins.map(p => ({
+    ...analyzeProtein(p.sequence),
+    copies: p.copies,
+    name: p.name,
+  }));
+
+  // Weight by copy number
+  const totalCopies = proteinStats.reduce((s, p) => s + p.copies, 0);
+
+  const weightedGravy = proteinStats.reduce((s, p) =>
+    s + p.gravy * p.copies, 0) / totalCopies;
+
+  const totalCysteines = proteinStats.reduce((s, p) =>
+    s + p.cysteineCount * p.copies, 0);
+
+  const totalProlines = proteinStats.reduce((s, p) =>
+    s + p.prolineCount * p.copies, 0);
+
+  const avgPi = proteinStats.reduce((s, p) =>
+    s + p.pI * p.copies, 0) / totalCopies;
+
+  const avgInstability = proteinStats.reduce((s, p) =>
+    s + p.instabilityIndex * p.copies, 0) / totalCopies;
+
+  // Thermal stability prediction
+  // Higher disulfide potential → higher Tm
+  // Higher proline → more rigid → higher Tm
+  // More hydrophobic → better packed → higher Tm
+  const disulfideFactor = Math.min(totalCysteines / 2, 20) * 2; // +2°C per disulfide
+  const prolineFactor = Math.min(totalProlines / 50, 5); // +1°C per 50 prolines
+  const hydrophobicFactor = weightedGravy > 0 ? weightedGravy * 3 : 0;
+
+  const predictedTm = 50 + disulfideFactor + prolineFactor + hydrophobicFactor;
+
+  // pH stability from pI
+  const optimalPH = Math.round(avgPi * 10) / 10;
+  const pHMin = Math.max(4, optimalPH - 2);
+  const pHMax = Math.min(10, optimalPH + 2);
+
+  // Ionic strength sensitivity from surface charge
+  const avgCharge = Math.abs(proteinStats.reduce((s, p) =>
+    s + p.netCharge7 * p.copies, 0) / totalCopies);
+  const ionicSensitivity = avgCharge > 20 ? 'high' : avgCharge > 10 ? 'medium' : 'low';
+
+  // Determine concerns
+  const concerns: string[] = [];
+  if (predictedTm < 50) concerns.push('Low thermal stability - avoid temperatures > 37°C');
+  if (avgInstability > 40) concerns.push('High instability index - short shelf life expected');
+  if (totalCysteines < 4) concerns.push('Few disulfides - sensitive to oxidation');
+  if (morphology === 'filamentous') concerns.push('Filamentous morphology - shear-sensitive');
+
+  // Overall stability rating
+  let overallStability: StabilityProfile['overallStability'];
+  if (predictedTm > 60 && avgInstability < 30 && concerns.length === 0) {
+    overallStability = 'excellent';
+  } else if (predictedTm > 50 && avgInstability < 40 && concerns.length <= 1) {
+    overallStability = 'good';
+  } else if (predictedTm > 45 && concerns.length <= 2) {
+    overallStability = 'moderate';
+  } else {
+    overallStability = 'poor';
+  }
+
+  return {
+    thermalStability: {
+      predictedTm,
+      safeStorageMax: predictedTm - 15,
+      shortTermMax: predictedTm - 5,
+      coldSensitivity: morphology === 'filamentous', // Filamentous often cold-sensitive
+    },
+    pHStability: {
+      optimalRange: { min: optimalPH - 0.5, max: optimalPH + 0.5 },
+      toleratedRange: { min: pHMin, max: pHMax },
+      pI: avgPi,
+      acidSensitive: avgPi > 7,
+      baseSensitive: avgPi < 6,
+    },
+    ionicStability: {
+      optimalNaCl: 150,
+      toleratedRange: { min: 50, max: 500 },
+      sensitivity: ionicSensitivity,
+      divalentSensitive: ionicSensitivity === 'high',
+    },
+    otherStabilities: {
+      uvSensitivity: genomeLength > 100000 ? 'high' : genomeLength > 30000 ? 'medium' : 'low',
+      desiccationTolerance: totalCysteines > 10 ? 'good' : totalCysteines > 5 ? 'moderate' : 'poor',
+      freezeThawTolerance: morphology === 'icosahedral' ? 'good' : 'moderate',
+    },
+    shelfLife: {
+      at4C: predictedTm > 55 ? '12+ months' : predictedTm > 45 ? '6-12 months' : '1-6 months',
+      at25C: predictedTm > 60 ? '1-3 months' : predictedTm > 50 ? '1-4 weeks' : '<1 week',
+      lyophilized: '2+ years (with stabilizers)',
+      inSMBuffer: '6-12 months at 4°C',
+    },
+    recommendations: {
+      buffer: 'SM buffer (50 mM Tris-HCl, 100 mM NaCl, 8 mM MgSO₄)',
+      pH: Math.round(optimalPH * 10) / 10,
+      additives: [
+        ...(avgInstability > 35 ? ['10% glycerol'] : []),
+        ...(totalCysteines > 10 ? ['0.01% gelatin'] : []),
+        'Optional: 0.01% chloroform (prevent bacterial growth)',
+      ],
+      storageTemp: 4,
+      notes: [
+        'Avoid freeze-thaw cycles',
+        `Do not expose to temperatures > ${predictedTm - 10}°C`,
+        'Protect from UV light',
+      ],
+    },
+    concerns,
+    overallStability,
+    confidenceLevel: capsidProteins.length > 0 ? 'medium' : 'low',
   };
 }
 ```
 
+### Why This Is a Good Idea
+
+1. **Phage Therapy Manufacturing**: Stability is a critical quality attribute (CQA) for therapeutic phages. Predicting it from sequence guides formulation development.
+
+2. **Cocktail Compatibility**: Different phages in a cocktail may have different optima. This feature identifies potential conflicts (e.g., one phage acid-sensitive, another acid-stable).
+
+3. **Storage Optimization**: Knowing stability profiles guides decisions about lyophilization, cold chain requirements, and buffer selection.
+
+4. **Quality Control**: Predicted stability profiles serve as specifications for batch release testing.
+
+5. **Evolutionary Insights**: Comparing stability across related phages reveals how environmental adaptation shapes capsid evolution.
+
+### Innovation Assessment
+
+**Novelty**: 7/10 — Protein stability prediction exists, but applying it specifically to virion structural proteins with copy-number weighting and formulation recommendations is new in this context.
+
+### Pedagogical Value: 8/10
+
+Teaches:
+- Protein thermodynamics and stability
+- Amino acid properties and the hydropathy scale
+- pH and pI calculations
+- Formulation science principles
+- The relationship between structure and function
+- Why different phages require different storage conditions
+
+### Cool/Wow Factor: 7/10
+
+A "stability report" for a phage — with specific storage recommendations and shelf-life predictions — makes abstract biophysics actionable and practically useful.
+
 ### TUI Visualization
 
 ```
-Virion Stability: T4 phage
-
-Temperature:  ████████████░░░░░░░░  (stable to 55°C)
-pH tolerance: ░░░████████████████░  (pH 5-9)
-Ionic sens.:  ████░░░░░░░░░░░░░░░░  (low sensitivity)
-
-Recommendation: Store at 4°C in SM buffer (pH 7.5)
-Shelf life: ~12 months with <1 log loss
-
-⚠ Concerns: None identified
+┌─────────────────────────────────────────────────────────────────────────┐
+│  VIRION STABILITY PREDICTOR                              T4 Phage      │
+├─────────────────────────────────────────────────────────────────────────┤
+│                                                                         │
+│  OVERALL STABILITY: ████████████████░░░░ GOOD                          │
+│  Confidence: Medium (structural proteins analyzed)                      │
+│                                                                         │
+│  ═══════════════════════════════════════════════════════════════════    │
+│  THERMAL STABILITY                                                      │
+│  ═══════════════════════════════════════════════════════════════════    │
+│                                                                         │
+│  Predicted Tm: 58°C                                                     │
+│                                                                         │
+│     0°C    20°C    40°C    60°C    80°C   100°C                        │
+│     │───────│───────│───────│───────│───────│                          │
+│     ████████████████████████████████████░░░░░░░░░                      │
+│     │       │←──safe──→│←─short─→│                                     │
+│             storage     exposure  ↑ Tm                                  │
+│                                                                         │
+│  Safe storage: <43°C    Short-term max: <53°C                          │
+│  Cold sensitivity: No                                                   │
+│                                                                         │
+│  ═══════════════════════════════════════════════════════════════════    │
+│  pH STABILITY                                                           │
+│  ═══════════════════════════════════════════════════════════════════    │
+│                                                                         │
+│     pH 2     4       6       8      10      12                         │
+│     │────────│───────│───────│───────│───────│                         │
+│     ░░░░░░░░░████████████████████████░░░░░░░░░                         │
+│              │←──── optimal ────→│                                      │
+│              5.2           8.4                                          │
+│                                                                         │
+│  Isoelectric point (pI): 6.8                                           │
+│  Optimal range: pH 6.3-7.3    Tolerated: pH 5.2-8.4                    │
+│                                                                         │
+│  ═══════════════════════════════════════════════════════════════════    │
+│  IONIC STRENGTH                                                         │
+│  ═══════════════════════════════════════════════════════════════════    │
+│                                                                         │
+│  Sensitivity: LOW                                                       │
+│  Optimal NaCl: 100-200 mM                                              │
+│  Tolerated: 50-500 mM                                                  │
+│  Divalent cation sensitivity: No                                       │
+│                                                                         │
+│  ═══════════════════════════════════════════════════════════════════    │
+│  SHELF LIFE PREDICTIONS                                                 │
+│  ═══════════════════════════════════════════════════════════════════    │
+│                                                                         │
+│  Condition              Expected Stability    Loss Rate                 │
+│  ─────────────────────────────────────────────────────────────────────  │
+│  4°C in SM buffer       12+ months           <0.1 log/month            │
+│  25°C in SM buffer      4-6 weeks            0.5 log/month             │
+│  -80°C with glycerol    2+ years             Negligible                │
+│  Lyophilized            2+ years             <0.05 log/month           │
+│                                                                         │
+│  ═══════════════════════════════════════════════════════════════════    │
+│  FORMULATION RECOMMENDATIONS                                            │
+│  ═══════════════════════════════════════════════════════════════════    │
+│                                                                         │
+│  Buffer: SM buffer (50 mM Tris-HCl, 100 mM NaCl, 8 mM MgSO₄)           │
+│  pH: 7.5                                                                │
+│  Additives: 0.01% gelatin (stabilizer)                                  │
+│  Storage: 4°C, protected from light                                     │
+│                                                                         │
+│  Notes:                                                                 │
+│  • Avoid freeze-thaw cycles (use aliquots)                              │
+│  • Do not exceed 45°C                                                   │
+│  • UV-sensitive (store in dark or amber vials)                          │
+│                                                                         │
+│  ═══════════════════════════════════════════════════════════════════    │
+│  PROTEIN ANALYSIS SUMMARY                                               │
+│  ═══════════════════════════════════════════════════════════════════    │
+│                                                                         │
+│  Protein        Copies    MW (kDa)   pI     Cysteines   Instability    │
+│  ─────────────────────────────────────────────────────────────────────  │
+│  gp23 (capsid)   960      48.7      6.2       4         28.3 (stable)  │
+│  gp24 (vertex)    55      46.1      5.8       2         31.5 (stable)  │
+│  gp18 (tail)     144      71.3      6.9       6         25.1 (stable)  │
+│  gp19 (tube)     144      18.5      8.2       0         42.1 (borderline)│
+│                                                                         │
+│  Total disulfides possible: ~520                                        │
+│                                                                         │
+│  ⚠ CONCERNS:                                                            │
+│  • None identified                                                      │
+│                                                                         │
+└─────────────────────────────────────────────────────────────────────────┘
+[P] Protein details  [C] Compare phages  [E] Export report  [?] Help
 ```
 
 ---
@@ -5535,68 +6613,556 @@ Shelf life: ~12 months with <1 log loss
 
 ### Concept
 
-Visualize gene order conservation across multiple phages with rearrangement highlighting.
+**Synteny** — the conservation of gene order across genomes — reveals deep evolutionary relationships that sequence similarity alone cannot. When genes remain in the same relative positions across distantly related phages, it suggests either strong functional constraints or shared ancestry.
 
-### Implementation
+**Why gene order matters:**
+- **Operons**: Genes that function together stay together (transcriptional coupling)
+- **Regulatory architecture**: Promoters, terminators, and RBS elements constrain rearrangement
+- **Packaging constraints**: Some phages use specific genomic positions for DNA packaging signals
+- **Recombination boundaries**: Synteny breaks often coincide with recombination hotspots
+
+**Phage genome organization is modular:**
+```
+Typical tailed phage gene order (conserved for billions of years):
+
+[DNA packaging]──[Head assembly]──[Tail assembly]──[Lysis]──[Lysogeny]──[Replication]
+     └── terminase      └── portal, capsid    └── tape measure    └── integrase
+         genes               scaffold               tail fibers        repressor
+```
+
+This organization is so conserved that phages from different hosts, different continents, and different phyla often show synteny in their structural modules.
+
+**Synteny analysis reveals:**
+1. **Core genome**: Genes always in the same order (essential, constrained)
+2. **Variable regions**: Genes that move, duplicate, or are lost (accessory)
+3. **Recombination hotspots**: Points where gene order breaks down
+4. **Horizontal transfer**: Insertions that disrupt otherwise conserved order
+
+### Mathematical Foundations
+
+**Gene Order Representation:**
+```
+Genome G = signed permutation of genes
+
+G₁ = (+g₁, +g₂, -g₃, +g₄, ...)
+G₂ = (+g₁, -g₃, +g₂, +g₅, ...)
+
+Where +/- indicates strand orientation.
+```
+
+**Conserved Synteny Block:**
+```
+A synteny block is a maximal set of genes appearing in the same order
+(possibly inverted as a unit) in all compared genomes.
+
+Block B = { (g₁, g₂, ..., gₖ) : ∀ genome G, genes appear consecutively
+            with consistent relative orientation }
+
+Block score = k × (1 + conservation bonus)
+  where conservation bonus = 0.2 × (number of phages with block)
+```
+
+**Breakpoint Graph:**
+```
+Vertices: Gene endpoints (head and tail of each gene)
+Edges:
+  - Adjacency edges connect consecutive genes within a genome
+  - Matching edges connect orthologous genes across genomes
+
+Synteny breaks appear as cycles in this graph.
+```
+
+**Jaccard Similarity for Gene Content:**
+```
+J(G₁, G₂) = |Genes(G₁) ∩ Genes(G₂)| / |Genes(G₁) ∪ Genes(G₂)|
+
+For synteny:
+SyntenyJ(G₁, G₂) = |Conserved adjacencies| / |Total adjacencies|
+```
+
+**Ortholog Detection:**
+```
+Genes g₁ ∈ G₁ and g₂ ∈ G₂ are orthologs if:
+
+1. Bidirectional best hit (BBH):
+   g₂ = argmax_{g ∈ G₂} similarity(g₁, g)
+   g₁ = argmax_{g ∈ G₁} similarity(g₂, g)
+
+2. Similarity threshold met:
+   similarity(g₁, g₂) > 30% identity over 50% length
+
+3. Optional: Same functional annotation
+```
+
+### Implementation Approach
 
 ```typescript
-interface SyntenyBlock {
-  phages: string[];
-  genes: Map<string, Gene[]>;  // phageId -> genes in block
-  conserved: boolean;
-  rearrangement?: 'inversion' | 'translocation';
+// Comprehensive comparative synteny analysis
+
+interface OrthologCluster {
+  id: string;
+  genes: Array<{
+    phageId: string;
+    gene: GeneInfo;
+    position: number;  // Ordinal position in genome
+    strand: '+' | '-';
+  }>;
+  annotation: string | null;
+  conservationLevel: 'core' | 'common' | 'variable' | 'singleton';
 }
 
-function computeSynteny(phages: PhageFull[]): SyntenyBlock[] {
-  // Build ortholog clusters
-  const orthologs = clusterOrthologs(phages.flatMap(p => p.genes));
+interface SyntenyBlock {
+  id: string;
+  orthologIds: string[];         // Orthologs in this block
+  phagePresence: string[];       // Which phages have this block
 
-  // Find conserved blocks (same order across phages)
+  // Position in each genome
+  positions: Map<string, {
+    startGene: number;           // First gene ordinal
+    endGene: number;             // Last gene ordinal
+    startBp: number;             // Start position (bp)
+    endBp: number;               // End position (bp)
+    orientation: '+' | '-';      // Block orientation
+  }>;
+
+  blockLength: number;           // Number of genes
+  conservationScore: number;     // 0-1, higher = more conserved
+  functionalCategory: string;    // "head assembly", "tail", etc.
+}
+
+interface SyntenyBreakpoint {
+  position: number;              // Between gene n and n+1
+  leftGene: string;
+  rightGene: string;
+  breakType: 'insertion' | 'deletion' | 'inversion' | 'translocation' | 'unknown';
+  affectedPhages: string[];
+  mechanism?: string;            // Inferred mechanism
+}
+
+interface ComparativeSyntenyResult {
+  phages: Array<{ id: string; name: string; geneCount: number }>;
+  orthologClusters: OrthologCluster[];
+  syntenyBlocks: SyntenyBlock[];
+  breakpoints: SyntenyBreakpoint[];
+
+  // Summary statistics
+  coreGenes: number;             // Genes in all phages
+  panGenome: number;             // Total unique genes
+  syntenyConservation: number;   // Fraction of genome in syntenic blocks
+
+  // Pairwise comparison matrix
+  pairwiseSynteny: Map<string, Map<string, number>>;
+}
+
+// Cluster orthologs across multiple phages
+function clusterOrthologs(
+  phages: Array<{ id: string; genes: GeneInfo[] }>,
+  sequenceGetter: (gene: GeneInfo) => string,
+  similarityThreshold: number = 0.3
+): OrthologCluster[] {
+  const allGenes: Array<{ phageId: string; gene: GeneInfo; position: number }> = [];
+
+  // Collect all genes with positions
+  for (const phage of phages) {
+    phage.genes.forEach((gene, idx) => {
+      allGenes.push({ phageId: phage.id, gene, position: idx });
+    });
+  }
+
+  // Build similarity graph
+  const edges: Array<{ i: number; j: number; similarity: number }> = [];
+
+  for (let i = 0; i < allGenes.length; i++) {
+    for (let j = i + 1; j < allGenes.length; j++) {
+      if (allGenes[i].phageId === allGenes[j].phageId) continue;
+
+      const seqI = sequenceGetter(allGenes[i].gene);
+      const seqJ = sequenceGetter(allGenes[j].gene);
+
+      const sim = computeProteinSimilarity(seqI, seqJ);
+      if (sim >= similarityThreshold) {
+        edges.push({ i, j, similarity: sim });
+      }
+    }
+  }
+
+  // Cluster using single-linkage with BBH refinement
+  const clusters = singleLinkageClustering(allGenes.length, edges);
+
+  // Convert to OrthologCluster format
+  let clusterId = 0;
+  const result: OrthologCluster[] = [];
+
+  for (const memberIndices of clusters) {
+    const members = memberIndices.map(i => ({
+      phageId: allGenes[i].phageId,
+      gene: allGenes[i].gene,
+      position: allGenes[i].position,
+      strand: allGenes[i].gene.strand || '+' as '+' | '-',
+    }));
+
+    // Determine conservation level
+    const phagesPresent = new Set(members.map(m => m.phageId)).size;
+    let conservationLevel: OrthologCluster['conservationLevel'];
+    if (phagesPresent === phages.length) {
+      conservationLevel = 'core';
+    } else if (phagesPresent > phages.length / 2) {
+      conservationLevel = 'common';
+    } else if (phagesPresent > 1) {
+      conservationLevel = 'variable';
+    } else {
+      conservationLevel = 'singleton';
+    }
+
+    result.push({
+      id: `orth_${clusterId++}`,
+      genes: members,
+      annotation: members[0].gene.product || null,
+      conservationLevel,
+    });
+  }
+
+  return result;
+}
+
+// Find synteny blocks from ortholog clusters
+function findSyntenyBlocks(
+  phages: Array<{ id: string; genes: GeneInfo[] }>,
+  orthologs: OrthologCluster[],
+  minBlockSize: number = 2
+): SyntenyBlock[] {
   const blocks: SyntenyBlock[] = [];
 
-  // Walk through first phage, extend blocks while order conserved
-  const reference = phages[0];
-  let currentBlock: Gene[] = [];
+  // Create ortholog index for each phage
+  const phageOrthologOrder = new Map<string, string[]>();
 
-  for (const gene of reference.genes) {
-    const cluster = orthologs.get(gene.id);
-    if (!cluster) continue;
-
-    // Check if order conserved in all phages
-    const conservedInAll = phages.every(p =>
-      isOrderConserved(cluster, p.genes, currentBlock)
-    );
-
-    if (conservedInAll) {
-      currentBlock.push(gene);
-    } else {
-      if (currentBlock.length > 0) {
-        blocks.push(createBlock(currentBlock, phages));
+  for (const phage of phages) {
+    const order: string[] = [];
+    for (let pos = 0; pos < phage.genes.length; pos++) {
+      // Find ortholog containing this gene
+      const orth = orthologs.find(o =>
+        o.genes.some(g => g.phageId === phage.id && g.position === pos)
+      );
+      if (orth) {
+        order.push(orth.id);
       }
-      currentBlock = [gene];
+    }
+    phageOrthologOrder.set(phage.id, order);
+  }
+
+  // Find conserved runs across all phages
+  const referenceOrder = phageOrthologOrder.get(phages[0].id)!;
+
+  let currentBlock: string[] = [];
+  let blockStart = 0;
+
+  for (let i = 0; i < referenceOrder.length; i++) {
+    const orthId = referenceOrder[i];
+
+    // Check if this ortholog and next maintain order in all phages
+    const conservedWithNext = i < referenceOrder.length - 1 &&
+      isAdjacencyConserved(orthId, referenceOrder[i + 1], phageOrthologOrder);
+
+    currentBlock.push(orthId);
+
+    if (!conservedWithNext || i === referenceOrder.length - 1) {
+      // End of block
+      if (currentBlock.length >= minBlockSize) {
+        blocks.push(createSyntenyBlock(
+          currentBlock,
+          phages,
+          orthologs,
+          phageOrthologOrder,
+          blocks.length
+        ));
+      }
+      currentBlock = [];
+      blockStart = i + 1;
     }
   }
 
   return blocks;
 }
+
+function isAdjacencyConserved(
+  orthA: string,
+  orthB: string,
+  phageOrders: Map<string, string[]>
+): boolean {
+  for (const [phageId, order] of phageOrders) {
+    const posA = order.indexOf(orthA);
+    const posB = order.indexOf(orthB);
+
+    // Both must be present and adjacent (allowing for inversion)
+    if (posA === -1 || posB === -1) continue;
+    if (Math.abs(posA - posB) !== 1) return false;
+  }
+  return true;
+}
+
+function createSyntenyBlock(
+  orthologIds: string[],
+  phages: Array<{ id: string; genes: GeneInfo[] }>,
+  orthologs: OrthologCluster[],
+  phageOrders: Map<string, string[]>,
+  blockIndex: number
+): SyntenyBlock {
+  const positions = new Map<string, {
+    startGene: number;
+    endGene: number;
+    startBp: number;
+    endBp: number;
+    orientation: '+' | '-';
+  }>();
+
+  const phagePresence: string[] = [];
+
+  for (const phage of phages) {
+    const order = phageOrders.get(phage.id)!;
+    const firstPos = order.indexOf(orthologIds[0]);
+    const lastPos = order.indexOf(orthologIds[orthologIds.length - 1]);
+
+    if (firstPos === -1 || lastPos === -1) continue;
+
+    phagePresence.push(phage.id);
+
+    const orientation = firstPos < lastPos ? '+' : '-' as '+' | '-';
+    const startPos = Math.min(firstPos, lastPos);
+    const endPos = Math.max(firstPos, lastPos);
+
+    const startGene = phage.genes[startPos];
+    const endGene = phage.genes[endPos];
+
+    positions.set(phage.id, {
+      startGene: startPos,
+      endGene: endPos,
+      startBp: startGene.start,
+      endBp: endGene.end,
+      orientation,
+    });
+  }
+
+  // Infer functional category from gene annotations
+  const annotations = orthologIds
+    .map(id => orthologs.find(o => o.id === id)?.annotation)
+    .filter(Boolean)
+    .join(' ');
+
+  const functionalCategory = inferFunctionalCategory(annotations);
+
+  return {
+    id: `block_${blockIndex}`,
+    orthologIds,
+    phagePresence,
+    positions,
+    blockLength: orthologIds.length,
+    conservationScore: phagePresence.length / phages.length,
+    functionalCategory,
+  };
+}
+
+function inferFunctionalCategory(annotations: string): string {
+  const lower = annotations.toLowerCase();
+  if (lower.includes('terminase') || lower.includes('portal')) return 'DNA packaging';
+  if (lower.includes('capsid') || lower.includes('head')) return 'Head assembly';
+  if (lower.includes('tail') || lower.includes('tape measure')) return 'Tail assembly';
+  if (lower.includes('lysin') || lower.includes('holin')) return 'Lysis';
+  if (lower.includes('integrase') || lower.includes('repressor')) return 'Lysogeny';
+  if (lower.includes('polymerase') || lower.includes('helicase')) return 'Replication';
+  return 'Unknown';
+}
+
+function findBreakpoints(
+  phages: Array<{ id: string; genes: GeneInfo[] }>,
+  blocks: SyntenyBlock[]
+): SyntenyBreakpoint[] {
+  const breakpoints: SyntenyBreakpoint[] = [];
+
+  // For each phage, find gaps between blocks
+  for (const phage of phages) {
+    const phageBlocks = blocks
+      .filter(b => b.positions.has(phage.id))
+      .map(b => ({ block: b, pos: b.positions.get(phage.id)! }))
+      .sort((a, b) => a.pos.startGene - b.pos.startGene);
+
+    for (let i = 0; i < phageBlocks.length - 1; i++) {
+      const curr = phageBlocks[i];
+      const next = phageBlocks[i + 1];
+
+      if (next.pos.startGene > curr.pos.endGene + 1) {
+        // Gap between blocks
+        breakpoints.push({
+          position: curr.pos.endGene,
+          leftGene: phage.genes[curr.pos.endGene].name || `gene_${curr.pos.endGene}`,
+          rightGene: phage.genes[next.pos.startGene].name || `gene_${next.pos.startGene}`,
+          breakType: 'insertion',
+          affectedPhages: [phage.id],
+        });
+      }
+
+      if (curr.pos.orientation !== next.pos.orientation) {
+        breakpoints.push({
+          position: curr.pos.endGene,
+          leftGene: phage.genes[curr.pos.endGene].name || `gene_${curr.pos.endGene}`,
+          rightGene: phage.genes[next.pos.startGene].name || `gene_${next.pos.startGene}`,
+          breakType: 'inversion',
+          affectedPhages: [phage.id],
+        });
+      }
+    }
+  }
+
+  return breakpoints;
+}
+
+// Simple single-linkage clustering
+function singleLinkageClustering(
+  n: number,
+  edges: Array<{ i: number; j: number; similarity: number }>
+): number[][] {
+  const parent = Array.from({ length: n }, (_, i) => i);
+
+  function find(x: number): number {
+    if (parent[x] !== x) parent[x] = find(parent[x]);
+    return parent[x];
+  }
+
+  function union(x: number, y: number): void {
+    parent[find(x)] = find(y);
+  }
+
+  // Sort edges by similarity and union
+  edges.sort((a, b) => b.similarity - a.similarity);
+  for (const edge of edges) {
+    union(edge.i, edge.j);
+  }
+
+  // Collect clusters
+  const clusters = new Map<number, number[]>();
+  for (let i = 0; i < n; i++) {
+    const root = find(i);
+    if (!clusters.has(root)) clusters.set(root, []);
+    clusters.get(root)!.push(i);
+  }
+
+  return Array.from(clusters.values());
+}
+
+function computeProteinSimilarity(seqA: string, seqB: string): number {
+  // Simplified - would use proper alignment in production
+  const shorter = Math.min(seqA.length, seqB.length);
+  const longer = Math.max(seqA.length, seqB.length);
+
+  let matches = 0;
+  for (let i = 0; i < shorter; i++) {
+    if (seqA[i] === seqB[i]) matches++;
+  }
+
+  return matches / longer;
+}
 ```
+
+### Why This Is a Good Idea
+
+1. **Deep Evolutionary Insight**: Synteny reveals ancient evolutionary relationships invisible to sequence comparison. Phages that diverged billions of years ago may still share gene order.
+
+2. **Functional Module Discovery**: Conserved synteny blocks often correspond to functional modules (head, tail, lysis). Visualizing them helps understand phage organization.
+
+3. **Recombination Hotspot Detection**: Synteny breaks mark where recombination has occurred. These are often biologically meaningful (e.g., between structural and replication modules).
+
+4. **Pan-Genome Analysis**: Comparing synteny across many phages reveals the core genome (always conserved) vs. accessory genes (variable position or presence).
+
+5. **Visualization of Phage Diversity**: Seeing how the same genes rearrange across phages makes abstract evolution concrete and visually compelling.
+
+### Innovation Assessment
+
+**Novelty**: 6/10 — Synteny browsers exist (Mauve, ACT) but few focus on phages, and none integrate well into a TUI with functional annotation.
+
+### Pedagogical Value: 8/10
+
+Teaches:
+- Gene order as an evolutionary signal
+- The modular organization of phage genomes
+- Ortholog detection and clustering
+- Breakpoint graphs and rearrangement detection
+- Core vs. accessory genome concepts
+- How recombination shapes genomes
+
+### Cool/Wow Factor: 8/10
+
+Seeing five phages aligned by gene order — with conserved blocks highlighted and breakpoints marked — makes the "Lego block" model of phage evolution immediately visible.
 
 ### TUI Visualization
 
 ```
-Synteny: Lambda vs P22 vs HK97
-
-Lambda: ═[cI]═[N]═[cro]═══════════[head]════════[tail]═══════[lysis]═
-             │   │                  │             │            │
-P22:    ═════╪═══╪══════════════════╪═════════════╪════════════╪═════
-             │   │                  │             │            │
-HK97:   ═════╪═══╪══════════════════╪════[portal]═╪════════════╪═════
-             │   │                  │      ↑      │            │
-             └───┴──────────────────┴──────┼──────┴────────────┘
-                  conserved regulatory      gene insertion
-                  module across all 3
-
-Legend: ═ Conserved synteny  ╪ Block boundary  ↑ Insertion/rearrangement
+┌─────────────────────────────────────────────────────────────────────────┐
+│  COMPARATIVE SYNTENY BROWSER            5 Lambdoid Phages              │
+├─────────────────────────────────────────────────────────────────────────┤
+│                                                                         │
+│  Core genes: 28/73 (38%)   Pan-genome: 156 genes   Synteny: 72%        │
+│                                                                         │
+│  ═══════════════════════════════════════════════════════════════════    │
+│  MULTI-PHAGE SYNTENY VIEW                                               │
+│  ═══════════════════════════════════════════════════════════════════    │
+│                                                                         │
+│  Functional regions:                                                    │
+│  [  DNA pkg  ][  Head  ][   Tail   ][ Lysis ][ Lyso ][  Repl  ]         │
+│                                                                         │
+│  Lambda ──▶▶▶▶▶▶▶══════════════════════════▶▶▶▶──▶▶══════▶▶▶───        │
+│             │                         │              │                  │
+│  P22    ──▶▶▶▶▶▶▶══════════════════════════▶▶▶▶──◀◀══════▶▶▶───        │
+│             │                         │        ↑     │                  │
+│  HK97   ──▶▶▶▶▶▶▶══════════════════════════▶▶▶▶──▶▶══════▶▶▶───        │
+│             │                         │              │                  │
+│  Phi80  ──▶▶▶▶▶▶▶═══════════════════◆◆◆◆◆◆◆▶▶▶▶──▶▶══════▶▶▶───        │
+│             │              insertion ↑       │       │                  │
+│  N15    ──▶▶▶▶▶▶▶══════════════════════════▶▶▶▶──▶▶──────▶▶▶───        │
+│             │                         │          ↑   │                  │
+│             │                         │      deletion│                  │
+│             └─────────────────────────┴──────────────┘                  │
+│                    Conserved block 1      Conserved block 2             │
+│                                                                         │
+│  Legend: ▶ Gene (+strand)  ◀ Gene (-strand)  ═ Syntenic block           │
+│          ◆ Insertion  ── Gap/deletion                                   │
+│                                                                         │
+├─────────────────────────────────────────────────────────────────────────┤
+│  SYNTENY BLOCKS (6 conserved blocks)                                    │
+│  ═══════════════════════════════════════════════════════════════════    │
+│                                                                         │
+│  Block   Genes  Function          Phages   Conservation                 │
+│  ─────────────────────────────────────────────────────────────────────  │
+│  B1      12     DNA packaging     5/5      ████████████████████ 100%    │
+│  B2      18     Head assembly     5/5      ████████████████████ 100%    │
+│  B3      15     Tail assembly     5/5      ████████████████████ 100%    │
+│  B4       6     Lysis             4/5      ████████████████░░░░  80%    │
+│  B5       8     Lysogeny          3/5      ████████████░░░░░░░░  60%    │
+│  B6       5     Replication       5/5      ████████████████████ 100%    │
+│                                                                         │
+├─────────────────────────────────────────────────────────────────────────┤
+│  BREAKPOINTS (3 detected)                                               │
+│  ═══════════════════════════════════════════════════════════════════    │
+│                                                                         │
+│  Position      Type         Phages        Genes Affected                │
+│  ─────────────────────────────────────────────────────────────────────  │
+│  Tail-Lysis    Insertion    Phi80        moron genes (3)               │
+│  Lysis-Lyso    Inversion    P22          int, xis                       │
+│  Lyso-Repl     Deletion     N15          att region                     │
+│                                                                         │
+├─────────────────────────────────────────────────────────────────────────┤
+│  ORTHOLOG MATRIX (sample)                                               │
+│  ═══════════════════════════════════════════════════════════════════    │
+│                                                                         │
+│              Lambda  P22   HK97  Phi80  N15                             │
+│  terminase    ●      ●      ●     ●      ●     (core - 5/5)             │
+│  portal       ●      ●      ●     ●      ●     (core - 5/5)             │
+│  capsid       ●      ●      ●     ●      ●     (core - 5/5)             │
+│  int          ●      ●      ●     ●      ○     (common - 4/5)           │
+│  moron1       ○      ○      ○     ●      ○     (variable - 1/5)         │
+│                                                                         │
+│  ● Present  ○ Absent                                                    │
+│                                                                         │
+└─────────────────────────────────────────────────────────────────────────┘
+[↑/↓] Select phage  [←/→] Scroll  [B] Block detail  [O] Ortholog view  [E] Export
 ```
 
 ---
@@ -5605,77 +7171,548 @@ Legend: ═ Conserved synteny  ╪ Block boundary  ↑ Insertion/rearrangement
 
 ### Concept
 
-Create information-theoretic **sequence logos** from multiple sequence alignments — the standard for visualizing conserved motifs.
+**Sequence logos** are information-theoretic visualizations that reveal conservation patterns in multiple sequence alignments. Invented by Tom Schneider and Mike Stephens in 1990, they represent both the **information content** (total height) and the **frequency** (letter heights) at each position in an alignment.
 
-### Implementation
+Unlike simple consensus sequences that show only the most common letter, logos show:
+- **How conserved** each position is (total stack height in bits)
+- **What letters are present** (stacked letters)
+- **Their relative frequencies** (individual letter heights)
+
+**The information theory behind logos:**
+
+At each position, the maximum possible information is:
+- DNA: log₂(4) = 2 bits (4 possible bases)
+- Protein: log₂(20) ≈ 4.32 bits (20 amino acids)
+
+If a position is completely random, entropy equals maximum and information = 0. If a position is perfectly conserved, entropy = 0 and information = max.
+
+**Applications in phage biology:**
+- **Promoter motifs**: Visualize -10 and -35 box consensus
+- **Ribosome binding sites**: Show Shine-Dalgarno conservation
+- **Active site residues**: Highlight catalytic motifs in enzymes
+- **Structural motifs**: Display domain signatures
+- **Tail fiber specificity**: Compare host-binding domains
+
+### Mathematical Foundations
+
+**Shannon Entropy:**
+```
+H = -Σᵢ pᵢ · log₂(pᵢ)
+
+Where pᵢ = frequency of letter i at this position
+
+For DNA: H_max = log₂(4) = 2 bits
+For protein: H_max = log₂(20) ≈ 4.32 bits
+```
+
+**Information Content (Rsequence):**
+```
+R_seq(position) = H_max - H_observed - e(n)
+
+Where e(n) is a small-sample correction:
+  e(n) = (s - 1) / (2 · ln(2) · n)
+
+  s = number of letter types (4 for DNA, 20 for protein)
+  n = number of sequences in alignment
+```
+
+**Letter Heights:**
+```
+Height of letter i at position j:
+  h_ij = f_ij × R_seq(j)
+
+Where f_ij = frequency of letter i at position j
+
+Total stack height = R_seq(j) = sum of all letter heights
+```
+
+**Position-Specific Scoring Matrix (PSSM):**
+```
+Derived from logo, used for searching:
+
+PSSM[i][j] = log₂(f_ij / b_i)
+
+Where b_i = background frequency of letter i
+
+Score a sequence: S = Σⱼ PSSM[seq[j]][j]
+```
+
+**Small Sample Correction (Schneider et al.):**
+```
+For small alignments, entropy is biased upward.
+Correction factor:
+
+e(n) = (s - 1) / (2 · n · ln(2))
+
+Becomes negligible when n >> s
+```
+
+**Gap Handling:**
+```
+Options for positions with gaps:
+
+1. Ignore gaps: Normalize frequencies over non-gap letters
+2. Treat gaps as 21st letter: Include in entropy calculation
+3. Weight by occupancy: Multiply R_seq by (1 - gap_fraction)
+```
+
+### Implementation Approach
 
 ```typescript
+// Information-theoretic sequence logo generation
+
 interface LogoColumn {
   position: number;
-  totalBits: number;  // Information content (max 2 for DNA, 4.3 for protein)
-  letters: { char: string; height: number }[];  // Sorted by height
+  rawPosition: number;           // Position in original alignment
+  informationContent: number;    // R_seq in bits
+  entropy: number;               // H in bits
+  letterHeights: Array<{
+    letter: string;
+    height: number;              // In bits
+    frequency: number;           // Raw frequency
+    count: number;               // Actual count
+  }>;
+  gapFraction: number;           // Fraction of gaps at this position
+  consensus: string;             // Most common letter
+  consensusFrequency: number;    // Frequency of consensus
 }
 
-function generateLogo(alignment: string[], type: 'dna' | 'protein'): LogoColumn[] {
-  const maxBits = type === 'dna' ? 2 : Math.log2(20);
-  const length = alignment[0].length;
+interface SequenceLogo {
+  type: 'dna' | 'protein';
+  alignment: string[];
+  sequenceNames: string[];
+  columns: LogoColumn[];
+
+  // Summary statistics
+  totalInformation: number;      // Sum of R_seq across all positions
+  averageInformation: number;    // Mean R_seq per position
+  conservedPositions: number[];  // Positions with R > 1.5 (DNA) or > 3 (protein)
+  variablePositions: number[];   // Positions with R < 0.5
+
+  // Derived PSSM
+  pssm: number[][];              // For sequence searching
+  pssmThreshold: number;         // Suggested score threshold
+
+  // Consensus sequence
+  consensus: string;
+  iupacConsensus: string;        // With ambiguity codes
+}
+
+// Color schemes for logos
+const DNA_COLORS: Record<string, string> = {
+  'A': '#22c55e',  // Green
+  'C': '#3b82f6',  // Blue
+  'G': '#f97316',  // Orange
+  'T': '#ef4444',  // Red
+  'U': '#ef4444',  // Red (RNA)
+};
+
+const AMINO_ACID_COLORS: Record<string, string> = {
+  // Hydrophobic (orange/red)
+  'A': '#f97316', 'V': '#f97316', 'I': '#f97316', 'L': '#f97316',
+  'M': '#f97316', 'F': '#f97316', 'W': '#f97316', 'P': '#f97316',
+  // Polar (green)
+  'S': '#22c55e', 'T': '#22c55e', 'C': '#22c55e', 'Y': '#22c55e',
+  'N': '#22c55e', 'Q': '#22c55e',
+  // Basic (blue)
+  'K': '#3b82f6', 'R': '#3b82f6', 'H': '#3b82f6',
+  // Acidic (red)
+  'D': '#ef4444', 'E': '#ef4444',
+  // Special (gray)
+  'G': '#6b7280',
+};
+
+function generateSequenceLogo(
+  alignment: string[],
+  type: 'dna' | 'protein',
+  options: {
+    gapHandling?: 'ignore' | 'include' | 'weight';
+    smallSampleCorrection?: boolean;
+    pseudocount?: number;
+  } = {}
+): SequenceLogo {
+  const {
+    gapHandling = 'weight',
+    smallSampleCorrection = true,
+    pseudocount = 0.01,
+  } = options;
+
+  const n = alignment.length;
+  const length = alignment[0]?.length || 0;
+  const alphabet = type === 'dna' ? ['A', 'C', 'G', 'T'] :
+    'ACDEFGHIKLMNPQRSTVWY'.split('');
+  const maxBits = Math.log2(alphabet.length);
+
+  // Small sample correction
+  const correction = smallSampleCorrection
+    ? (alphabet.length - 1) / (2 * Math.log(2) * n)
+    : 0;
+
   const columns: LogoColumn[] = [];
 
   for (let pos = 0; pos < length; pos++) {
+    // Count letters at this position
     const counts = new Map<string, number>();
+    let gapCount = 0;
     let total = 0;
 
     for (const seq of alignment) {
-      const char = seq[pos];
-      if (char !== '-') {
+      const char = seq[pos]?.toUpperCase();
+      if (char === '-' || char === '.') {
+        gapCount++;
+        if (gapHandling === 'include') {
+          counts.set('-', (counts.get('-') || 0) + 1);
+          total++;
+        }
+      } else if (alphabet.includes(char)) {
         counts.set(char, (counts.get(char) || 0) + 1);
         total++;
       }
     }
 
-    // Shannon entropy
-    let entropy = 0;
-    for (const count of counts.values()) {
-      const p = count / total;
-      entropy -= p * Math.log2(p);
+    if (total === 0) {
+      columns.push({
+        position: pos,
+        rawPosition: pos,
+        informationContent: 0,
+        entropy: maxBits,
+        letterHeights: [],
+        gapFraction: 1,
+        consensus: '-',
+        consensusFrequency: 1,
+      });
+      continue;
     }
 
-    const information = maxBits - entropy;
+    // Calculate frequencies with pseudocount
+    const frequencies = new Map<string, number>();
+    for (const letter of alphabet) {
+      const count = counts.get(letter) || 0;
+      frequencies.set(letter, (count + pseudocount) / (total + pseudocount * alphabet.length));
+    }
 
-    // Letter heights proportional to frequency × information
-    const letters = Array.from(counts.entries())
-      .map(([char, count]) => ({
-        char,
-        height: (count / total) * information
-      }))
-      .sort((a, b) => a.height - b.height);  // Stack smallest at bottom
+    // Calculate entropy
+    let entropy = 0;
+    for (const freq of frequencies.values()) {
+      if (freq > 0) {
+        entropy -= freq * Math.log2(freq);
+      }
+    }
 
-    columns.push({ position: pos, totalBits: information, letters });
+    // Information content
+    let information = maxBits - entropy - correction;
+    if (information < 0) information = 0;
+
+    // Apply gap weighting
+    if (gapHandling === 'weight') {
+      const gapFraction = gapCount / n;
+      information *= (1 - gapFraction);
+    }
+
+    // Calculate letter heights
+    const letterHeights: LogoColumn['letterHeights'] = [];
+    for (const [letter, freq] of frequencies) {
+      const actualFreq = (counts.get(letter) || 0) / total;
+      if (actualFreq > 0) {
+        letterHeights.push({
+          letter,
+          height: actualFreq * information,
+          frequency: actualFreq,
+          count: counts.get(letter) || 0,
+        });
+      }
+    }
+
+    // Sort by height (smallest at bottom for stacking)
+    letterHeights.sort((a, b) => a.height - b.height);
+
+    // Find consensus
+    let maxFreq = 0;
+    let consensus = 'N';
+    for (const [letter, freq] of frequencies) {
+      if (freq > maxFreq) {
+        maxFreq = freq;
+        consensus = letter;
+      }
+    }
+
+    columns.push({
+      position: columns.length,
+      rawPosition: pos,
+      informationContent: information,
+      entropy,
+      letterHeights,
+      gapFraction: gapCount / n,
+      consensus,
+      consensusFrequency: maxFreq,
+    });
   }
 
-  return columns;
+  // Summary statistics
+  const totalInformation = columns.reduce((s, c) => s + c.informationContent, 0);
+  const averageInformation = totalInformation / columns.length;
+
+  const conservedThreshold = type === 'dna' ? 1.5 : 3.0;
+  const variableThreshold = 0.5;
+
+  const conservedPositions = columns
+    .filter(c => c.informationContent > conservedThreshold)
+    .map(c => c.position);
+  const variablePositions = columns
+    .filter(c => c.informationContent < variableThreshold)
+    .map(c => c.position);
+
+  // Generate PSSM
+  const backgroundFreq = 1 / alphabet.length;
+  const pssm: number[][] = [];
+
+  for (const col of columns) {
+    const row: number[] = [];
+    for (const letter of alphabet) {
+      const lh = col.letterHeights.find(l => l.letter === letter);
+      const freq = lh?.frequency || 0.001;
+      row.push(Math.log2(freq / backgroundFreq));
+    }
+    pssm.push(row);
+  }
+
+  // Consensus sequences
+  const consensus = columns.map(c => c.consensus).join('');
+  const iupacConsensus = columns.map(c =>
+    getIUPACCode(c.letterHeights, type, 0.25)
+  ).join('');
+
+  return {
+    type,
+    alignment,
+    sequenceNames: [],
+    columns,
+    totalInformation,
+    averageInformation,
+    conservedPositions,
+    variablePositions,
+    pssm,
+    pssmThreshold: totalInformation * 0.7,
+    consensus,
+    iupacConsensus,
+  };
+}
+
+function getIUPACCode(
+  letterHeights: LogoColumn['letterHeights'],
+  type: 'dna' | 'protein',
+  threshold: number
+): string {
+  const significant = letterHeights.filter(l => l.frequency >= threshold);
+
+  if (type === 'dna') {
+    const letters = significant.map(l => l.letter).sort();
+    const iupac: Record<string, string> = {
+      'A': 'A', 'C': 'C', 'G': 'G', 'T': 'T',
+      'AC': 'M', 'AG': 'R', 'AT': 'W', 'CG': 'S', 'CT': 'Y', 'GT': 'K',
+      'ACG': 'V', 'ACT': 'H', 'AGT': 'D', 'CGT': 'B',
+      'ACGT': 'N'
+    };
+    return iupac[letters.join('')] || 'N';
+  }
+
+  // For proteins, just return consensus if > 50%, else 'X'
+  if (significant.length === 1 && significant[0].frequency > 0.5) {
+    return significant[0].letter;
+  }
+  return 'X';
+}
+
+// Render logo as ASCII art for TUI
+function renderLogoASCII(
+  logo: SequenceLogo,
+  width: number = 60,
+  height: number = 12
+): string[] {
+  const lines: string[] = [];
+  const maxBits = logo.type === 'dna' ? 2 : 4.32;
+  const colsToShow = Math.min(logo.columns.length, width);
+
+  // Y-axis scale
+  const yScale = height / maxBits;
+
+  // Build display grid
+  const grid: string[][] = Array(height).fill(null).map(() =>
+    Array(colsToShow).fill(' ')
+  );
+
+  for (let col = 0; col < colsToShow; col++) {
+    const column = logo.columns[col];
+    let y = height - 1;
+
+    for (const lh of column.letterHeights) {
+      const letterHeight = Math.round(lh.height * yScale);
+      for (let i = 0; i < letterHeight && y >= 0; i++) {
+        grid[y][col] = lh.letter;
+        y--;
+      }
+    }
+  }
+
+  // Add y-axis labels
+  lines.push('Bits');
+  for (let row = 0; row < height; row++) {
+    const bitValue = ((height - row) / height * maxBits).toFixed(1);
+    const yLabel = row === 0 || row === height / 2 || row === height - 1
+      ? bitValue.padStart(4)
+      : '    ';
+    lines.push(`${yLabel} ┤${grid[row].join('')}`);
+  }
+
+  // X-axis
+  lines.push('     └' + '─'.repeat(colsToShow));
+
+  // Position labels (every 10)
+  let posLabels = '      ';
+  for (let i = 0; i < colsToShow; i++) {
+    if (i % 10 === 0) {
+      posLabels += i.toString().padEnd(10);
+    }
+  }
+  lines.push(posLabels);
+
+  // Consensus
+  lines.push('');
+  lines.push('Consensus: ' + logo.consensus.slice(0, colsToShow));
+  lines.push('IUPAC:     ' + logo.iupacConsensus.slice(0, colsToShow));
+
+  return lines;
+}
+
+// Render with Braille for higher resolution
+function renderLogoBraille(
+  logo: SequenceLogo,
+  width: number = 80
+): string[] {
+  const lines: string[] = [];
+  const colsToShow = Math.min(logo.columns.length, width * 2);
+  const maxBits = logo.type === 'dna' ? 2 : 4.32;
+
+  // Braille patterns for bar heights (using upper dots only for simplicity)
+  const brailleLevels = [' ', '⢀', '⢠', '⢰', '⢸', '⣸', '⣾', '⣿'];
+
+  // Build 4-row Braille display
+  for (let row = 3; row >= 0; row--) {
+    let line = '';
+    for (let col = 0; col < colsToShow; col += 2) {
+      const column = logo.columns[col];
+      const normalized = column.informationContent / maxBits;
+      const level = Math.min(7, Math.floor(normalized * 8));
+      line += brailleLevels[Math.max(0, level - row * 2)];
+    }
+    lines.push(line);
+  }
+
+  return lines;
 }
 ```
+
+### Why This Is a Good Idea
+
+1. **The Gold Standard**: Sequence logos are how biologists visualize motifs. Having them in Phage Explorer makes it a complete analysis tool.
+
+2. **Discover New Motifs**: Aligning regulatory regions across phages and generating logos reveals conserved motifs — potential targets for intervention.
+
+3. **Quantitative Conservation**: Unlike consensus sequences, logos show exactly how conserved each position is. Critical for distinguishing essential vs. tolerated variation.
+
+4. **PSSM Generation**: Logos produce position-specific scoring matrices for searching new sequences — enabling motif scanning across genomes.
+
+5. **Educational Impact**: Understanding information theory through logos is a gateway to grasping entropy, bits, and biological encoding.
+
+### Innovation Assessment
+
+**Novelty**: 5/10 — WebLogo and Skylign exist, but integrating logos into a TUI with Braille rendering and real-time updates as alignments change is novel.
+
+### Pedagogical Value: 10/10
+
+Teaches:
+- Information theory fundamentals (entropy, bits)
+- Shannon's theory applied to biology
+- Multiple sequence alignment interpretation
+- Consensus vs. conservation
+- Position-specific scoring matrices
+- How regulatory sequences encode function
+
+### Cool/Wow Factor: 8/10
+
+Seeing a promoter logo emerge from an alignment — with the -10 box (TATAAT) jumping out as a tall stack — is one of those "aha!" moments that makes sequence data meaningful.
 
 ### TUI Visualization
 
 ```
-Promoter -10 box consensus logo:
-
-Bits
- 2.0 ┤     T
-     │     T A A A
- 1.5 ┤     T A A A T
-     │   T T A A A T
- 1.0 ┤   T T A A A T
-     │   T T A A A T
- 0.5 ┤ T T T A A A T A
-     │ T T T A A A T A T
- 0.0 └─┴─┴─┴─┴─┴─┴─┴─┴─┴─
-       1 2 3 4 5 6 7 8 9
-
-Consensus: TATAAT (Pribnow box)
-Information content: 8.2 bits (highly conserved)
+┌─────────────────────────────────────────────────────────────────────────┐
+│  SEQUENCE LOGO GENERATOR                    Promoter -10 Box (n=24)    │
+├─────────────────────────────────────────────────────────────────────────┤
+│                                                                         │
+│  Type: DNA            Alignment: 24 sequences           Length: 15 bp  │
+│                                                                         │
+│  ═══════════════════════════════════════════════════════════════════    │
+│  SEQUENCE LOGO                                                          │
+│  ═══════════════════════════════════════════════════════════════════    │
+│                                                                         │
+│  Bits                                                                   │
+│   2.0 ┤                 T                                               │
+│       │                 T                                               │
+│   1.5 ┤           T     T   A   A   A                                   │
+│       │           T     T   A   A   A   T                               │
+│   1.0 ┤     T     T     T   A   A   A   T                               │
+│       │     T     T     T   A   A   A   T                               │
+│   0.5 ┤ C   T   T T   T T   A   A   A   T   A                           │
+│       │ C   T   T T   T T   A   A   A   T   A   T                       │
+│   0.0 └─┴───┴───┴─┴───┴─┴───┴───┴───┴───┴───┴───┴───                    │
+│         1   2   3 4   5 6   7   8   9  10  11  12  13                   │
+│                                                                         │
+│  High-resolution view (Braille):                                        │
+│         ⣿  ⣿⣿  ⣿  ⣿⣿  ⣿⣿  ⣿⣿  ⣿⣿  ⣿⣿  ⣿  ⢸  ⢰                       │
+│         ⣿  ⣿⣿  ⣿  ⣿⣿  ⣿⣿  ⣿⣿  ⣿⣿  ⣿⣿  ⣿  ⣸  ⣰                       │
+│                                                                         │
+│  ═══════════════════════════════════════════════════════════════════    │
+│  CONSENSUS & STATISTICS                                                 │
+│  ═══════════════════════════════════════════════════════════════════    │
+│                                                                         │
+│  Consensus:    C T T T T T T A T A A T A A T                            │
+│  IUPAC:        Y T W T W T T A T A A T A W T                            │
+│                                                                         │
+│  Position      Letter   Bits    Frequency    Function                   │
+│  ─────────────────────────────────────────────────────────────────────  │
+│     1          C/T      0.8     C:42% T:58%  Variable                   │
+│     2          T        1.9     T:96%        σ70 contact               │
+│     3          T        1.7     T:88%        σ70 contact               │
+│     4          T/A      0.6     T:54% A:38%  Variable                   │
+│     5          T        1.6     T:83%        σ70 contact               │
+│     6          T        1.8     T:92%        DNA melting               │
+│     7          A        1.9     A:96%        DNA melting (Pribnow)     │
+│     8          T        1.9     T:96%        DNA melting               │
+│     9          A        1.7     A:88%        Extended region           │
+│    10          A        1.6     A:83%        Extended region           │
+│    11          T        1.8     T:92%        σ70 contact               │
+│                                                                         │
+│  Total information: 17.3 bits                                           │
+│  Average per position: 1.58 bits                                        │
+│  Conserved positions (>1.5 bits): 2, 3, 6, 7, 8, 11                     │
+│                                                                         │
+│  Known motif match: E. coli σ70 Pribnow box (TATAAT)                   │
+│  Match score: 92%                                                       │
+│                                                                         │
+├─────────────────────────────────────────────────────────────────────────┤
+│  PSSM (for sequence search)                                             │
+│  ═══════════════════════════════════════════════════════════════════    │
+│                                                                         │
+│  Position:  1    2    3    4    5    6    7    8    9   10   11        │
+│  A         -1.3 -2.0 -1.5 -0.4 -1.0 -2.0  1.9 -2.0  1.5  1.3 -2.0      │
+│  C          0.8 -2.0 -2.0 -0.8 -2.0 -2.0 -2.0 -2.0 -2.0 -2.0 -2.0      │
+│  G         -2.0 -2.0 -2.0 -2.0 -2.0 -2.0 -2.0 -2.0 -2.0 -2.0 -2.0      │
+│  T         -0.3  1.9  1.5  0.5  1.3  1.7 -2.0  1.9 -1.5 -1.5  1.7      │
+│                                                                         │
+│  Threshold for significant match: 12.1 bits                             │
+│                                                                         │
+└─────────────────────────────────────────────────────────────────────────┘
+[A] Add sequences  [C] Compare logos  [S] Search genome  [E] Export SVG  [?]
 ```
 
 ---
