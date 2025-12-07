@@ -16,6 +16,9 @@ export * from './simulation';
 // Phase portraits
 export * from './phase-portraits';
 
+// Bias decomposition
+export * from './bias-decomposition';
+
 // Functional module coherence
 export * from './module-coherence';
 
