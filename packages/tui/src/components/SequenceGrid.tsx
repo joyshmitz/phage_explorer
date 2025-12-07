@@ -75,7 +75,6 @@ export function SequenceGrid({
   const readingFrame = usePhageStore(s => s.readingFrame);
   const scrollPosition = usePhageStore(s => s.scrollPosition);
   const diffEnabled = usePhageStore(s => s.diffEnabled);
-  const currentPhage = usePhageStore(s => s.currentPhage);
 
   // Build the grid based on current scroll position
   const grid = useMemo(() => {
@@ -86,15 +85,17 @@ export function SequenceGrid({
     const effectiveRows = height;
     const charsPerScreen = effectiveCols * effectiveRows;
 
-    // For AA mode, we need to offset into the sequence differently
+    // For AA mode, convert amino acid position to DNA position
+    // Note: We don't add readingFrame here - buildGrid handles frame offset via translateSequence
     let startIndex = scrollPosition;
     if (viewMode === 'aa') {
-      startIndex = scrollPosition * 3 + readingFrame;
+      startIndex = scrollPosition * 3;
     }
 
     // Get the slice of sequence we need
+    // For AA mode, add extra bases to account for reading frame offset and partial codons
     const sliceLength = viewMode === 'aa'
-      ? charsPerScreen * 3 + 3 // Extra for partial codons
+      ? charsPerScreen * 3 + readingFrame + 3
       : charsPerScreen;
 
     const seqSlice = sequence.substring(startIndex, startIndex + sliceLength);
@@ -112,9 +113,8 @@ export function SequenceGrid({
   // Calculate position info
   const totalLength = sequence?.length ?? 0;
   const effectiveLength = viewMode === 'aa' ? Math.floor(totalLength / 3) : totalLength;
-  const currentPos = viewMode === 'aa' ? scrollPosition : scrollPosition;
   const positionPercent = effectiveLength > 0
-    ? ((currentPos / effectiveLength) * 100).toFixed(1)
+    ? ((scrollPosition / effectiveLength) * 100).toFixed(1)
     : '0.0';
 
   return (
@@ -130,7 +130,7 @@ export function SequenceGrid({
           {viewMode === 'dna' ? 'DNA Sequence' : `Amino Acids (Frame ${readingFrame + 1})`}
         </Text>
         <Text color={colors.textDim}>
-          {currentPos.toLocaleString()} / {effectiveLength.toLocaleString()} ({positionPercent}%)
+          {scrollPosition.toLocaleString()} / {effectiveLength.toLocaleString()} ({positionPercent}%)
         </Text>
       </Box>
 

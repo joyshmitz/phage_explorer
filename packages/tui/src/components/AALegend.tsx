@@ -11,12 +11,13 @@ export function AALegend(): React.ReactElement {
   const colors = theme.colors;
 
   // Property groups with representative amino acids for color display
+  // Must match the 'property' field definitions in codons.ts
   const propertyGroups: Array<{ label: string; sample: AminoAcid; members: string }> = [
-    { label: 'Hydrophobic', sample: 'L', members: 'AVLIMFWP' },
-    { label: 'Polar', sample: 'S', members: 'STYNQC' },
+    { label: 'Hydrophobic', sample: 'L', members: 'AVLIMFW' },
+    { label: 'Polar', sample: 'S', members: 'STYNQ' },
     { label: 'Basic (+)', sample: 'K', members: 'KRH' },
     { label: 'Acidic (-)', sample: 'D', members: 'DE' },
-    { label: 'Special', sample: 'G', members: 'G*' },
+    { label: 'Special', sample: 'G', members: 'GPC*' },
   ];
 
   return (
