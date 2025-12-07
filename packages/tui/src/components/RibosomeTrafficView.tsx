@@ -83,12 +83,22 @@ export function RibosomeTrafficView({ state }: RibosomeTrafficViewProps): React.
     return toSpark(deltas, 40);
   }, [state.productionHistory]);
 
+  const stallSpark = useMemo(() => {
+    if (state.productionHistory.length < 2) return '';
+    const deltas: number[] = [];
+    const stalls = state.stallEvents;
+    deltas.push(stalls);
+    return toSpark(deltas, 40);
+  }, [state.stallEvents, state.productionHistory.length]);
+
   const track = useMemo(() => {
     const cells = Array.from({ length: window }, () => '·');
     const rates = Array.from({ length: window }, () => 0);
 
     const rateMin = Math.min(...state.codonRates);
     const rateMax = Math.max(...state.codonRates);
+
+    const slowIdxSet = new Set(slowSites.map(s => Math.floor((s.idx / length) * window)));
 
     for (let i = 0; i < window; i++) {
       const idx = Math.floor((i / window) * length);
@@ -104,8 +114,15 @@ export function RibosomeTrafficView({ state }: RibosomeTrafficViewProps): React.
       }
     }
 
+    // Overlay slow hotspots
+    slowIdxSet.forEach(i => {
+      if (i >= 0 && i < cells.length && cells[i] === '·') {
+        cells[i] = '▏';
+      }
+    });
+
     return { cells, rates };
-  }, [state.ribosomes, state.codonRates, length, footprint]);
+  }, [state.ribosomes, state.codonRates, length, footprint, slowSites]);
 
   return (
     <Box flexDirection="column" gap={0}>
@@ -147,6 +164,9 @@ export function RibosomeTrafficView({ state }: RibosomeTrafficViewProps): React.
         <Text color={colors.text}>
           Longest queue: {queueStats.longestQueue} ribosomes · Proteins/step spark: {productionSpark || 'n/a'} · Active ribosomes spark: {densitySpark || 'n/a'}
         </Text>
+        {stallSpark && (
+          <Text color={colors.textDim} dimColor>Stall trend: {stallSpark}</Text>
+        )}
       </Box>
 
       <Box marginTop={1} flexDirection="column">
@@ -156,6 +176,7 @@ export function RibosomeTrafficView({ state }: RibosomeTrafficViewProps): React.
             Codon {s.idx + 1}: rate {s.rate} ({s.slowdown > 0 ? `${(s.slowdown * 100).toFixed(0)}% slower vs median` : 'at/near median'})
           </Text>
         ))}
+        <Text color={colors.textDim} dimColor>▏ marks slow windows on track; background darker = slower codons</Text>
       </Box>
     </Box>
   );
