@@ -1,12 +1,12 @@
 /**
  * Collaboration Manager
  *
- * Manages WebRTC peer connections and state synchronization.
- * Uses a mesh topology for simplicity (suitable for small groups < 5).
+ * Manages local peer state synchronization via BroadcastChannel.
+ * Simulates a collaborative session across tabs.
  */
 
 import { create } from 'zustand';
-import type { PeerId, SessionId, UserPresence, SyncMessage, SignalingMessage, SessionState } from './types';
+import type { PeerId, SessionId, UserPresence, SyncMessage, SessionState } from './types';
 
 // Generate a random ID
 const generateId = () => Math.random().toString(36).substr(2, 9);
@@ -16,14 +16,12 @@ const generateColor = () => '#' + Math.floor(Math.random()*16777215).toString(16
 
 interface CollaborationStore extends SessionState {
   currentUser: UserPresence;
-  messages: SyncMessage[];
   
   // Actions
   createSession: (name: string) => Promise<SessionId>;
   joinSession: (sessionId: SessionId, name: string) => Promise<void>;
   leaveSession: () => void;
   updatePresence: (presence: Partial<UserPresence>) => void;
-  sendMessage: (text: string) => void;
   broadcastState: (state: any) => void;
 }
 
@@ -43,10 +41,6 @@ export const useCollaborationStore = create<CollaborationStore>((set, get) => {
           peers: { ...s.peers, [peer.id]: peer }
         }));
       }
-    } else if (msg.type === 'chat' && state.connected && state.id === msg.payload.sessionId) {
-      set(s => ({
-        messages: [...s.messages, msg]
-      }));
     } else if (msg.type === 'join' && state.id === msg.payload.sessionId) {
         // Respond with my presence
         channel.postMessage({
@@ -69,7 +63,6 @@ export const useCollaborationStore = create<CollaborationStore>((set, get) => {
       color: generateColor(),
       lastActive: Date.now(),
     },
-    messages: [],
 
     createSession: async (name: string) => {
       const sessionId = generateId();
@@ -125,7 +118,6 @@ export const useCollaborationStore = create<CollaborationStore>((set, get) => {
         hostId: '',
         connected: false,
         peers: {},
-        messages: []
       });
     },
 
@@ -151,29 +143,8 @@ export const useCollaborationStore = create<CollaborationStore>((set, get) => {
       });
     },
 
-    sendMessage: (text) => {
-      const { currentUser, id } = get();
-      const msg: SyncMessage = {
-        type: 'chat',
-        sender: currentUser.id,
-        timestamp: Date.now(),
-        payload: { text, sessionId: id }
-      };
-      
-      set(state => ({
-        messages: [...state.messages, msg]
-      }));
-
-      channel.postMessage(msg);
-    },
-
     broadcastState: (payload) => {
       // Placeholder for state sync
     }
   };
 });
-
-// Hook for BroadcastChannel (multi-tab collaboration simulation)
-export function useLocalSignaling() {
-  // Logic moved inside store creator for simplicity
-}

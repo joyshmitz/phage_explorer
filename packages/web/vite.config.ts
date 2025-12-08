@@ -8,6 +8,7 @@ const resolveFromRoot = (relativePath: string) =>
 export default defineConfig({
   plugins: [react()],
   resolve: {
+    dedupe: ['react', 'react-dom'],
     alias: {
       '@phage-explorer/core': resolveFromRoot('core/src'),
       '@phage-explorer/state': resolveFromRoot('state/src'),
@@ -18,6 +19,13 @@ export default defineConfig({
       '@phage-explorer/data-pipeline': resolveFromRoot('data-pipeline/src'),
       '@phage-explorer/tui': resolveFromRoot('tui/src'),
       '@phage/wasm-compute': resolveFromRoot('wasm-compute/pkg/wasm_compute.js'),
+      react: path.resolve(__dirname, 'node_modules/react'),
+      'react-dom': path.resolve(__dirname, 'node_modules/react-dom'),
+      'react/jsx-runtime': path.resolve(__dirname, 'node_modules/react/jsx-runtime'),
+      // Browser shims for optional Node deps pulled by sql.js
+      fs: resolveFromRoot('web/src/shims/empty.ts'),
+      path: resolveFromRoot('web/src/shims/empty.ts'),
+      crypto: resolveFromRoot('web/src/shims/empty.ts'),
     },
   },
   build: {
@@ -38,5 +46,13 @@ export default defineConfig({
       },
     },
   },
+  optimizeDeps: {
+    exclude: ['sql.js'],
+    include: ['react', 'react-dom'],
+    esbuildOptions: {
+      define: {
+        global: 'globalThis',
+      },
+    },
+  },
 });
-

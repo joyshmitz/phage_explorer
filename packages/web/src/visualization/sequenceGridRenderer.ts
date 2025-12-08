@@ -66,6 +66,9 @@ export class SequenceGridRenderer {
       this.canvas.height = Math.floor(height * this.dpr);
       this.canvas.style.width = `${width}px`;
       this.canvas.style.height = `${height}px`;
+      if (typeof this.ctx.setTransform === 'function') {
+        this.ctx.setTransform(1, 0, 0, 1, 0, 0);
+      }
       this.ctx.scale(this.dpr, this.dpr);
     }
   }
@@ -102,4 +105,3 @@ export class SequenceGridRenderer {
     }
   }
 }
-

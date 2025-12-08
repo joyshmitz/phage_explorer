@@ -2,21 +2,50 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useRendererHost } from './useRendererHost';
 import type { Theme } from '@phage-explorer/core';
 import type { PhageRepository } from '@phage-explorer/db-runtime';
-import type { RenderFrameInput } from './types';
+import type { RenderFrameInput, SequenceSource } from './types';
+import { getMockSequence, hasMockSequence } from './mockSequenceSource';
 
 interface VisualizationPreviewProps {
   repo: PhageRepository | null;
   phageId: number | null;
   theme: Theme | null;
+  source?: SequenceSource | null;
 }
 
 /**
  * Lightweight, opt-in preview component to smoke-test the canvas renderer.
  * Not wired into the main UI yet; can be mounted in a sandbox route.
  */
-export const VisualizationPreview: React.FC<VisualizationPreviewProps> = ({ repo, phageId, theme }) => {
+const buildMockSource = (): SequenceSource => {
+  const seq = getMockSequence();
+  const rowWidth = 200;
+  return {
+    async getWindow(request: { start: number; end: number }) {
+      const start = Math.max(0, request.start);
+      const end = Math.min(seq.length, request.end);
+      const chunk = seq.slice(start, end);
+      const rows: string[] = [];
+      for (let i = 0; i < chunk.length; i += rowWidth) {
+        rows.push(chunk.slice(i, i + rowWidth));
+      }
+      return { start, end, rows };
+    },
+    async totalLength() {
+      return seq.length;
+    },
+  };
+};
+
+export const VisualizationPreview: React.FC<VisualizationPreviewProps> = ({ repo, phageId, theme, source }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const { render } = useRendererHost({ canvasRef, repo, phageId, theme });
+  const fallbackSource = !repo && hasMockSequence() ? buildMockSource() : undefined;
+  const { render } = useRendererHost({
+    canvasRef,
+    repo,
+    phageId,
+    theme,
+    source: source ?? fallbackSource,
+  });
   const [frame, setFrame] = useState<RenderFrameInput>({
     scrollTop: 0,
     viewportHeight: 400,
@@ -52,7 +81,10 @@ export const VisualizationPreview: React.FC<VisualizationPreviewProps> = ({ repo
     setFrame(f => ({ ...f, scrollTop: top }));
   };
 
-  const canRender = useMemo(() => repo && phageId !== null && theme, [repo, phageId, theme]);
+  const canRender = useMemo(
+    () => (!!repo && phageId !== null && !!theme) || (!!theme && !!(source ?? fallbackSource)),
+    [repo, phageId, theme, source, fallbackSource]
+  );
 
   return (
     <div className="viz-preview">

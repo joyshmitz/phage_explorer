@@ -30,6 +30,7 @@ import type {
 type WorkerType = 'analysis' | 'simulation';
 
 interface WorkerInstance {
+  id: string;
   worker: Worker;
   api: AnalysisWorkerAPI | SimulationWorkerAPI;
   type: WorkerType;
@@ -91,6 +92,7 @@ export class ComputeOrchestrator {
     }
 
     const instance: WorkerInstance = {
+      id: workerId,
       worker,
       api,
       type,
@@ -143,32 +145,43 @@ export class ComputeOrchestrator {
    */
   private cleanupIdleWorkers(): void {
     const now = Date.now();
-    const toRemove: string[] = [];
+    
+    // Group workers by type
+    const byType: Record<WorkerType, WorkerInstance[]> = {
+      analysis: [],
+      simulation: []
+    };
 
-    for (const [id, instance] of this.workers.entries()) {
-      if (!instance.busy && now - instance.lastUsed > this.config.idleTimeout) {
-        toRemove.push(id);
-      }
+    for (const instance of this.workers.values()) {
+      byType[instance.type].push(instance);
     }
 
-    // Keep at least one worker of each type
-    const analysisBusy = Array.from(this.workers.values()).filter(
-      w => w.type === 'analysis' && !toRemove.includes(Array.from(this.workers.entries()).find(([, v]) => v === w)?.[0] ?? '')
-    ).length;
-    const simBusy = Array.from(this.workers.values()).filter(
-      w => w.type === 'simulation' && !toRemove.includes(Array.from(this.workers.entries()).find(([, v]) => v === w)?.[0] ?? '')
-    ).length;
+    // Process each type
+    for (const type of ['analysis', 'simulation'] as WorkerType[]) {
+      const instances = byType[type];
+      
+      // Sort by last used (oldest first) to prioritize removing stale ones
+      instances.sort((a, b) => a.lastUsed - b.lastUsed);
 
-    for (const id of toRemove) {
-      const instance = this.workers.get(id);
-      if (!instance) continue;
+      // Keep at least one
+      if (instances.length <= 1) continue;
 
-      // Keep at least one of each type
-      if (instance.type === 'analysis' && analysisBusy <= 1) continue;
-      if (instance.type === 'simulation' && simBusy <= 1) continue;
-
-      instance.worker.terminate();
-      this.workers.delete(id);
+      for (const instance of instances) {
+        // Don't remove if it's the last one (re-check count)
+        if (this.workers.size <= 1) break; // Global safety
+        
+        // Check if idle and timed out
+        if (!instance.busy && now - instance.lastUsed > this.config.idleTimeout) {
+          // Ensure we keep at least one of this type
+          const remainingOfType = Array.from(this.workers.values())
+            .filter(w => w.type === type && w.id !== instance.id).length;
+            
+          if (remainingOfType >= 1) {
+            instance.worker.terminate();
+            this.workers.delete(instance.id);
+          }
+        }
+      }
     }
   }
 

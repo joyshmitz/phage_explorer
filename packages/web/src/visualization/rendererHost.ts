@@ -3,12 +3,13 @@ import type { PhageRepository } from '@phage-explorer/db-runtime';
 import { GlyphAtlas } from './glyphAtlas';
 import { RepositorySequenceSource } from './repoSequenceSource';
 import { SequenceGridRenderer } from './sequenceGridRenderer';
-import type { RenderFrameInput } from './types';
+import type { RenderFrameInput, SequenceSource } from './types';
 
 interface RendererHostOptions {
   canvas: HTMLCanvasElement;
-  repo: PhageRepository;
-  phageId: number;
+  repo?: PhageRepository;
+  source?: SequenceSource;
+  phageId?: number;
   theme: Theme;
   fontFamily?: string;
   fontSize?: number;
@@ -23,7 +24,9 @@ export class RendererHost {
   private atlas: GlyphAtlas | null = null;
   private renderer: SequenceGridRenderer | null = null;
   private source: RepositorySequenceSource | null = null;
+  private externalSource: SequenceSource | null = null;
   private resizeObserver: ResizeObserver | null = null;
+  private windowResizeHandler: (() => void) | null = null;
 
   constructor(private opts: RendererHostOptions) {}
 
@@ -38,14 +41,22 @@ export class RendererHost {
     });
     await this.atlas.prepare();
 
-    this.source = new RepositorySequenceSource(this.opts.repo, this.opts.phageId, this.computeRowWidth());
+    if (this.opts.source) {
+      this.externalSource = this.opts.source;
+    } else if (this.opts.repo && this.opts.phageId !== undefined) {
+      this.source = new RepositorySequenceSource(this.opts.repo, this.opts.phageId, this.computeRowWidth());
+    }
     this.renderer = new SequenceGridRenderer({
       canvas: this.opts.canvas,
       glyphAtlas: this.atlas,
       theme: this.opts.theme,
       devicePixelRatio: dpr,
     });
-    this.renderer.attachSource(this.source);
+    if (this.externalSource) {
+      this.renderer.attachSource(this.externalSource);
+    } else if (this.source) {
+      this.renderer.attachSource(this.source);
+    }
     this.observeResize();
   }
 
@@ -54,16 +65,24 @@ export class RendererHost {
   }
 
   async render(frame: RenderFrameInput): Promise<void> {
-    if (!this.renderer || !this.source) return;
+    if (!this.renderer) return;
     // Update row width if viewport changed materially
     const nextWidth = this.computeRowWidth();
-    this.source.setRowWidth(nextWidth);
+    this.source?.setRowWidth(nextWidth);
     await this.renderer.renderFrame(frame);
   }
 
   destroy(): void {
     this.resizeObserver?.disconnect();
     this.resizeObserver = null;
+    if (this.windowResizeHandler) {
+      window.removeEventListener('resize', this.windowResizeHandler);
+      this.windowResizeHandler = null;
+    }
+    this.source = null;
+    this.externalSource = null;
+    this.renderer = null;
+    this.atlas = null;
   }
 
   private computeRowWidth(): number {
@@ -74,10 +93,11 @@ export class RendererHost {
 
   private observeResize(): void {
     if (typeof ResizeObserver === 'undefined') {
-      window.addEventListener('resize', () => {
+      this.windowResizeHandler = () => {
         const width = this.computeRowWidth();
         this.source?.setRowWidth(width);
-      });
+      };
+      window.addEventListener('resize', this.windowResizeHandler);
       return;
     }
     this.resizeObserver = new ResizeObserver(() => {
@@ -87,4 +107,3 @@ export class RendererHost {
     this.resizeObserver.observe(this.opts.canvas);
   }
 }
-

@@ -23,7 +23,7 @@ export class PostProcessingPipeline {
   private gl: WebGL2RenderingContext;
   private program: WebGLProgram | null = null;
   private texture: WebGLTexture | null = null;
-  private framebuffer: WebGLFramebuffer | null = null;
+  private buffer: WebGLBuffer | null = null;
   
   // Uniform locations
   private uniforms: Record<string, WebGLUniformLocation | null> = {};
@@ -73,6 +73,7 @@ export class PostProcessingPipeline {
     const buffer = gl.createBuffer();
     gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
     gl.bufferData(gl.ARRAY_BUFFER, vertices, gl.STATIC_DRAW);
+    this.buffer = buffer;
 
     // Create program
     const vs = this.createShader(gl.VERTEX_SHADER, VERTEX_SHADER);
@@ -143,6 +144,11 @@ export class PostProcessingPipeline {
     this.canvas.width = width;
     this.canvas.height = height;
     this.gl.viewport(0, 0, width, height);
+    // Maintain pixel ratio for crispness
+    const dpr = window.devicePixelRatio || 1;
+    this.canvas.style.width = `${width}px`;
+    this.canvas.style.height = `${height}px`;
+    this.gl.viewport(0, 0, width, height);
   }
 
   updateOptions(options: Partial<PostProcessingOptions>): void {
@@ -185,6 +191,7 @@ export class PostProcessingPipeline {
     const { gl } = this;
     gl.deleteProgram(this.program);
     gl.deleteTexture(this.texture);
+    gl.deleteBuffer(this.buffer);
     // Lose context if possible to free resources
     gl.getExtension('WEBGL_lose_context')?.loseContext();
   }

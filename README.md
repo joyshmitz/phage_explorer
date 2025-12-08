@@ -108,6 +108,23 @@ bun run build:db
 bun run dev
 ```
 
+### Option 3: Web App (Preview)
+
+We ship a lightweight web landing/preview at **https://phage-explorer.org**. It showcases the design system, keyboard-first philosophy, and links to the installer/GitHub. The production **TUI** remains the primary experience; the web build is intentionally static with no telemetry or runtime genome features.
+
+Deployment details:
+- Hosting: Vercel (prod alias: `phage-explorer.org`)
+- Build command: `bun run build:web`
+- Output: `packages/web/dist`
+- What works in the web preview:
+  - Landing page, theming preview, keyboard ethos, and quick links.
+  - No database access, no heavy analyses, no overlays—just a safe, static preview.
+- What works in the TUI (full experience):
+  - Local SQLite DB reads, all overlays (GC skew, repeats, HGT, dot plot, Hilbert, gel, non-B DNA, etc.).
+  - Real-time keyboard controls, diff mode, 3D model, simulations, command palette.
+  - Offline-friendly; zero telemetry.
+  - Build locally: `bun install && bun run build:db && bun run dev` (or use the prebuilt binary).
+
 ---
 
 ## Keyboard Controls
