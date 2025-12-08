@@ -189,7 +189,7 @@ export function CommandPalette({ commands: customCommands, context: propContext 
   // Merge prop context with inferred context
   const appContext: AppContext = useMemo(() => ({
     hasPhage: true, // Would come from actual app state
-    viewMode: (viewMode === 'dna' || viewMode === 'amino') ? viewMode : 'dna',
+    viewMode: (viewMode === 'dna' || viewMode === 'aa') ? viewMode : 'dna',
     hasSelection: false,
     hasDiffRef: false,
     simulationActive: false,

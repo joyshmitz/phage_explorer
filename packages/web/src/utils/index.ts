@@ -4,14 +4,8 @@
 
 export {
   copyToClipboard,
-  formatFASTA,
-  formatMultiFASTA,
-  downloadFile,
-  saveFile,
-  exportFASTA,
-  exportJSON,
-  exportCSV,
-  sequenceToHTML,
-  copySequence,
+  formatFasta,
+  downloadString,
+  buildSequenceClipboardPayload,
 } from './export';
 export { detectWebGPU } from './webgpu';

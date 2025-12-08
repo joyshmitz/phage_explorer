@@ -26,7 +26,7 @@ export function SelectionPressureOverlay({ targetSequence, referenceSequence }: 
   }, [targetSequence, referenceSequence]);
 
   useEffect(() => {
-    if (!isOpen('selectionPressure') || !canvasRef.current || !analysis) return;
+    if (!isOpen('pressure') || !canvasRef.current || !analysis) return;
     const canvas = canvasRef.current;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
@@ -76,11 +76,11 @@ export function SelectionPressureOverlay({ targetSequence, referenceSequence }: 
     };
   }, [isOpen, analysis, colors]);
 
-  if (!isOpen('selectionPressure')) return null;
+  if (!isOpen('pressure')) return null;
 
   return (
     <Overlay
-      id="selectionPressure"
+      id="pressure"
       title="SELECTION PRESSURE (dN/dS)"
       icon="⚡"
       hotkey="v" // Using 'v' as mapped in TUI/Menu

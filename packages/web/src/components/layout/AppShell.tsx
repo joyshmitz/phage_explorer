@@ -7,11 +7,12 @@
 import React from 'react';
 import { Header, type HeaderProps } from './Header';
 import { Footer, type FooterProps } from './Footer';
+import { Main, type MainProps } from './Main';
 import { SkipNavigation } from './SkipNavigation';
 import { CRTOverlay } from './CRTOverlay';
 import { MatrixRain } from '../MatrixRain';
 
-interface AppShellProps {
+export interface AppShellProps {
   header?: HeaderProps;
   footer?: FooterProps;
   children: React.ReactNode;

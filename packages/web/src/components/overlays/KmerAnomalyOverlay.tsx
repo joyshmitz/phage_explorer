@@ -103,7 +103,7 @@ export function KmerAnomalyOverlay({ sequence = '' }: KmerAnomalyOverlayProps): 
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.key === 'j' || e.key === 'J') && !e.ctrlKey && !e.metaKey && !e.shiftKey) {
         e.preventDefault();
-        toggle('kmer-anomaly');
+        toggle('kmerAnomaly');
       }
     };
 
@@ -113,7 +113,7 @@ export function KmerAnomalyOverlay({ sequence = '' }: KmerAnomalyOverlayProps): 
 
   // Draw heatmap
   useEffect(() => {
-    if (!isOpen('kmer-anomaly') || !canvasRef.current || results.length === 0) return;
+    if (!isOpen('kmerAnomaly') || !canvasRef.current || results.length === 0) return;
 
     const canvas = canvasRef.current;
     const ctx = canvas.getContext('2d');
@@ -192,7 +192,7 @@ export function KmerAnomalyOverlay({ sequence = '' }: KmerAnomalyOverlayProps): 
     }
   };
 
-  if (!isOpen('kmer-anomaly')) {
+  if (!isOpen('kmerAnomaly')) {
     return null;
   }
 
@@ -204,7 +204,7 @@ export function KmerAnomalyOverlay({ sequence = '' }: KmerAnomalyOverlayProps): 
 
   return (
     <Overlay
-      id="kmer-anomaly"
+      id="kmerAnomaly"
       title="K-MER ANOMALY CARTOGRAPHY"
       icon="🔬"
       hotkey="j"

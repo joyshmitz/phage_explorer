@@ -68,7 +68,9 @@ export type OverlayId =
   | 'anomaly'
   | 'non-b-dna'
   | 'hilbert'
-  | 'gel';
+  | 'gel'
+  | 'welcome'
+  | 'tour';
 
 export type HelpDetailLevel = 'essential' | 'detailed';
 export type ExperienceLevel = 'novice' | 'intermediate' | 'power';

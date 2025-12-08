@@ -7,7 +7,7 @@
 
 import React from 'react';
 
-export function OverlayManager(): React.ReactElement {
+export function OverlayManager(): React.ReactElement | null {
   // For the web landing, overlays are disabled to keep the static demo lightweight.
   return null;
 }

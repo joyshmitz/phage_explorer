@@ -5,8 +5,8 @@
  */
 
 import React from 'react';
-import { useTheme } from '../../hooks/useTheme';
-import type { DatabaseLoadProgress } from '../../db';
+import { useTheme } from '../hooks/useTheme';
+import type { DatabaseLoadProgress } from '../db';
 
 interface DataLoadingOverlayProps {
   progress: DatabaseLoadProgress | null;
