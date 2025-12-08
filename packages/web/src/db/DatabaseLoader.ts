@@ -234,13 +234,32 @@ export class DatabaseLoader {
         return null;
       }
 
+      // Validate cached data has SQLite header
+      if (!this.isValidSqliteData(cachedData)) {
+        console.warn('Cached data is not valid SQLite, clearing cache');
+        await this.clearCache();
+        return null;
+      }
+
       this.progress('initializing', 90, 'Initializing from cache...', true);
       const SQL = await this.getSqlJs();
       return new SQL.Database(cachedData);
     } catch (error) {
       console.error('Failed to load from cache:', error);
+      // Clear potentially corrupted cache
+      await this.clearCache().catch(() => {});
       return null;
     }
+  }
+
+  /**
+   * Validate data has SQLite file header
+   */
+  private isValidSqliteData(data: Uint8Array): boolean {
+    if (data.length < 16) return false;
+    // SQLite files start with "SQLite format 3\0"
+    const header = new TextDecoder().decode(data.slice(0, 16));
+    return header.startsWith('SQLite format 3');
   }
 
   /**
@@ -311,27 +330,20 @@ export class DatabaseLoader {
 
     this.progress('decompressing', 60, 'Processing database...');
 
-    // Check if data is compressed (Brotli-compressed files usually don't have a magic header we can check easily)
-    // For now, try to use as-is since DecompressionStream Brotli support varies
-    let dbData = combined;
-
-    // Try to decompress if it looks compressed (heuristic: raw SQLite starts with "SQLite format 3")
-    const header = new TextDecoder().decode(combined.slice(0, 16));
-    if (!header.startsWith('SQLite format 3')) {
-      // Might be compressed, but DecompressionStream doesn't support Brotli well
-      // For production, consider using a JS Brotli decoder like 'brotli-wasm'
-      console.log('Database might be compressed, using as-is');
+    // Validate downloaded data is a valid SQLite database
+    if (!this.isValidSqliteData(combined)) {
+      throw new Error('Downloaded data is not a valid SQLite database. The file may be corrupted or the server returned an error page.');
     }
 
     this.progress('initializing', 80, 'Initializing database...');
     const SQL = await this.getSqlJs();
 
     // Calculate hash from data
-    const hashBuffer = await crypto.subtle.digest('SHA-256', dbData);
+    const hashBuffer = await crypto.subtle.digest('SHA-256', combined);
     const hashArray = Array.from(new Uint8Array(hashBuffer));
     const hash = hashArray.map((b) => b.toString(16).padStart(2, '0')).join('');
 
-    const db = new SQL.Database(dbData);
+    const db = new SQL.Database(combined);
     return { db, hash };
   }
 
