@@ -38,6 +38,13 @@ curl -fsSL https://raw.githubusercontent.com/Dicklesworthstone/phage_explorer/ma
 - **Modular by design:** Phage genomes behave like Lego kits—swapping tail fibers, lysis cassettes, and regulatory modules across lineages. That modularity is exactly what Phage Explorer visualizes.
 - **Historical impact:** Foundational experiments (Hershey–Chase blender test for DNA as genetic material; Luria–Delbrück fluctuation test revealing random mutation) used phages. They were also the playground for cracking the genetic code.
 
+### Quick mental model for software folks
+- **Genome = source code** (A/C/G/T chars) with strongly typed 3-char opcodes (codons).
+- **Promoter/RBS = function entry points** that recruit ribosomes (the runtime) to start decoding.
+- **Reading frame = instruction pointer alignment;** shift by one base and every downstream opcode changes.
+- **Stop codons = return;** terminate translation and hand control back to the host.
+- **Phage lifecycle = deployment strategy:** lytic = `rm -rf host`; lysogenic = `git clone` into host genome and wait.
+
 ## A 90‑second genetic code primer
 
 - DNA alphabet: A, C, G, T (RNA swaps T→U). Proteins are chains of 20 amino acids.

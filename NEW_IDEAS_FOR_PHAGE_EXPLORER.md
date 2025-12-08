@@ -9,6 +9,18 @@ _Fresh detail on implementation stacks, why it’s worth it, novelty, pedagogy, 
 
 **Shared data feeds:** GenBank/RefSeq for genomes, UniProt/InterPro/HAMAP for domains, PDB/AlphaFold DB for structures, IMG/VR + MGnify for metagenomic hits, CRISPRCasdb for spacers, CARD/ResFinder for resistance loci, and literature motif libraries. Heavy math runs in Rust→WASM; ML inference uses ONNX Runtime inside Bun/TypeScript.
 
+### Build stack cheat-sheet (for the 10 ideas)
+1. Tail Fiber Atlas — Python `esm` embeddings → ONNX → Bun; receptor HMMs via `hmmer`; SQLite cache; TUI orbit graph.
+2. CRISPR/Acr Landscape — Minimap/BLAST spacers; Acr HMM bank + ESM similarity; Rust sliding windows; TUI heat bar + hotspot table.
+3. Graph Pangenome — Rust `petgraph` + minimap2 bindings compiled to WASM; SQLite variant cards; TUI bubble ribbon.
+4. Cocktail Evolution Simulator — Rust Gillespie core → WASM; ONNX priors optional; Ink trajectories with braille.
+5. Property Phase Portraits — TS PCA pipeline or Rust power-iteration → WASM; Ink scatter; domain strip overlay.
+6. Bias Tensor Decomposition — NMF/PCA in TS or Rust `ndarray`; metadata correlations in SQLite; Ink latent map + component bars.
+7. HGT Provenance — Rust MinHash + GC/codon z-scores; donor taxonomy via GTDB; “passport” UI with island bar + pie.
+8. Structure Constraint Scanner — Rust contact-map scoring + BLOSUM penalties → WASM; optional ESM delta; TUI fragility heatmap.
+9. Regulatory Constellations — PWM scans (`matrix-scan`/`memesuite`) + terminator finder; co-occurrence scoring in TS; TUI starfield over genes.
+10. Latent Space Atlas — ESM2 embeddings + HDBSCAN/UMAP (Python) cached into SQLite; Ink “galaxy” scatter; Hungarian proteome match for comparisons.
+
 ### 1) Tail Fiber Tropism & Receptor Atlas
 - **Implementation:** Embed tail fiber/tip proteins with ESM2/ProtT5 (Python); cluster via HDBSCAN+UMAP; receptor HMMs with `hmmer`; ONNX Runtime for inference in Bun; cache receptor likelihoods in SQLite; optional AlphaFold2-lite batch for RBD hints; Rust+WASM scoring for fast per-phage matching.
 - **Why good:** Direct molecular evidence for host range; complements codon/tRNA and CRISPR signals; surfaces engineering targets for host-range edits.
