@@ -30,6 +30,7 @@ export function AnalysisMenuOverlay({ onClose }: MenuOverlayProps): React.ReactE
           icon: '🧬',
           shortcut: 'Space',
           action: toggleViewMode,
+          minLevel: 'novice',
         },
         {
           id: 'analysis-cycle-frame',
@@ -38,6 +39,7 @@ export function AnalysisMenuOverlay({ onClose }: MenuOverlayProps): React.ReactE
           icon: '↪',
           shortcut: 'F',
           action: cycleReadingFrame,
+          minLevel: 'novice',
         },
       ],
     },
@@ -51,6 +53,7 @@ export function AnalysisMenuOverlay({ onClose }: MenuOverlayProps): React.ReactE
           icon: '≠',
           shortcut: 'D',
           action: toggleDiff,
+          minLevel: 'intermediate',
         },
         {
           id: 'analysis-search',
@@ -59,6 +62,7 @@ export function AnalysisMenuOverlay({ onClose }: MenuOverlayProps): React.ReactE
           icon: '🔍',
           shortcut: 'S',
           action: () => openOverlay('search'),
+          minLevel: 'novice',
         },
         {
           id: 'analysis-comparison',
@@ -67,8 +71,8 @@ export function AnalysisMenuOverlay({ onClose }: MenuOverlayProps): React.ReactE
           icon: '📊',
           shortcut: 'W',
           action: openComparison,
+          minLevel: 'intermediate',
         },
-        ...(experienceLevel === 'novice' ? [] : [
           {
             id: 'analysis-complexity',
             label: 'Sequence Complexity Overlay',
@@ -76,6 +80,7 @@ export function AnalysisMenuOverlay({ onClose }: MenuOverlayProps): React.ReactE
             icon: '🧠',
             shortcut: 'X',
             action: () => openOverlay('complexity'),
+            minLevel: 'intermediate',
           },
           {
             id: 'analysis-transcription',
@@ -84,6 +89,7 @@ export function AnalysisMenuOverlay({ onClose }: MenuOverlayProps): React.ReactE
             icon: '🧪',
             shortcut: 'Y',
             action: () => openOverlay('transcriptionFlow'),
+            minLevel: 'intermediate',
           },
           {
             id: 'analysis-pressure',
@@ -92,6 +98,7 @@ export function AnalysisMenuOverlay({ onClose }: MenuOverlayProps): React.ReactE
             icon: '📦',
             shortcut: 'V',
             action: () => openOverlay('pressure'),
+            minLevel: 'intermediate',
           },
           {
             id: 'analysis-gcskew',
@@ -100,6 +107,7 @@ export function AnalysisMenuOverlay({ onClose }: MenuOverlayProps): React.ReactE
             icon: '🧮',
             shortcut: 'G',
             action: () => openOverlay('gcSkew'),
+            minLevel: 'intermediate',
           },
           {
             id: 'analysis-kmer',
@@ -108,6 +116,7 @@ export function AnalysisMenuOverlay({ onClose }: MenuOverlayProps): React.ReactE
             icon: '🧮',
             shortcut: 'J',
             action: () => openOverlay('kmerAnomaly'),
+            minLevel: 'power',
           },
           {
             id: 'analysis-modules',
@@ -116,6 +125,7 @@ export function AnalysisMenuOverlay({ onClose }: MenuOverlayProps): React.ReactE
             icon: '🧩',
             shortcut: 'L',
             action: () => openOverlay('modules'),
+            minLevel: 'power',
           },
           {
             id: 'analysis-bias',
@@ -124,6 +134,7 @@ export function AnalysisMenuOverlay({ onClose }: MenuOverlayProps): React.ReactE
             icon: '📊',
             shortcut: 'B1',
             action: () => openOverlay('biasDecomposition'),
+            minLevel: 'power',
           },
           {
             id: 'analysis-phase-portraits',
@@ -132,6 +143,7 @@ export function AnalysisMenuOverlay({ onClose }: MenuOverlayProps): React.ReactE
             icon: '📈',
             shortcut: 'A → PP',
             action: () => openOverlay('phasePortrait'),
+            minLevel: 'power',
           },
           {
             id: 'analysis-crispr',
@@ -140,6 +152,7 @@ export function AnalysisMenuOverlay({ onClose }: MenuOverlayProps): React.ReactE
             icon: '🛡️',
             shortcut: 'I',
             action: () => openOverlay('crispr'),
+            minLevel: 'power',
           },
           {
             id: 'analysis-synteny',
@@ -148,18 +161,17 @@ export function AnalysisMenuOverlay({ onClose }: MenuOverlayProps): React.ReactE
             icon: '🔗',
             shortcut: 'Shift+Y',
             action: () => openOverlay('synteny'),
+            minLevel: 'power',
           },
-        ]),
-        ...(experienceLevel === 'power'
-          ? [{
-              id: 'analysis-command-palette',
-              label: 'Command Palette',
-              description: 'Fuzzy commands (Ctrl+P / :)',
-              icon: '⌘',
-              shortcut: 'Ctrl+P',
-              action: () => openOverlay('commandPalette'),
-            }]
-          : []),
+          {
+            id: 'analysis-command-palette',
+            label: 'Command Palette',
+            description: 'Fuzzy commands (Ctrl+P / :)',
+            icon: '⌘',
+            shortcut: 'Ctrl+P',
+            action: () => openOverlay('commandPalette'),
+            minLevel: 'power',
+          },
       ],
     },
     {
@@ -172,10 +184,11 @@ export function AnalysisMenuOverlay({ onClose }: MenuOverlayProps): React.ReactE
           icon: '🎨',
           shortcut: 'T',
           action: cycleTheme,
+          minLevel: 'novice',
         },
       ],
     },
-  ], [toggleViewMode, cycleReadingFrame, toggleDiff, openOverlay, openComparison, cycleTheme, experienceLevel]);
+  ], [toggleViewMode, cycleReadingFrame, toggleDiff, openOverlay, openComparison, cycleTheme]);
 
   return (
     <Box>
@@ -197,7 +210,6 @@ export function SimulationMenuOverlay({ onClose }: MenuOverlayProps): React.Reac
   const openComparison = usePhageStore(s => s.openComparison);
   const launchSimulation = usePhageStore(s => s.launchSimulation);
   const currentPhage = usePhageStore(s => s.currentPhage);
-  const experienceLevel = usePhageStore(s => s.experienceLevel);
   const registry = useMemo(() => getSimulationRegistry(), []);
 
   const categories: MenuCategory[] = useMemo(() => [
@@ -215,6 +227,7 @@ export function SimulationMenuOverlay({ onClose }: MenuOverlayProps): React.Reac
           launchSimulation(definition.id, initial);
           onClose();
         },
+        minLevel: 'intermediate',
       })),
     },
     {
@@ -227,6 +240,7 @@ export function SimulationMenuOverlay({ onClose }: MenuOverlayProps): React.Reac
           icon: '🛰',
           shortcut: 'M',
           action: toggle3DModel,
+          minLevel: 'novice',
         },
         {
           id: 'sim-toggle-pause',
@@ -235,6 +249,7 @@ export function SimulationMenuOverlay({ onClose }: MenuOverlayProps): React.Reac
           icon: '⏯',
           shortcut: 'P',
           action: toggle3DModelPause,
+          minLevel: 'novice',
         },
         {
           id: 'sim-fullscreen',
@@ -243,6 +258,7 @@ export function SimulationMenuOverlay({ onClose }: MenuOverlayProps): React.Reac
           icon: '🖥',
           shortcut: 'Z',
           action: toggle3DModelFullscreen,
+          minLevel: 'intermediate',
         },
         {
           id: 'sim-quality',
@@ -251,6 +267,7 @@ export function SimulationMenuOverlay({ onClose }: MenuOverlayProps): React.Reac
           icon: '💡',
           shortcut: 'R',
           action: cycle3DModelQuality,
+          minLevel: 'novice',
         },
         {
           id: 'sim-speed',
@@ -259,6 +276,7 @@ export function SimulationMenuOverlay({ onClose }: MenuOverlayProps): React.Reac
           icon: '⚡',
           shortcut: '+',
           action: () => set3DModelSpeed(1.5),
+          minLevel: 'intermediate',
         },
         {
           id: 'sim-speed-reset',
@@ -267,6 +285,7 @@ export function SimulationMenuOverlay({ onClose }: MenuOverlayProps): React.Reac
           icon: '🔄',
           shortcut: '0',
           action: () => set3DModelSpeed(1),
+          minLevel: 'novice',
         },
       ],
     },
@@ -280,15 +299,11 @@ export function SimulationMenuOverlay({ onClose }: MenuOverlayProps): React.Reac
           icon: '📈',
           shortcut: 'W',
           action: openComparison,
+          minLevel: 'intermediate',
         },
       ],
     },
-  ].filter(cat => {
-    if (cat.name === 'Dynamic Simulations' && experienceLevel === 'novice') {
-      return false;
-    }
-    return true;
-  }), [toggle3DModel, toggle3DModelPause, toggle3DModelFullscreen, cycle3DModelQuality, set3DModelSpeed, openComparison, launchSimulation, currentPhage, registry, experienceLevel, onClose]);
+  ], [toggle3DModel, toggle3DModelPause, toggle3DModelFullscreen, cycle3DModelQuality, set3DModelSpeed, openComparison, launchSimulation, currentPhage, registry, onClose]);
 
   return (
     <Box>

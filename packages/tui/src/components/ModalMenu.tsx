@@ -11,6 +11,8 @@ export interface MenuItem {
   icon?: string;
   shortcut?: string;
   action: () => void;
+  minLevel?: 'novice' | 'intermediate' | 'power';
+  keepOpen?: boolean;
 }
 
 export interface MenuCategory {
@@ -30,6 +32,12 @@ interface RankedItem extends MenuItem {
   category: string;
   score: number;
 }
+
+const LEVEL_ORDER = {
+  novice: 0,
+  intermediate: 1,
+  power: 2,
+} as const;
 
 function scoreItem(query: string, item: MenuItem): number {
   if (!query.trim()) return 0;
@@ -109,14 +117,24 @@ export function ModalMenu({
   height = 18,
 }: ModalMenuProps): React.ReactElement {
   const theme = usePhageStore(s => s.currentTheme);
+  const experienceLevel = usePhageStore(s => s.experienceLevel);
   const colors = theme.colors;
 
   const [query, setQuery] = useState('');
   const [selectedIndex, setSelectedIndex] = useState(0);
 
   const ranked = useMemo(
-    () => rankItems(query, categories),
-    [query, categories]
+    () => {
+      const allowed = categories.map(cat => ({
+        ...cat,
+        items: cat.items.filter(item => {
+          if (!item.minLevel) return true;
+          return LEVEL_ORDER[experienceLevel] >= LEVEL_ORDER[item.minLevel];
+        }),
+      }));
+      return rankItems(query, allowed);
+    },
+    [query, categories, experienceLevel]
   );
 
   // Clamp selection when list shrinks
@@ -127,17 +145,29 @@ export function ModalMenu({
       onClose();
       return;
     }
+    const maxIndex = Math.max(ranked.length - 1, 0);
+    const page = Math.max(1, Math.floor((height - 6) / 2));
+
     if (key.upArrow) {
-      setSelectedIndex(i => Math.max(0, i - 1));
+      setSelectedIndex(i => (i <= 0 ? maxIndex : i - 1));
       return;
     }
     if (key.downArrow) {
-      setSelectedIndex(i => Math.min(ranked.length - 1, i + 1));
+      setSelectedIndex(i => (i >= maxIndex ? 0 : Math.min(maxIndex, i + 1)));
+      return;
+    }
+    if (key.pageUp) {
+      setSelectedIndex(i => Math.max(0, i - page));
+      return;
+    }
+    if (key.pageDown) {
+      setSelectedIndex(i => Math.min(maxIndex, i + page));
       return;
     }
     if (key.return && ranked[safeIndex]) {
-      ranked[safeIndex].action();
-      onClose();
+      const item = ranked[safeIndex];
+      item.action();
+      if (!item.keepOpen) onClose();
     }
   });
 
@@ -187,7 +217,7 @@ export function ModalMenu({
       {/* Footer */}
       <Box marginTop={1} justifyContent="space-between">
         <Text color={colors.textDim} dimColor>
-          ↑/↓ navigate · Enter to run
+          ↑/↓ navigate · PgUp/PgDn page · Enter to run
         </Text>
         <Text color={colors.textDim} dimColor>
           Categories: {categories.map(c => c.name).join(' · ')}
@@ -196,4 +226,3 @@ export function ModalMenu({
     </Box>
   );
 }
-
