@@ -42,3 +42,6 @@ export { RecentCommands } from './RecentCommands';
 export { KmerAnomalyOverlay } from './KmerAnomalyOverlay';
 export { SelectionPressureOverlay } from './SelectionPressureOverlay';
 
+// Primitives
+export * from './primitives';
+
