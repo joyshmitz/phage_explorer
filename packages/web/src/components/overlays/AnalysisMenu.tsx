@@ -141,6 +141,28 @@ const ANALYSIS_ITEMS: AnalysisItem[] = [
     category: 'Host Interaction',
     requiresLevel: 'power',
   },
+
+  // Reference
+  {
+    id: 'aa-key',
+    overlayId: 'aaKey',
+    label: 'Amino Acid Key',
+    description: 'Color legend for amino acids by property',
+    icon: '🧬',
+    shortcut: 'k',
+    category: 'Reference',
+    requiresLevel: 'novice',
+  },
+  {
+    id: 'aa-legend',
+    overlayId: 'aaLegend',
+    label: 'AA Legend (compact)',
+    description: 'Compact amino acid color legend',
+    icon: '🔖',
+    shortcut: 'l',
+    category: 'Reference',
+    requiresLevel: 'novice',
+  },
 ];
 
 export function AnalysisMenu(): React.ReactElement | null {

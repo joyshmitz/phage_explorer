@@ -39,6 +39,8 @@ export { TranscriptionFlowOverlay } from './TranscriptionFlowOverlay';
 export { RecentCommands } from './RecentCommands';
 export { SearchOverlay } from './SearchOverlay';
 export { TropismOverlay } from './TropismOverlay';
+export { AAKeyOverlay } from './AAKeyOverlay';
+export { AALegend } from './AALegend';
 
 // Layer 2 Advanced Overlays
 export { KmerAnomalyOverlay } from './KmerAnomalyOverlay';

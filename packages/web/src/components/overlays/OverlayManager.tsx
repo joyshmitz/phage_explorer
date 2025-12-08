@@ -12,6 +12,8 @@ import { SearchOverlay } from './SearchOverlay';
 import { SimulationHub } from './SimulationHub';
 import SimulationView from '../SimulationView';
 import { TropismOverlay } from './TropismOverlay';
+import { AAKeyOverlay } from './AAKeyOverlay';
+import { AALegend } from './AALegend';
 
 interface OverlayManagerProps {
   repository: PhageRepository | null;
@@ -22,6 +24,8 @@ export function OverlayManager({ repository, currentPhage }: OverlayManagerProps
   return (
     <>
       <SearchOverlay repository={repository} currentPhage={currentPhage} />
+      <AAKeyOverlay />
+      <AALegend />
       <TropismOverlay repository={repository} phage={currentPhage} />
       <SimulationHub />
       <SimulationView />

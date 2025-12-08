@@ -207,5 +207,5 @@ export const ScatterCanvas: React.FC<ScatterCanvasProps> = ({
   );
 };
 
-export default ScatterCanvas;
+export { ScatterCanvas as default, ScatterCanvas } from '../../primitives/ScatterCanvas';
 

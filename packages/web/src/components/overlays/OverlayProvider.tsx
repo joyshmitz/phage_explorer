@@ -13,6 +13,7 @@ export type OverlayId =
   | 'search'
   | 'goto'
   | 'aaKey'
+  | 'aaLegend'
   | 'comparison'
   | 'analysisMenu'
   | 'simulationHub'

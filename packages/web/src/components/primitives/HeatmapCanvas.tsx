@@ -1,0 +1,100 @@
+import React, { useEffect, useRef } from 'react';
+import type { HeatmapMatrix, HeatmapHover, ColorScale } from './types';
+
+export interface HeatmapCanvasProps {
+  width: number;
+  height: number;
+  matrix: HeatmapMatrix;
+  colorScale: ColorScale;
+  padding?: number;
+  onHover?: (hover: HeatmapHover | null) => void;
+  ariaLabel?: string;
+}
+
+export function HeatmapCanvas({
+  width,
+  height,
+  matrix,
+  colorScale,
+  padding = 8,
+  onHover,
+  ariaLabel = 'heatmap',
+}: HeatmapCanvasProps): React.ReactElement {
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    const innerWidth = width - padding * 2;
+    const innerHeight = height - padding * 2;
+    const cellW = matrix.cols ? innerWidth / matrix.cols : 0;
+    const cellH = matrix.rows ? innerHeight / matrix.rows : 0;
+    const values = matrix.values;
+    const min = matrix.min ?? Math.min(...values);
+    const max = matrix.max ?? Math.max(...values);
+    const denom = max - min || 1;
+
+    ctx.clearRect(0, 0, width, height);
+
+    for (let r = 0; r < matrix.rows; r++) {
+      for (let c = 0; c < matrix.cols; c++) {
+        const idx = r * matrix.cols + c;
+        const v = values[idx] ?? 0;
+        const norm = (v - min) / denom;
+        ctx.fillStyle = colorScale(norm);
+        ctx.fillRect(padding + c * cellW, padding + r * cellH, cellW, cellH);
+      }
+    }
+  }, [colorScale, height, matrix.cols, matrix.max, matrix.min, matrix.rows, matrix.values, padding, width]);
+
+  useEffect(() => {
+    if (!onHover) return;
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const handleMove = (evt: MouseEvent) => {
+      const rect = canvas.getBoundingClientRect();
+      const x = evt.clientX - rect.left - padding;
+      const y = evt.clientY - rect.top - padding;
+      if (x < 0 || y < 0 || x > width - padding * 2 || y > height - padding * 2) {
+        onHover(null);
+        return;
+      }
+      const cellW = (width - padding * 2) / matrix.cols;
+      const cellH = (height - padding * 2) / matrix.rows;
+      const col = Math.floor(x / cellW);
+      const row = Math.floor(y / cellH);
+      const idx = row * matrix.cols + col;
+      const value = matrix.values[idx] ?? 0;
+      onHover({ row, col, value });
+    };
+
+    const handleLeave = () => onHover(null);
+
+    canvas.addEventListener('mousemove', handleMove);
+    canvas.addEventListener('mouseleave', handleLeave);
+    return () => {
+      canvas.removeEventListener('mousemove', handleMove);
+      canvas.removeEventListener('mouseleave', handleLeave);
+    };
+  }, [height, matrix.cols, matrix.rows, matrix.values, onHover, padding, width]);
+
+  return (
+    <canvas
+      ref={canvasRef}
+      width={width}
+      height={height}
+      aria-label={ariaLabel}
+      role="img"
+      style={{ width: `${width}px`, height: `${height}px`, display: 'block' }}
+    />
+  );
+}
+
+export default HeatmapCanvas;
+
