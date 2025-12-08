@@ -27,9 +27,16 @@ type PersistedKeys =
   | 'readingFrame'
   | 'model3DQuality'
   | 'helpDetail'
-  | 'experienceLevel';
+  | 'experienceLevel'
+  | 'hasSeenWelcome'
+  | 'scanlines'
+  | 'glow';
 
-type PersistedState = Pick<PhageExplorerState, PersistedKeys>;
+type PersistedState = Pick<PhageExplorerState, Exclude<PersistedKeys, 'hasSeenWelcome' | 'scanlines' | 'glow'>> & {
+  hasSeenWelcome: boolean;
+  scanlines: boolean;
+  glow: boolean;
+};
 
 /**
  * Default preferences
@@ -41,6 +48,9 @@ const defaultPreferences: PersistedState = {
   model3DQuality: 'medium',
   helpDetail: 'essential',
   experienceLevel: 'novice',
+  hasSeenWelcome: false,
+  scanlines: true,
+  glow: true,
 };
 
 /**
@@ -50,17 +60,25 @@ function migrateState(
   persistedState: unknown,
   version: number
 ): PersistedState {
+  const state = persistedState as Partial<PersistedState>;
+  
   if (version === 0) {
     // Version 0 -> 1: Added experienceLevel
-    const state = persistedState as Partial<PersistedState>;
     return {
       ...defaultPreferences,
       ...state,
       experienceLevel: state.experienceLevel ?? 'novice',
+      hasSeenWelcome: state.hasSeenWelcome ?? false,
+      scanlines: state.scanlines ?? true,
+      glow: state.glow ?? true,
     };
   }
 
-  return persistedState as PersistedState;
+  // Ensure new keys are present for any version
+  return {
+    ...defaultPreferences,
+    ...state,
+  };
 }
 
 /**
@@ -74,6 +92,9 @@ export function createWebStore() {
     setTheme: (themeId: string) => void;
     setExperienceLevel: (level: ExperienceLevel) => void;
     setHelpDetail: (level: HelpDetailLevel) => void;
+    setHasSeenWelcome: (seen: boolean) => void;
+    setScanlines: (enabled: boolean) => void;
+    setGlow: (enabled: boolean) => void;
     commandHistory: Array<{ label: string; at: number }>;
     pushCommand: (label: string) => void;
     clearHistory: () => void;
@@ -86,6 +107,9 @@ export function createWebStore() {
         setTheme: (themeId) => set({ currentTheme: getThemeById(themeId) }),
         setExperienceLevel: (level) => set({ experienceLevel: level }),
         setHelpDetail: (level) => set({ helpDetail: level }),
+        setHasSeenWelcome: (seen) => set({ hasSeenWelcome: seen }),
+        setScanlines: (enabled) => set({ scanlines: enabled }),
+        setGlow: (enabled) => set({ glow: enabled }),
         pushCommand: (label) => set((state) => {
           const next = [{ label, at: Date.now() }, ...state.commandHistory].slice(0, 20);
           return { commandHistory: next };
@@ -103,6 +127,9 @@ export function createWebStore() {
           model3DQuality: state.model3DQuality,
           helpDetail: state.helpDetail,
           experienceLevel: state.experienceLevel,
+          hasSeenWelcome: state.hasSeenWelcome,
+          scanlines: state.scanlines,
+          glow: state.glow,
           // commandHistory intentionally not persisted
         }),
         migrate: migrateState,
