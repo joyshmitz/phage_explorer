@@ -24,7 +24,14 @@ import { RepeatOverlay } from './RepeatOverlay';
 import { PackagingPressureOverlay } from './PackagingPressureOverlay';
 import { TranscriptionFlowOverlay } from './TranscriptionFlowOverlay';
 import { PhasePortraitOverlay } from './PhasePortraitOverlay';
-import { computeAllOverlays } from '../overlay-computations';
+import {
+  computeGCskew,
+  computeComplexity,
+  computeBendability,
+  computePromoterMarks,
+  computeRepeatMarks,
+  computeKmerAnomaly,
+} from '../overlay-computations';
 import { SimulationHubOverlay } from './SimulationHubOverlay';
 import { SimulationView } from './SimulationView';
 import { KmerAnomalyOverlay } from './KmerAnomalyOverlay';
@@ -32,7 +39,7 @@ import type { KmerAnomalyOverlay as KmerOverlayType } from '../overlay-computati
 import { ModuleOverlay } from './ModuleOverlay';
 import { FoldQuickview } from './FoldQuickview';
 import { HGTOverlay } from './HGTOverlay';
-import { analyzeHGTProvenance, analyzeTailFiberTropism, type TropismAnalysis } from '@phage-explorer/comparison';
+import { analyzeHGTProvenance, analyzeTailFiberTropism } from '@phage-explorer/comparison';
 import type { FoldEmbedding } from '@phage-explorer/core';
 import type { OverlayId, ExperienceLevel } from '@phage-explorer/state';
 import { BiasDecompositionOverlay } from './BiasDecompositionOverlay';
@@ -67,7 +74,7 @@ export function App({ repository, foldEmbeddings = [] }: AppProps): React.ReactE
   const { exit } = useApp();
   const { stdout } = useStdout();
   const overlayCacheRef = React.useRef<
-    Map<number, { length: number; hash: number; refVersion: number; data: ReturnType<typeof computeAllOverlays> & { hgt?: unknown; tropism?: TropismAnalysis } }>
+    Map<number, { length: number; hash: number; refVersion: number; data: Record<string, unknown> }>
   >(new Map());
   const referenceSketchesRef = React.useRef<Record<string, string>>({});
   const referenceVersionRef = React.useRef(0);
@@ -129,9 +136,12 @@ export function App({ repository, foldEmbeddings = [] }: AppProps): React.ReactE
   const experienceLevel = usePhageStore(s => s.experienceLevel);
   const promoteExperienceLevel = usePhageStore(s => s.promoteExperienceLevel);
   const currentPhage = usePhageStore(s => s.currentPhage);
+  const quitConfirmPending = usePhageStore(s => s.quitConfirmPending);
+  const setQuitConfirmPending = usePhageStore(s => s.setQuitConfirmPending);
 
   // Sequence state
   const [sequence, setSequence] = useState<string>('');
+  const [analysisProgress, setAnalysisProgress] = useState<string>('');
 
   // Update terminal size
   useEffect(() => {
@@ -161,19 +171,34 @@ export function App({ repository, foldEmbeddings = [] }: AppProps): React.ReactE
     loadPhages();
   }, [repository, setPhages, setError]);
 
-  // Preload reference sketches (full genomes) for donor inference in HGT tracer
+  // Preload reference sketches (lightweight sampled genomes) for donor inference in HGT tracer
   useEffect(() => {
     if (phages.length === 0) return;
     if (Object.keys(referenceSketchesRef.current).length > 0) return;
     let cancelled = false;
     const load = async () => {
       try {
+        const sampleSequence = (seq: string): string => {
+          // Downsample to keep memory light: take every 5th base, cap at 50k chars
+          const step = 5;
+          let sampled = '';
+          for (let i = 0; i < seq.length && sampled.length < 50_000; i += step) {
+            sampled += seq[i];
+          }
+          return sampled;
+        };
+
+        const entries = await Promise.all(
+          phages.map(async (p) => {
+            const len = await repository.getFullGenomeLength(p.id);
+            const seq = await repository.getSequenceWindow(p.id, 0, len);
+            const label = `${p.name ?? `phage-${p.id}`} (${p.host ?? 'unknown host'}) #${p.id}`;
+            return { label, sketch: sampleSequence(seq) };
+          })
+        );
         const sketches: Record<string, string> = {};
-        for (const p of phages) {
-          const len = await repository.getFullGenomeLength(p.id);
-          const seq = await repository.getSequenceWindow(p.id, 0, len);
-          const label = `${p.name ?? `phage-${p.id}`} (${p.host ?? 'unknown host'}) #${p.id}`;
-          sketches[label] = seq;
+        for (const { label, sketch } of entries) {
+          sketches[label] = sketch;
         }
         if (!cancelled) {
           referenceSketchesRef.current = sketches;
@@ -197,6 +222,7 @@ export function App({ repository, foldEmbeddings = [] }: AppProps): React.ReactE
 
     const loadPhage = async () => {
       setLoadingPhage(true);
+      setAnalysisProgress('Loading sequence...');
       try {
         const phage = await repository.getPhageByIndex(currentPhageIndex);
         setCurrentPhage(phage);
@@ -204,34 +230,81 @@ export function App({ repository, foldEmbeddings = [] }: AppProps): React.ReactE
         // Load sequence
         if (phage) {
           const length = await repository.getFullGenomeLength(phage.id);
-         const seq = await repository.getSequenceWindow(phage.id, 0, length);
-         setSequence(seq);
-         // Use cache if available, else compute and store
-         const seqHash = hashSeq(seq);
-         const cache = overlayCacheRef.current.get(phage.id);
-         if (cache && cache.length === length && cache.hash === seqHash && cache.refVersion === referenceVersionRef.current) {
-           setOverlayData(cache.data);
-         } else {
-           const data = computeAllOverlays(seq);
-            const hgt = analyzeHGTProvenance(seq, phage.genes ?? [], referenceSketchesRef.current);
-            const tropism = analyzeTailFiberTropism(phage, seq);
-            const enriched = { ...data, hgt, tropism };
-            overlayCacheRef.current.set(phage.id, { length, hash: seqHash, refVersion: referenceVersionRef.current, data: enriched });
-            setOverlayData(enriched);
+          const seq = await repository.getSequenceWindow(phage.id, 0, length);
+          setSequence(seq);
+          
+          // Check cache
+          const seqHash = hashSeq(seq);
+          const cache = overlayCacheRef.current.get(phage.id);
+          
+          if (cache && cache.length === length && cache.hash === seqHash && cache.refVersion === referenceVersionRef.current) {
+             setOverlayData(cache.data);
+             setAnalysisProgress('');
+             setLoadingPhage(false);
+          } else {
+             // Start incremental analysis
+             setLoadingPhage(false); // Allow UI to render sequence
+             const partialData: any = {};
+             setOverlayData(partialData); // Clear old data
+             
+             const analyses = [
+               { id: 'gcSkew', label: 'GC Skew', fn: () => computeGCskew(seq) },
+             { id: 'complexity', label: 'Complexity', fn: () => computeComplexity(seq) },
+             { id: 'bendability', label: 'Bendability', fn: () => computeBendability(seq) },
+             { id: 'promoter', label: 'Promoters', fn: () => computePromoterMarks(seq) },
+             { id: 'repeats', label: 'Repeats', fn: () => computeRepeatMarks(seq) },
+             { id: 'kmerAnomaly', label: 'K-mer Anomaly', fn: () => computeKmerAnomaly(seq) },
+             { id: 'hgt', label: 'HGT Analysis', fn: () => analyzeHGTProvenance(seq, phage.genes ?? [], referenceSketchesRef.current) },
+             {
+               id: 'tropism',
+               label: 'Tail Fiber Tropism',
+               fn: () => {
+                 const predictions =
+                   phage.tropismPredictions?.map(p => ({
+                     geneId: p.geneId ?? null,
+                     locusTag: p.locusTag ?? null,
+                     receptor: p.receptor,
+                     confidence: p.confidence,
+                     evidence: p.evidence,
+                     startPos: phage.genes.find(g => g.id === p.geneId)?.startPos,
+                     endPos: phage.genes.find(g => g.id === p.geneId)?.endPos,
+                     strand: phage.genes.find(g => g.id === p.geneId)?.strand ?? null,
+                     product: phage.genes.find(g => g.id === p.geneId)?.product ?? null,
+                   })) ?? [];
+                 return analyzeTailFiberTropism(phage, seq, predictions);
+               },
+             },
+             ];
+
+             for (const job of analyses) {
+               setAnalysisProgress(`Analyzing ${job.label}...`);
+               // Yield to UI
+               await new Promise(resolve => setTimeout(resolve, 10));
+               
+               const result = job.fn();
+               partialData[job.id] = result;
+               setOverlayData({ ...partialData });
+             }
+             
+             // Cache result
+             overlayCacheRef.current.set(phage.id, { length, hash: seqHash, refVersion: referenceVersionRef.current, data: partialData });
+             setAnalysisProgress('');
           }
+        } else {
+          setLoadingPhage(false);
         }
 
         // Prefetch nearby phages
         repository.prefetchAround(currentPhageIndex, 3);
       } catch (err) {
         setError(`Failed to load phage: ${err}`);
-      } finally {
         setLoadingPhage(false);
+        setAnalysisProgress('');
       }
     };
 
     loadPhage();
-  }, [repository, phages, currentPhageIndex, setCurrentPhage, setLoadingPhage, setError]);
+  }, [repository, phages, currentPhageIndex, setCurrentPhage, setLoadingPhage, setError, setOverlayData])
 
   // Load diff reference sequence when needed
   useEffect(() => {
@@ -280,21 +353,124 @@ export function App({ repository, foldEmbeddings = [] }: AppProps): React.ReactE
   const gridWidth = Math.max(40, terminalCols - sidebarWidth - 4);
   const mainHeight = terminalRows - 12;
 
+  // F-key escape sequences (cross-terminal compatible)
+  const F_KEYS: Record<string, string> = {
+    '\x1bOP': 'F1', '\x1b[11~': 'F1',
+    '\x1bOQ': 'F2', '\x1b[12~': 'F2',
+    '\x1bOR': 'F3', '\x1b[13~': 'F3',
+    '\x1bOS': 'F4', '\x1b[14~': 'F4',
+    '\x1b[15~': 'F5',
+    '\x1b[17~': 'F6',
+    '\x1b[18~': 'F7',
+    '\x1b[19~': 'F8',
+    '\x1b[20~': 'F9',
+    '\x1b[21~': 'F10',
+    // F11 intentionally omitted (reserved for terminal fullscreen)
+    '\x1b[24~': 'F12',
+  };
+
   // Handle keyboard input
   useInput((input, key) => {
+    // Check for F-key escape sequences
+    const fKey = F_KEYS[input];
+
+    // Clear quit confirm if user presses anything other than Esc
+    if (!key.escape && quitConfirmPending) {
+      setQuitConfirmPending(false);
+    }
+
     // Global keys (work everywhere)
     if (input === 'q' || input === 'Q') {
-      exit();
+      if (quitConfirmPending) {
+        exit();
+      } else {
+        setQuitConfirmPending(true);
+      }
       return;
     }
 
-    // Escape: exit fullscreen first, then close top overlay if present
+    // Escape: multi-purpose with quit confirmation
     if (key.escape) {
+      if (quitConfirmPending) {
+        // Second Esc = quit
+        exit();
+        return;
+      }
       if (model3DFullscreen) {
         toggle3DModelFullscreen();
       } else if (activeOverlay) {
         closeOverlay();
+      } else {
+        // No overlay, no fullscreen → start quit confirmation
+        setQuitConfirmPending(true);
       }
+      return;
+    }
+
+    // F1: Help (always available)
+    if (fKey === 'F1') {
+      toggleOverlay('help');
+      return;
+    }
+
+    // F2: 3D Model toggle (visually impressive)
+    if (fKey === 'F2') {
+      toggle3DModel();
+      return;
+    }
+
+    // F3: Phase Portraits - AA property PCA (visually stunning)
+    if (fKey === 'F3') {
+      promoteExperienceLevel('intermediate');
+      toggleOverlay('phasePortrait');
+      return;
+    }
+
+    // F4: Bias Decomposition - PCA scatter plot
+    if (fKey === 'F4') {
+      promoteExperienceLevel('intermediate');
+      toggleOverlay(BIAS_ID);
+      return;
+    }
+
+    // F5: HGT Passport - Genomic islands visualization
+    if (fKey === 'F5') {
+      promoteExperienceLevel('intermediate');
+      toggleOverlay(HGT_ID);
+      return;
+    }
+
+    // F6: CRISPR Pressure map
+    if (fKey === 'F6') {
+      promoteExperienceLevel('intermediate');
+      toggleOverlay(CRISPR_ID);
+      return;
+    }
+
+    // F7: Comparison View
+    if (fKey === 'F7') {
+      openComparison();
+      return;
+    }
+
+    // F8: Simulation Hub
+    if (fKey === 'F8') {
+      promoteExperienceLevel('power');
+      openOverlay(SIMULATION_MENU_ID);
+      return;
+    }
+
+    // F9: GC Skew
+    if (fKey === 'F9') {
+      promoteExperienceLevel('intermediate');
+      toggleOverlay(GC_SKEW_ID);
+      return;
+    }
+
+    // F10: Analysis Menu
+    if (fKey === 'F10') {
+      promoteExperienceLevel('intermediate');
+      openOverlay(ANALYSIS_MENU_ID);
       return;
     }
 
@@ -580,8 +756,33 @@ export function App({ repository, foldEmbeddings = [] }: AppProps): React.ReactE
         </Box>
       )}
 
+      {/* Quit Confirmation Bar */}
+      {quitConfirmPending && (
+        <Box
+          borderStyle="round"
+          borderColor={theme.colors.error}
+          paddingX={2}
+          justifyContent="center"
+        >
+          <Text color={theme.colors.error} bold>
+            ⚠ Press Esc or Q again to quit, any other key to cancel
+          </Text>
+        </Box>
+      )}
+
       {/* Footer */}
-      <Footer />
+      {!quitConfirmPending && <Footer />}
+
+      {/* Analysis Progress */}
+      {analysisProgress && (
+        <Box
+          position="absolute"
+          marginLeft={Math.max(0, terminalCols - 24)}
+          marginTop={Math.max(0, terminalRows - 3)}
+        >
+          <Text color="cyan">⟳ {analysisProgress}</Text>
+        </Box>
+      )}
 
       {/* Overlays */}
       {activeOverlay === 'help' && (

@@ -17,11 +17,12 @@ Single-source key map for the TUI and the upcoming web UI. Keep these bindings s
 | `D` | Toggle diff vs reference |
 | `M` | Toggle 3D model |
 | `Z` | Toggle 3D fullscreen (restricted controls while active) |
-| `?` | Help overlay (tap again inside help to toggle detail) |
+| `F1` / `?` | Help overlay (tap ? inside help to toggle detail) |
 | `K` | Amino-acid color legend |
 | `S` / `/` | Search phages |
 | `W` | Open comparison view |
-| `Q` | Quit |
+| `Esc` | Close overlay / start quit confirmation |
+| `Esc×2` / `Q×2` | Quit (requires double-press for safety) |
 
 ## Intermediate Layer — Unlock After ~5 Minutes
 
@@ -58,8 +59,28 @@ Single-source key map for the TUI and the upcoming web UI. Keep these bindings s
 | `R` | Cycle quality (low → ultra) |
 | `Q` | Quit |
 
+## Function Keys — Quick Access (Always Available)
+
+The F-keys provide instant access to the most visually impressive features without unlock requirements:
+
+| Keys | Feature |
+| --- | --- |
+| `F1` | Help overlay |
+| `F2` | Toggle 3D model |
+| `F3` | Phase portraits (AA property PCA visualization) |
+| `F4` | Bias decomposition (dinucleotide/codon PCA scatter) |
+| `F5` | HGT passport (genomic island visualization) |
+| `F6` | CRISPR pressure map |
+| `F7` | Genome comparison view |
+| `F8` | Simulation hub |
+| `F9` | GC skew overlay |
+| `F10` | Analysis menu |
+
+Note: F11 is intentionally omitted (reserved for terminal fullscreen in Windows).
+
 ## Behavior Notes
 
-- `Esc` closes the topmost overlay; if 3D is fullscreen, it exits fullscreen first.
+- `Esc` closes the topmost overlay; if 3D is fullscreen, it exits fullscreen first. If nothing is open, starts quit confirmation.
+- Press `Esc` or `Q` twice to quit (safety feature to prevent accidental exits).
 - Overlays handle their own internal navigation (arrow keys, Enter). The tables above cover global bindings only.
 - Keep key names and unlock tiers identical between TUI and web to preserve muscle memory; add web-only shortcuts in higher layers to avoid conflicts.

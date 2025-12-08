@@ -111,6 +111,9 @@ export interface PhageExplorerState {
   // Error state
   error: string | null;
 
+  // Quit confirmation
+  quitConfirmPending: boolean;
+
   // Comparison mode
   comparisonPhageAIndex: number | null;
   comparisonPhageBIndex: number | null;
@@ -183,6 +186,9 @@ export interface PhageExplorerActions {
   // Error
   setError: (error: string | null) => void;
 
+  // Quit confirmation
+  setQuitConfirmPending: (pending: boolean) => void;
+
   // Reset
   reset: () => void;
 
@@ -246,6 +252,7 @@ const initialState: PhageExplorerState = {
   terminalCols: 80,
   terminalRows: 24,
   error: null,
+  quitConfirmPending: false,
   comparisonPhageAIndex: null,
   comparisonPhageBIndex: null,
   comparisonResult: null,
@@ -427,6 +434,9 @@ export const usePhageStore = create<PhageExplorerStore>((set, get) => ({
 
   // Error
   setError: (error) => set({ error }),
+
+  // Quit confirmation
+  setQuitConfirmPending: (pending) => set({ quitConfirmPending: pending }),
 
   // Reset
   reset: () => set(initialState),

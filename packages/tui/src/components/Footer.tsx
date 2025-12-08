@@ -135,7 +135,7 @@ export function Footer(): React.ReactElement {
     // System controls
     { key: 'W', action: 'compare', category: 'overlay' },
     { key: 'S', action: 'search', category: 'overlay' },
-    { key: '?', action: 'help', category: 'system' },
+    { key: 'F1', action: 'help', category: 'system' },
   ];
 
   // Group hints by category
