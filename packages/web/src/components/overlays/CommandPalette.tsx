@@ -17,7 +17,6 @@ import { useOverlay } from './OverlayProvider';
 import { useWebPreferences } from '../../store/createWebStore';
 import { formatFasta, downloadString, copyToClipboard, buildSequenceClipboardPayload } from '../../utils/export';
 import { usePhageStore } from '@phage-explorer/state';
-import { getMockSequence } from '../../visualization/mockSequenceSource';
 
 // Experience levels for progressive disclosure
 type ExperienceLevel = 'novice' | 'intermediate' | 'power';
@@ -255,8 +254,8 @@ export function CommandPalette({ commands: customCommands, context: propContext 
       category: 'Export',
       action: () => {
         const { currentPhage, diffReferenceSequence } = usePhageStore.getState();
-        const seq = diffReferenceSequence || getMockSequence();
-        if (!seq) {
+        const seq = diffReferenceSequence;
+        if (!seq || seq.length === 0) {
           alert('No sequence available to export yet.');
           return;
         }
@@ -274,8 +273,8 @@ export function CommandPalette({ commands: customCommands, context: propContext 
       category: 'Export',
       action: () => {
         const { currentPhage, diffReferenceSequence } = usePhageStore.getState();
-        const seq = diffReferenceSequence || getMockSequence();
-        if (!seq) {
+        const seq = diffReferenceSequence;
+        if (!seq || seq.length === 0) {
           alert('No sequence loaded to copy.');
           return;
         }
