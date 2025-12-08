@@ -18,6 +18,7 @@ import { readFileSync, writeFileSync, existsSync } from 'fs';
 export class BunSqliteRepository implements PhageRepository {
   private sqlite: Database;
   private db: ReturnType<typeof drizzle>;
+  private readonly: boolean;
   private cache: Map<string, CacheEntry<unknown>> = new Map();
   private phageList: PhageSummary[] | null = null;
   private cachePath: string;
@@ -25,7 +26,18 @@ export class BunSqliteRepository implements PhageRepository {
   private codonCache: Map<number, number[]> = new Map();
 
   constructor(dbPath: string) {
-    this.sqlite = new Database(dbPath, { readonly: true });
+    let opened: Database | null = null;
+    let readonly = false;
+    try {
+      // Prefer read/write so preferences can persist when allowed
+      opened = new Database(dbPath);
+    } catch {
+      // Fallback to readonly if filesystem is locked (e.g., packaged binary)
+      opened = new Database(dbPath, { readonly: true });
+      readonly = true;
+    }
+    this.sqlite = opened;
+    this.readonly = readonly;
     this.db = drizzle(this.sqlite);
     this.cachePath = `${dbPath}.cache.json`;
     this.loadVectorCache();
@@ -359,14 +371,18 @@ export class BunSqliteRepository implements PhageRepository {
   }
 
   async setPreference(key: string, value: string): Promise<void> {
-    // Note: This requires writable DB - may fail in readonly mode
-    await this.db
-      .insert(preferences)
-      .values({ key, value })
-      .onConflictDoUpdate({
-        target: preferences.key,
-        set: { value },
-      });
+    if (this.readonly) return;
+    try {
+      await this.db
+        .insert(preferences)
+        .values({ key, value })
+        .onConflictDoUpdate({
+          target: preferences.key,
+          set: { value },
+        });
+    } catch {
+      // If the DB is effectively readonly (e.g., permissions), ignore quietly
+    }
   }
 
   async close(): Promise<void> {
