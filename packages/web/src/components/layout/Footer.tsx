@@ -30,14 +30,14 @@ export const Footer: React.FC<FooterProps> = ({
   children,
 }) => {
   return (
-    <footer className="app-footer">
-      <span className="footer-version">Phage Explorer v{version}</span>
-      <div className="footer-hints">
+    <footer className="app-footer" role="contentinfo" aria-label="Application Footer">
+      <span className="footer-version" aria-label={`Version ${version}`}>Phage Explorer v{version}</span>
+      <div className="footer-hints" role="list" aria-label="Keyboard Shortcuts">
         {hints.map((hint, i) => (
           <React.Fragment key={hint.key}>
-            {i > 0 && <span className="hint-separator">·</span>}
-            <span className="hint-item">
-              <span className="key-hint">{hint.key}</span>
+            {i > 0 && <span className="hint-separator" aria-hidden="true">·</span>}
+            <span className="hint-item" role="listitem">
+              <kbd className="key-hint">{hint.key}</kbd>
               <span className="hint-label">{hint.label}</span>
             </span>
           </React.Fragment>

@@ -2,7 +2,7 @@ import React, { useCallback, useMemo, useState } from 'react';
 import { useTheme, getNucleotideClass, useHotkey, useKeyboardMode, usePendingSequence, useReducedMotion } from './hooks';
 import { AppShell } from './components';
 import { HotkeyCategories } from './keyboard/types';
-import { OverlayProvider, OverlayManager, useOverlay } from './components/overlays';
+import { OverlayProvider, OverlayManager, useOverlay, RecentCommands } from './components/overlays';
 import { useWebPreferences } from './store/createWebStore';
 import type { ExperienceLevel } from '@phage-explorer/state';
 
@@ -12,40 +12,47 @@ const PhageExplorerContent: React.FC = () => {
   const { toggle } = useOverlay();
   const pendingSequence = usePendingSequence();
   const [lastAction, setLastAction] = useState<string>('');
-  const { experienceLevel, setExperienceLevel } = useWebPreferences((s) => ({
+  const { experienceLevel, setExperienceLevel, pushCommand, commandHistory } = useWebPreferences((s) => ({
     experienceLevel: s.experienceLevel as ExperienceLevel,
     setExperienceLevel: s.setExperienceLevel,
+    pushCommand: s.pushCommand,
+    commandHistory: s.commandHistory,
   }));
 
   const experienceLevels = useMemo<ExperienceLevel[]>(() => ['novice', 'intermediate', 'power'], []);
+  const prefersReducedMotion = useReducedMotion();
+  const animClass = prefersReducedMotion ? '' : ' animate-fade-in';
 
   // Register hotkeys
   const handleThemeCycle = useCallback(() => {
     nextTheme();
+    pushCommand('Theme cycled');
     setLastAction('Theme cycled');
-  }, [nextTheme]);
+  }, [nextTheme, pushCommand]);
 
   const handleHelp = useCallback(() => {
     toggle('help');
+    pushCommand('Help overlay toggled');
     setLastAction('Help overlay toggled');
-  }, [toggle]);
+  }, [toggle, pushCommand]);
 
   const handleSearch = useCallback(() => {
-    // setMode('SEARCH'); // Search is now an overlay in web too?
-    // For now, keep mode switching if search overlay isn't fully replacing it
-    toggle('search'); // Assuming search is an overlay
+    toggle('search');
+    pushCommand('Search overlay toggled');
     setLastAction('Search overlay toggled');
-  }, [toggle]);
+  }, [toggle, pushCommand]);
 
   const handleCommand = useCallback(() => {
     toggle('commandPalette');
+    pushCommand('Command palette toggled');
     setLastAction('Command palette toggled');
-  }, [toggle]);
+  }, [toggle, pushCommand]);
 
   const handleEscape = useCallback(() => {
     setMode('NORMAL');
+    pushCommand('Normal mode');
     setLastAction('Normal mode');
-  }, [setMode]);
+  }, [setMode, pushCommand]);
 
   const handleGoTop = useCallback(() => {
     setLastAction('Go to top (gg sequence)');
@@ -59,13 +66,15 @@ const PhageExplorerContent: React.FC = () => {
 
   const handleTranscriptionFlow = useCallback(() => {
     toggle('transcriptionFlow');
+    pushCommand('Transcription flow toggled');
     setLastAction('Transcription flow toggled');
-  }, [toggle]);
+  }, [toggle, pushCommand]);
 
   const handleExperienceChange = useCallback((level: ExperienceLevel) => {
     setExperienceLevel(level);
+    pushCommand(`Experience set to ${level}`);
     setLastAction(`Experience set to ${level}`);
-  }, [setExperienceLevel]);
+  }, [setExperienceLevel, pushCommand]);
 
   const handleUp = useCallback(() => {
     setLastAction('Navigate Up');
@@ -196,13 +205,14 @@ const PhageExplorerContent: React.FC = () => {
               })}
             </div>
           </div>
+          <RecentCommands />
         ),
       }}
     >
       <OverlayManager />
       
       <div className="cards-grid">
-        <section className="card animate-fade-in">
+        <section className={"card" + animClass}>
           <h2>Keyboard Manager Active</h2>
           <p>
             Vim-style modal keyboard system. Current mode: <strong>{mode}</strong>.
@@ -215,14 +225,14 @@ const PhageExplorerContent: React.FC = () => {
           )}
         </section>
 
-        <section className="card animate-fade-in" style={{ animationDelay: '50ms' }}>
+        <section className={"card" + animClass} style={{ animationDelay: '50ms' }}>
           <h2>Analysis Tools</h2>
           <p>
             Try <span className="key-hint">y</span> for Transcription Flow analysis.
           </p>
         </section>
 
-        <section className="card animate-fade-in" style={{ animationDelay: '100ms' }}>
+        <section className={"card" + animClass} style={{ animationDelay: '100ms' }}>
           <h2>Modal Modes</h2>
           <p>
             <span className="key-hint">/</span> Search mode{' '}
@@ -231,7 +241,7 @@ const PhageExplorerContent: React.FC = () => {
           </p>
         </section>
 
-        <section className="card animate-fade-in" style={{ animationDelay: '150ms' }}>
+        <section className={"card" + animClass} style={{ animationDelay: '150ms' }}>
           <h2>Color Palette</h2>
           <div className="flex gap-2" style={{ marginTop: '0.5rem' }}>
             <span className="badge" style={{ background: theme.palette.primary, color: '#000' }}>
@@ -246,7 +256,7 @@ const PhageExplorerContent: React.FC = () => {
           </div>
         </section>
 
-        <section className="card animate-fade-in" style={{ animationDelay: '200ms' }}>
+        <section className={"card" + animClass} style={{ animationDelay: '200ms' }}>
           <h2>Nucleotide Colors</h2>
           <p className="tabular-nums" style={{ letterSpacing: '0.1em' }}>
             {['A', 'T', 'G', 'C', 'A', 'T', 'G', 'C', 'N', 'A'].map((nuc, i) => (
@@ -257,7 +267,7 @@ const PhageExplorerContent: React.FC = () => {
           </p>
         </section>
 
-        <section className="card animate-fade-in" style={{ animationDelay: '250ms' }}>
+        <section className={"card" + animClass} style={{ animationDelay: '250ms' }}>
           <h2>All {availableThemes.length} Themes</h2>
           <div className="flex gap-2" style={{ marginTop: '0.5rem', flexWrap: 'wrap' }}>
             {availableThemes.map((t) => (

@@ -6,6 +6,7 @@
  */
 
 @import './styles/index.css';
+@import './styles/accessibility.css';
 
 /* === APP-SPECIFIC STYLES === */
 
@@ -154,4 +155,131 @@
 
 .histogram {
   display: block;
+}
+
+.recent-commands {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 160px;
+}
+
+.recent-commands__title {
+  font-size: var(--text-xs);
+  color: var(--color-text-dim);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-wide);
+}
+
+.recent-commands__empty {
+  color: var(--color-text-muted);
+  font-size: var(--text-xs);
+}
+
+.recent-commands__list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.recent-commands__item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 6px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-background-alt);
+  color: var(--color-text);
+  font-size: var(--text-xs);
+}
+
+.recent-commands__item .dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--color-accent);
+  display: inline-block;
+}
+
+/* CRT Overlay Effects */
+.crt-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  pointer-events: none;
+  z-index: var(--z-overlay);
+  overflow: hidden;
+}
+
+.scanlines {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(
+    to bottom,
+    rgba(255, 255, 255, 0),
+    rgba(255, 255, 255, 0) 50%,
+    rgba(0, 0, 0, 0.2) 50%,
+    rgba(0, 0, 0, 0.2)
+  );
+  background-size: 100% 4px;
+  animation: scanline-move 10s linear infinite;
+  pointer-events: none;
+}
+
+.vignette {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: radial-gradient(
+    circle at center,
+    transparent 50%,
+    rgba(0, 0, 0, 0.4) 90%,
+    rgba(0, 0, 0, 0.8) 100%
+  );
+  pointer-events: none;
+}
+
+.noise {
+  position: absolute;
+  top: -50%;
+  left: -50%;
+  right: -50%;
+  bottom: -50%;
+  width: 200%;
+  height: 200vh;
+  background: transparent url('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADIAAAAyBAMAAADsEZWCAAAAGFBMVEUAAAA5OTkAAABERERmZmYzMzNXV1czMzO/v7+/AAAACHRSTlMAMwAzzMz//wD/zMzMzDMzAAA9f0sQAAAAWklEQVQ4y2NgwA2Y/v8B4v//D+D//x8A/v//AeD//x8A/v//AeD//x8A/v//AeD//x8A/v//AeD//x8A/v//AeD//x8A/v//AeD//x8A/v//AeD//x8A/v//AeAAAP//AwD//wMA//8DAP//AwD//wMA//8DAJIW9W0AAAAASUVORK5CYII=') repeat 0 0;
+  background-repeat: repeat;
+  animation: noise-move .2s infinite;
+  opacity: 0.05;
+  pointer-events: none;
+}
+
+@keyframes scanline-move {
+  0% { background-position: 0 0; }
+  100% { background-position: 0 100%; }
+}
+
+@keyframes noise-move {
+  0% { transform: translate(0,0) }
+  10% { transform: translate(-5%,-5%) }
+  20% { transform: translate(-10%,5%) }
+  30% { transform: translate(5%,-10%) }
+  40% { transform: translate(-5%,15%) }
+  50% { transform: translate(-10%,5%) }
+  60% { transform: translate(15%,0) }
+  70% { transform: translate(0,10%) }
+  80% { transform: translate(-15%,0) }
+  90% { transform: translate(10%,5%) }
+  100% { transform: translate(5%,0) }
 }

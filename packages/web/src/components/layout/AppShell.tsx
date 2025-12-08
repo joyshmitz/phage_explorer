@@ -6,26 +6,25 @@
 
 import React from 'react';
 import { Header, type HeaderProps } from './Header';
-import { Main, type MainProps } from './Main';
 import { Footer, type FooterProps } from './Footer';
+import { SkipNavigation } from './SkipNavigation';
+import { CRTOverlay } from './CRTOverlay';
 
-export interface AppShellProps {
-  children: React.ReactNode;
+interface AppShellProps {
   header?: HeaderProps;
   footer?: FooterProps;
-  className?: string;
+  children: React.ReactNode;
 }
 
-export const AppShell: React.FC<AppShellProps> = ({
-  children,
-  header,
-  footer,
-  className = '',
-}) => {
+export const AppShell: React.FC<AppShellProps> = ({ header, footer, children }) => {
   return (
-    <div className={`app-shell ${className}`.trim()}>
+    <div className="app-shell">
+      <SkipNavigation />
+      <CRTOverlay />
       <Header {...header} />
-      <Main>{children}</Main>
+      <main id="main-content" className="app-body" role="main">
+        {children}
+      </main>
       <Footer {...footer} />
     </div>
   );
