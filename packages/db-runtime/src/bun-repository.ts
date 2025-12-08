@@ -8,9 +8,10 @@ import {
   codonUsage,
   models,
   preferences,
+  tropismPredictions,
 } from '@phage-explorer/db-schema';
 import type { PhageSummary, PhageFull, GeneInfo, CodonUsageData } from '@phage-explorer/core';
-import type { PhageRepository, CacheEntry } from './types';
+import type { PhageRepository, CacheEntry, TropismPrediction } from './types';
 import { CHUNK_SIZE } from './types';
 import { readFileSync, writeFileSync, existsSync } from 'fs';
 
@@ -116,6 +117,7 @@ export class BunSqliteRepository implements PhageRepository {
     const geneList = await this.getGenes(id);
     const usage = await this.getCodonUsage(id);
     const hasModel = await this.hasModel(id);
+    const tropism = await this.getTropismPredictions(id);
 
     const fullPhage: PhageFull = {
       id: phage.id,
@@ -135,6 +137,7 @@ export class BunSqliteRepository implements PhageRepository {
       genes: geneList,
       codonUsage: usage,
       hasModel,
+      tropismPredictions: tropism,
     };
 
     this.cache.set(cacheKey, { data: fullPhage, timestamp: Date.now() });
@@ -253,6 +256,36 @@ export class BunSqliteRepository implements PhageRepository {
       .limit(1);
 
     return result.length > 0;
+  }
+
+  async getTropismPredictions(phageId: number): Promise<TropismPrediction[]> {
+    const cacheKey = `tropism:${phageId}`;
+    const cached = this.cache.get(cacheKey) as CacheEntry<TropismPrediction[]> | undefined;
+    if (cached && Date.now() - cached.timestamp < 60000) {
+      return cached.data;
+    }
+
+    const rows = await this.db
+      .select({
+        phageId: tropismPredictions.phageId,
+        geneId: tropismPredictions.geneId,
+        locusTag: tropismPredictions.locusTag,
+        receptor: tropismPredictions.receptor,
+        confidence: tropismPredictions.confidence,
+        evidence: tropismPredictions.evidence,
+        source: tropismPredictions.source,
+      })
+      .from(tropismPredictions)
+      .where(eq(tropismPredictions.phageId, phageId))
+      .orderBy(asc(tropismPredictions.confidence));
+
+    const parsed = rows.map(r => ({
+      ...r,
+      evidence: r.evidence ? JSON.parse(r.evidence) : [],
+    }));
+
+    this.cache.set(cacheKey, { data: parsed, timestamp: Date.now() });
+    return parsed;
   }
 
   async getModelFrames(phageId: number): Promise<string[] | null> {

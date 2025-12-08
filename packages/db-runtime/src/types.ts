@@ -60,3 +60,17 @@ export interface CacheEntry<T> {
 
 // Sequence chunk size (10kb)
 export const CHUNK_SIZE = 10000;
+
+export interface TropismPrediction {
+  phageId: number;
+  geneId: number | null;
+  locusTag: string | null;
+  receptor: string;
+  confidence: number;
+  evidence: string[];
+  source: string;
+}
+
+export interface TropismRepository {
+  getTropismPredictions(phageId: number): Promise<TropismPrediction[]>;
+}

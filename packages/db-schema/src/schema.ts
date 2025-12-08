@@ -70,6 +70,21 @@ export const models = sqliteTable('models', {
   index('idx_models_phage').on(table.phageId),
 ]);
 
+// Tail fiber tropism predictions (precomputed via embeddings/ONNX)
+export const tropismPredictions = sqliteTable('tropism_predictions', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  phageId: integer('phage_id').notNull().references(() => phages.id),
+  geneId: integer('gene_id').references(() => genes.id),
+  locusTag: text('locus_tag'),
+  receptor: text('receptor').notNull(),
+  confidence: real('confidence').notNull(), // 0-1
+  evidence: text('evidence'), // JSON array of strings
+  source: text('source').notNull(), // e.g., esm2-hdbscan, heuristic
+}, (table) => [
+  index('idx_tropism_phage').on(table.phageId),
+  index('idx_tropism_gene').on(table.geneId),
+]);
+
 // User preferences
 export const preferences = sqliteTable('preferences', {
   key: text('key').primaryKey(),
@@ -94,3 +109,6 @@ export type NewModel = typeof models.$inferInsert;
 
 export type Preference = typeof preferences.$inferSelect;
 export type NewPreference = typeof preferences.$inferInsert;
+
+export type TropismPrediction = typeof tropismPredictions.$inferSelect;
+export type NewTropismPrediction = typeof tropismPredictions.$inferInsert;

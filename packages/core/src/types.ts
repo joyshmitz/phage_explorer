@@ -84,6 +84,15 @@ export interface PhageFull extends PhageSummary {
   genes: GeneInfo[];
   codonUsage: CodonUsageData | null;
   hasModel: boolean;
+  // Optional precomputed receptor/tropism predictions (if present in DB)
+  tropismPredictions?: {
+    geneId: number | null;
+    locusTag: string | null;
+    receptor: string;
+    confidence: number;
+    evidence: string[];
+    source: string;
+  }[];
 }
 
 // Virtual window for sequence fetching

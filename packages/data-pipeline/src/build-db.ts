@@ -10,13 +10,16 @@ import {
   genes,
   codonUsage,
   preferences,
+  tropismPredictions,
 } from '@phage-explorer/db-schema';
 import { countCodonUsage, countAminoAcidUsage, translateSequence } from '@phage-explorer/core';
 import { PHAGE_CATALOG } from './phage-catalog';
 import { fetchPhageSequence, type NCBISequenceResult } from './ncbi-fetcher';
+import { readFileSync, existsSync } from 'fs';
 
 const DB_PATH = './phage.db';
 const CHUNK_SIZE = 10000; // 10kb chunks
+const TROPISM_PATH = './data/tropism-embeddings.json';
 
 async function main() {
   console.log('Building phage database...\n');
@@ -30,11 +33,13 @@ async function main() {
 
   sqlite.exec(`
     DROP TABLE IF EXISTS preferences;
+    DROP TABLE IF EXISTS tropism_predictions;
     DROP TABLE IF EXISTS models;
     DROP TABLE IF EXISTS codon_usage;
     DROP TABLE IF EXISTS genes;
     DROP TABLE IF EXISTS sequences;
     DROP TABLE IF EXISTS phages;
+    DROP TABLE IF EXISTS tropism_predictions;
 
     CREATE TABLE phages (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -102,6 +107,19 @@ async function main() {
       key TEXT PRIMARY KEY,
       value TEXT NOT NULL
     );
+
+    CREATE TABLE tropism_predictions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      phage_id INTEGER NOT NULL REFERENCES phages(id),
+      gene_id INTEGER REFERENCES genes(id),
+      locus_tag TEXT,
+      receptor TEXT NOT NULL,
+      confidence REAL NOT NULL,
+      evidence TEXT,
+      source TEXT NOT NULL
+    );
+    CREATE INDEX idx_tropism_phage ON tropism_predictions(phage_id);
+    CREATE INDEX idx_tropism_gene ON tropism_predictions(gene_id);
   `);
 
   console.log('Tables created.\n');
@@ -195,6 +213,68 @@ async function main() {
   // Insert default preferences
   await db.insert(preferences).values({ key: 'theme', value: 'classic' });
   await db.insert(preferences).values({ key: 'show3DModel', value: 'true' });
+
+  // Optional: load precomputed tropism predictions (embedding-based) if available
+  if (existsSync(TROPISM_PATH)) {
+    console.log('\nLoading tropism predictions from', TROPISM_PATH);
+    try {
+      const raw = readFileSync(TROPISM_PATH, 'utf8');
+      const data = JSON.parse(raw) as Array<{
+        phageSlug?: string;
+        accession?: string;
+        locusTag?: string;
+        receptor: string;
+        confidence: number;
+        evidence?: string[];
+        source?: string;
+      }>;
+
+      // Build lookup for phage slug/accession -> id
+      const phageRows = await db.select({ id: phages.id, slug: phages.slug, accession: phages.accession }).from(phages);
+      const bySlug = new Map<string, number>();
+      const byAcc = new Map<string, number>();
+      phageRows.forEach(p => {
+        if (p.slug) bySlug.set(p.slug.toLowerCase(), p.id);
+        byAcc.set(p.accession.toLowerCase(), p.id);
+      });
+
+      // Build lookup for genes per phage
+      const geneRows = await db.select({ id: genes.id, phageId: genes.phageId, locusTag: genes.locusTag }).from(genes);
+      const geneMap = new Map<number, Map<string, number>>();
+      geneRows.forEach(g => {
+        if (!g.locusTag) return;
+        const key = g.phageId;
+        if (!geneMap.has(key)) geneMap.set(key, new Map());
+        geneMap.get(key)!.set(g.locusTag.toLowerCase(), g.id);
+      });
+
+      let inserted = 0;
+      for (const row of data) {
+        const phageId =
+          (row.phageSlug && bySlug.get(row.phageSlug.toLowerCase())) ||
+          (row.accession && byAcc.get(row.accession.toLowerCase()));
+        if (!phageId) continue;
+        const geneId = row.locusTag
+          ? geneMap.get(phageId)?.get(row.locusTag.toLowerCase()) ?? null
+          : null;
+        await db.insert(tropismPredictions).values({
+          phageId,
+          geneId,
+          locusTag: row.locusTag ?? null,
+          receptor: row.receptor,
+          confidence: row.confidence,
+          evidence: row.evidence ? JSON.stringify(row.evidence) : null,
+          source: row.source ?? 'embedding',
+        });
+        inserted++;
+      }
+      console.log(`Inserted ${inserted} tropism predictions`);
+    } catch (err) {
+      console.error('Failed to load tropism predictions:', err);
+    }
+  } else {
+    console.log('\nNo tropism embedding file found; skipping tropism_predictions import.');
+  }
 
   sqlite.close();
 

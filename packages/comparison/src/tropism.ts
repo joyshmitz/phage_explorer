@@ -19,6 +19,7 @@ export interface TropismAnalysis {
   phageName: string;
   hits: TailFiberHit[];
   breadth: 'narrow' | 'multi-receptor' | 'unknown';
+  source: 'heuristic' | 'precomputed';
 }
 
 const fiberKeywords = [
@@ -164,8 +165,56 @@ function clamp01(n: number): number {
   return Math.min(1, Math.max(0, n));
 }
 
-export function analyzeTailFiberTropism(phage: PhageFull, genomeSequence = ''): TropismAnalysis {
+export function analyzeTailFiberTropism(
+  phage: PhageFull,
+  genomeSequence = '',
+  precomputed: TropismPredictionInput[] = []
+): TropismAnalysis {
   const hits: TailFiberHit[] = [];
+
+  // If precomputed predictions supplied, prefer them
+  if (precomputed.length > 0) {
+    const grouped = new Map<string, TailFiberHit>();
+    for (const p of precomputed) {
+      const key = p.locusTag ?? `gene-${p.geneId ?? 'unknown'}`;
+      const existing = grouped.get(key) ?? {
+        gene: {
+          id: p.geneId ?? -1,
+          name: p.locusTag ?? null,
+          locusTag: p.locusTag ?? null,
+          startPos: p.startPos ?? 0,
+          endPos: p.endPos ?? 0,
+          strand: p.strand ?? null,
+          product: p.product ?? 'Tail fiber',
+          type: 'CDS',
+        },
+        aaLength: p.aaLength,
+        motifs: p.evidence?.filter(e => e.startsWith('motif:')).map(e => e.replace(/^motif:/, '')),
+        receptorCandidates: [],
+      };
+      existing.receptorCandidates.push({
+        receptor: p.receptor,
+        confidence: p.confidence,
+        evidence: p.evidence ?? [],
+      });
+      grouped.set(key, existing);
+    }
+    const receptors = new Set<string>();
+    const mergedHits = Array.from(grouped.values()).map(h => ({
+      ...h,
+      receptorCandidates: dedupeReceptors(h.receptorCandidates),
+    }));
+    mergedHits.forEach(h => h.receptorCandidates.forEach(r => receptors.add(r.receptor)));
+    const breadth: TropismAnalysis['breadth'] =
+      receptors.size === 0 ? 'unknown' : receptors.size === 1 ? 'narrow' : 'multi-receptor';
+    return {
+      phageId: phage.id,
+      phageName: phage.name,
+      hits: mergedHits,
+      breadth,
+      source: 'precomputed',
+    };
+  }
 
   for (const gene of phage.genes ?? []) {
     if (!isTailFiberGene(gene)) continue;
@@ -193,7 +242,21 @@ export function analyzeTailFiberTropism(phage: PhageFull, genomeSequence = ''): 
     phageName: phage.name,
     hits,
     breadth,
+    source: 'heuristic',
   };
+}
+
+export interface TropismPredictionInput {
+  geneId: number | null;
+  locusTag: string | null;
+  receptor: string;
+  confidence: number;
+  evidence?: string[];
+  startPos?: number;
+  endPos?: number;
+  strand?: string | null;
+  product?: string | null;
+  aaLength?: number;
 }
 
 function dedupeReceptors(candidates: ReceptorCandidate[]): ReceptorCandidate[] {
