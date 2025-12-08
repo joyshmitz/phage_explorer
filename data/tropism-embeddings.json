@@ -1,0 +1,424 @@
+[
+  {
+    "accession": "NC_001416.1",
+    "phageSlug": "lambda",
+    "locusTag": "lambdap21",
+    "receptor": "LamB/OmpC porin",
+    "confidence": 0.25,
+    "evidence": [
+      "cosine=0.05"
+    ],
+    "source": "trigram-embedding"
+  },
+  {
+    "accession": "NC_001416.1",
+    "phageSlug": "lambda",
+    "locusTag": "lambdap27",
+    "receptor": "Unknown tail receptor",
+    "confidence": 0.25,
+    "evidence": [],
+    "source": "trigram-embedding"
+  },
+  {
+    "accession": "NC_001416.1",
+    "phageSlug": "lambda",
+    "locusTag": "lambdap28",
+    "receptor": "Type IV pilus",
+    "confidence": 0.2672612419124244,
+    "evidence": [
+      "cosine=0.27"
+    ],
+    "source": "trigram-embedding"
+  },
+  {
+    "accession": "NC_001416.1",
+    "phageSlug": "lambda",
+    "locusTag": "lambdap29",
+    "receptor": "LPS / tailspike",
+    "confidence": 0.25,
+    "evidence": [
+      "cosine=0.20"
+    ],
+    "source": "trigram-embedding"
+  },
+  {
+    "accession": "NC_000866.4",
+    "phageSlug": "t4",
+    "locusTag": "T4p138",
+    "receptor": "Unknown tail receptor",
+    "confidence": 0.25,
+    "evidence": [],
+    "source": "trigram-embedding"
+  },
+  {
+    "accession": "NC_000866.4",
+    "phageSlug": "t4",
+    "locusTag": "T4p143",
+    "receptor": "Unknown tail receptor",
+    "confidence": 0.25,
+    "evidence": [],
+    "source": "trigram-embedding"
+  },
+  {
+    "accession": "NC_000866.4",
+    "phageSlug": "t4",
+    "locusTag": "T4p144",
+    "receptor": "Unknown tail receptor",
+    "confidence": 0.25,
+    "evidence": [],
+    "source": "trigram-embedding"
+  },
+  {
+    "accession": "NC_000866.4",
+    "phageSlug": "t4",
+    "locusTag": "T4p151",
+    "receptor": "Unknown tail receptor",
+    "confidence": 0.25,
+    "evidence": [],
+    "source": "trigram-embedding"
+  },
+  {
+    "accession": "NC_000866.4",
+    "phageSlug": "t4",
+    "locusTag": "T4p152",
+    "receptor": "Unknown tail receptor",
+    "confidence": 0.25,
+    "evidence": [],
+    "source": "trigram-embedding"
+  },
+  {
+    "accession": "NC_000866.4",
+    "phageSlug": "t4",
+    "locusTag": "T4p153",
+    "receptor": "Unknown tail receptor",
+    "confidence": 0.25,
+    "evidence": [],
+    "source": "trigram-embedding"
+  },
+  {
+    "accession": "NC_000866.4",
+    "phageSlug": "t4",
+    "locusTag": "T4p154",
+    "receptor": "LPS / tailspike",
+    "confidence": 0.7071067811865475,
+    "evidence": [
+      "cosine=0.71"
+    ],
+    "source": "trigram-embedding"
+  },
+  {
+    "accession": "NC_000866.4",
+    "phageSlug": "t4",
+    "locusTag": "T4p155",
+    "receptor": "Unknown tail receptor",
+    "confidence": 0.25,
+    "evidence": [],
+    "source": "trigram-embedding"
+  },
+  {
+    "accession": "NC_000866.4",
+    "phageSlug": "t4",
+    "locusTag": "T4p156",
+    "receptor": "Unknown tail receptor",
+    "confidence": 0.25,
+    "evidence": [],
+    "source": "trigram-embedding"
+  },
+  {
+    "accession": "NC_000866.4",
+    "phageSlug": "t4",
+    "locusTag": "T4p158",
+    "receptor": "Unknown tail receptor",
+    "confidence": 0.25,
+    "evidence": [],
+    "source": "trigram-embedding"
+  },
+  {
+    "accession": "NC_000866.4",
+    "phageSlug": "t4",
+    "locusTag": "T4p188",
+    "receptor": "Unknown tail receptor",
+    "confidence": 0.25,
+    "evidence": [],
+    "source": "trigram-embedding"
+  },
+  {
+    "accession": "NC_000866.4",
+    "phageSlug": "t4",
+    "locusTag": "T4p189",
+    "receptor": "Unknown tail receptor",
+    "confidence": 0.25,
+    "evidence": [],
+    "source": "trigram-embedding"
+  },
+  {
+    "accession": "NC_000866.4",
+    "phageSlug": "t4",
+    "locusTag": "T4p190",
+    "receptor": "Unknown tail receptor",
+    "confidence": 0.25,
+    "evidence": [],
+    "source": "trigram-embedding"
+  },
+  {
+    "accession": "NC_000866.4",
+    "phageSlug": "t4",
+    "locusTag": "T4p191",
+    "receptor": "Unknown tail receptor",
+    "confidence": 0.25,
+    "evidence": [],
+    "source": "trigram-embedding"
+  },
+  {
+    "accession": "NC_000866.4",
+    "phageSlug": "t4",
+    "locusTag": "T4p192",
+    "receptor": "FhuA/TonB",
+    "confidence": 0.35355339059327373,
+    "evidence": [
+      "cosine=0.35"
+    ],
+    "source": "trigram-embedding"
+  },
+  {
+    "accession": "NC_000866.4",
+    "phageSlug": "t4",
+    "locusTag": "T4p193",
+    "receptor": "Unknown tail receptor",
+    "confidence": 0.25,
+    "evidence": [],
+    "source": "trigram-embedding"
+  },
+  {
+    "accession": "NC_000866.4",
+    "phageSlug": "t4",
+    "locusTag": "T4p194",
+    "receptor": "Unknown tail receptor",
+    "confidence": 0.25,
+    "evidence": [],
+    "source": "trigram-embedding"
+  },
+  {
+    "accession": "NC_000866.4",
+    "phageSlug": "t4",
+    "locusTag": "T4p195",
+    "receptor": "Unknown tail receptor",
+    "confidence": 0.25,
+    "evidence": [],
+    "source": "trigram-embedding"
+  },
+  {
+    "accession": "NC_000866.4",
+    "phageSlug": "t4",
+    "locusTag": "T4p228",
+    "receptor": "LPS / tailspike",
+    "confidence": 0.3162277660168379,
+    "evidence": [
+      "cosine=0.32"
+    ],
+    "source": "trigram-embedding"
+  },
+  {
+    "accession": "NC_000866.4",
+    "phageSlug": "t4",
+    "locusTag": "T4p249",
+    "receptor": "LPS / tailspike",
+    "confidence": 0.25,
+    "evidence": [
+      "cosine=0.25"
+    ],
+    "source": "trigram-embedding"
+  },
+  {
+    "accession": "NC_000866.4",
+    "phageSlug": "t4",
+    "locusTag": "T4p250",
+    "receptor": "Unknown tail receptor",
+    "confidence": 0.25,
+    "evidence": [],
+    "source": "trigram-embedding"
+  },
+  {
+    "accession": "NC_000866.4",
+    "phageSlug": "t4",
+    "locusTag": "T4p251",
+    "receptor": "Unknown tail receptor",
+    "confidence": 0.25,
+    "evidence": [],
+    "source": "trigram-embedding"
+  },
+  {
+    "accession": "NC_000866.4",
+    "phageSlug": "t4",
+    "locusTag": "T4p252",
+    "receptor": "Unknown tail receptor",
+    "confidence": 0.25,
+    "evidence": [],
+    "source": "trigram-embedding"
+  },
+  {
+    "accession": "NC_000866.4",
+    "phageSlug": "t4",
+    "locusTag": "T4p253",
+    "receptor": "Unknown tail receptor",
+    "confidence": 0.25,
+    "evidence": [],
+    "source": "trigram-embedding"
+  },
+  {
+    "accession": "NC_001604.1",
+    "phageSlug": "t7",
+    "locusTag": "T7p52",
+    "receptor": "Unknown tail receptor",
+    "confidence": 0.25,
+    "evidence": [],
+    "source": "trigram-embedding"
+  },
+  {
+    "accession": "NC_002371.2",
+    "phageSlug": "p22",
+    "locusTag": "P22gp19",
+    "receptor": "Unknown tail receptor",
+    "confidence": 0.25,
+    "evidence": [],
+    "source": "trigram-embedding"
+  },
+  {
+    "accession": "NC_000929.1",
+    "phageSlug": "mu",
+    "locusTag": "Mup44",
+    "receptor": "LPS / tailspike",
+    "confidence": 0.31622776601683794,
+    "evidence": [
+      "cosine=0.32"
+    ],
+    "source": "trigram-embedding"
+  },
+  {
+    "accession": "NC_000929.1",
+    "phageSlug": "mu",
+    "locusTag": "Mup45",
+    "receptor": "Unknown tail receptor",
+    "confidence": 0.25,
+    "evidence": [],
+    "source": "trigram-embedding"
+  },
+  {
+    "accession": "NC_000929.1",
+    "phageSlug": "mu",
+    "locusTag": "Mup46",
+    "receptor": "LPS / tailspike",
+    "confidence": 0.25,
+    "evidence": [
+      "cosine=0.21"
+    ],
+    "source": "trigram-embedding"
+  },
+  {
+    "accession": "NC_000929.1",
+    "phageSlug": "mu",
+    "locusTag": "Mup47",
+    "receptor": "Unknown tail receptor",
+    "confidence": 0.25,
+    "evidence": [],
+    "source": "trigram-embedding"
+  },
+  {
+    "accession": "NC_000929.1",
+    "phageSlug": "mu",
+    "locusTag": "Mup48",
+    "receptor": "Unknown tail receptor",
+    "confidence": 0.25,
+    "evidence": [],
+    "source": "trigram-embedding"
+  },
+  {
+    "accession": "NC_000929.1",
+    "phageSlug": "mu",
+    "locusTag": "Mup49",
+    "receptor": "Unknown tail receptor",
+    "confidence": 0.25,
+    "evidence": [],
+    "source": "trigram-embedding"
+  },
+  {
+    "accession": "NC_000929.1",
+    "phageSlug": "mu",
+    "locusTag": "Mup50",
+    "receptor": "Unknown tail receptor",
+    "confidence": 0.25,
+    "evidence": [],
+    "source": "trigram-embedding"
+  },
+  {
+    "accession": "NC_000929.1",
+    "phageSlug": "mu",
+    "locusTag": "Mup51",
+    "receptor": "LPS / tailspike",
+    "confidence": 0.408248290463863,
+    "evidence": [
+      "cosine=0.41"
+    ],
+    "source": "trigram-embedding"
+  },
+  {
+    "accession": "NC_000929.1",
+    "phageSlug": "mu",
+    "locusTag": "Mup52",
+    "receptor": "Type IV pilus",
+    "confidence": 0.25,
+    "evidence": [
+      "cosine=0.24"
+    ],
+    "source": "trigram-embedding"
+  },
+  {
+    "accession": "NC_001884.1",
+    "phageSlug": "spbeta",
+    "locusTag": "SPBc2p040",
+    "receptor": "Unknown tail receptor",
+    "confidence": 0.25,
+    "evidence": [],
+    "source": "trigram-embedding"
+  },
+  {
+    "accession": "NC_001884.1",
+    "phageSlug": "spbeta",
+    "locusTag": "SPBc2p122",
+    "receptor": "Type IV pilus",
+    "confidence": 0.408248290463863,
+    "evidence": [
+      "cosine=0.41"
+    ],
+    "source": "trigram-embedding"
+  },
+  {
+    "accession": "NC_005859.1",
+    "phageSlug": "t5",
+    "locusTag": "T5.085",
+    "receptor": "Unknown tail receptor",
+    "confidence": 0.25,
+    "evidence": [],
+    "source": "trigram-embedding"
+  },
+  {
+    "accession": "NC_005859.1",
+    "phageSlug": "t5",
+    "locusTag": "T5.133",
+    "receptor": "LPS / tailspike",
+    "confidence": 0.25,
+    "evidence": [
+      "cosine=0.07"
+    ],
+    "source": "trigram-embedding"
+  },
+  {
+    "accession": "NC_005859.1",
+    "phageSlug": "t5",
+    "locusTag": "T5.136",
+    "receptor": "Unknown tail receptor",
+    "confidence": 0.25,
+    "evidence": [],
+    "source": "trigram-embedding"
+  }
+]
