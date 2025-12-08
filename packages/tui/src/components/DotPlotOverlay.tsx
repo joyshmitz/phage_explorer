@@ -86,9 +86,11 @@ export function DotPlotOverlay({ sequence, threshold = 0.8, bins = 120 }: DotPlo
         </Text>
         <Text color={colors.textDim}>ESC to close</Text>
       </Box>
-      <Text color={colors.textDim} marginBottom={1}>
-        Window: {Math.max(20, Math.floor(sequence.length / bins))} bp · Threshold: {Math.round(threshold * 100)}% · ● direct ({colors.accent}) ○ inverted ({colors.info})
-      </Text>
+      <Box marginBottom={1}>
+        <Text color={colors.textDim}>
+          Window: {Math.max(20, Math.floor(sequence.length / bins))} bp · Threshold: {Math.round(threshold * 100)}% · ● direct ({colors.accent}) ○ inverted ({colors.info})
+        </Text>
+      </Box>
       <Box flexDirection="column">
         {braille.map((line, idx) => (
           <Text key={idx}>

@@ -5,10 +5,10 @@
  * Supports zooming, panning, and k-mer inspection.
  */
 
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Box, Text, useInput } from 'ink';
 import { usePhageStore } from '@phage-explorer/state';
-import { computeCGR, type CGRResult } from '@phage-explorer/core';
+import { computeCGR } from '@phage-explorer/core';
 
 // Braille patterns (0x2800 base)
 // Map 2x4 pixel block to Braille char

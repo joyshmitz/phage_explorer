@@ -6,5 +6,8 @@
   "types": "src/index.ts",
   "exports": {
     ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "pako": "^2.1.0"
   }
 }
