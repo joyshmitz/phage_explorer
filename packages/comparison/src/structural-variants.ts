@@ -114,8 +114,8 @@ export function analyzeStructuralVariants(
 
     const [currStartA, currEndA] = geneRange(genesA, current.startIdxA, current.endIdxA);
     const [currStartB, currEndB] = geneRange(genesB, current.startIdxB, current.endIdxB);
-    const [nextStartA, nextEndA] = geneRange(genesA, next.startIdxA, next.endIdxA);
-    const [nextStartB, nextEndB] = geneRange(genesB, next.startIdxB, next.endIdxB);
+    const [nextStartA] = geneRange(genesA, next.startIdxA, next.endIdxA);
+    const [nextStartB] = geneRange(genesB, next.startIdxB, next.endIdxB);
 
     const gapA = Math.max(0, nextStartA - currEndA);
     const gapB = Math.max(0, nextStartB - currEndB);
@@ -128,8 +128,8 @@ export function analyzeStructuralVariants(
       endIdxB: next.startIdxB,
     };
 
-    // Inversion: order flips between anchors
-    if (nextStartB < currStartB - cfg.inversionMinFlip) {
+    // Inversion: order flips between anchors (compare gene indices, not genomic positions)
+    if (next.startIdxB < current.startIdxB - cfg.inversionMinFlip) {
       const spanA = [currEndA, nextStartA] as [number, number];
       const spanB = [nextStartB, currEndB] as [number, number];
       const sizeA = Math.abs(spanA[1] - spanA[0]);

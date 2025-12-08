@@ -114,7 +114,7 @@ export const GeneMapCanvas: React.FC<GeneMapCanvasProps> = ({
   const findGeneAtPosition = useCallback(
     (position: number): GeneInfo | null => {
       for (const gene of genes) {
-        if (position >= gene.start && position <= gene.end) {
+        if (position >= gene.startPos && position <= gene.endPos) {
           return gene;
         }
       }
@@ -251,10 +251,10 @@ export const GeneMapCanvas: React.FC<GeneMapCanvasProps> = ({
         >
           <div style={{ fontWeight: 'bold', color: colors.accent }}>{hoveredGene.name || 'Unknown'}</div>
           <div style={{ color: colors.textDim }}>
-            {formatPosition(hoveredGene.start)} - {formatPosition(hoveredGene.end)}
+            {formatPosition(hoveredGene.startPos)} - {formatPosition(hoveredGene.endPos)}
           </div>
           <div style={{ color: colors.textMuted }}>
-            {hoveredGene.strand === 1 ? '+ strand' : '- strand'}
+            {hoveredGene.strand === '+' || hoveredGene.strand === '1' ? '+ strand' : '- strand'}
           </div>
           {hoveredGene.product && (
             <div style={{ color: colors.text, marginTop: '0.25rem', maxWidth: '200px' }}>
