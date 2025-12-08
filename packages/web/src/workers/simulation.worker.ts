@@ -20,7 +20,7 @@ import type {
   SimStepRequest,
   SimulationWorkerAPI,
 } from './types';
-import { SIMULATION_METADATA, getDefaultParams } from '@phage-explorer/core';
+import { SIMULATION_METADATA } from '@phage-explorer/core';
 
 // Simple RNG with seed support for reproducibility
 class SeededRandom {

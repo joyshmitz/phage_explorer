@@ -199,6 +199,13 @@ export function CommandPalette({ commands: customCommands, context: propContext 
     setRecentCommandIds(getRecentCommands());
   }, []);
 
+  const executeCommand = useCallback((cmd: Command) => {
+    addRecentCommand(cmd.id);
+    setRecentCommandIds(getRecentCommands());
+    cmd.action();
+    close('commandPalette');
+  }, [close]);
+
   // Default commands with experience levels and contexts
   const defaultCommands: Command[] = useMemo(() => [
     // Theme commands (available to all)
@@ -266,7 +273,7 @@ export function CommandPalette({ commands: customCommands, context: propContext 
     return recentCommandIds
       .map(id => commands.find(cmd => cmd.id === id))
       .filter((cmd): cmd is Command => cmd !== undefined)
-      .slice(0, 3);
+      .slice(0, 5);
   }, [recentCommandIds, commands]);
 
   // Filter and sort commands based on query
@@ -355,10 +362,7 @@ export function CommandPalette({ commands: customCommands, context: propContext 
         e.preventDefault();
         const cmd = getCommandAtIndex(selectedIndex);
         if (cmd) {
-          addRecentCommand(cmd.id);
-          setRecentCommandIds(getRecentCommands());
-          cmd.action();
-          close('commandPalette');
+          executeCommand(cmd);
         }
         break;
       case 'Tab':
@@ -491,12 +495,7 @@ export function CommandPalette({ commands: customCommands, context: propContext 
                 return (
                   <div
                     key={`recent-${cmd.id}`}
-                    onClick={() => {
-                      addRecentCommand(cmd.id);
-                      setRecentCommandIds(getRecentCommands());
-                      cmd.action();
-                      close('commandPalette');
-                    }}
+                    onClick={() => executeCommand(cmd)}
                     style={{
                       display: 'flex',
                       justifyContent: 'space-between',
@@ -548,12 +547,7 @@ export function CommandPalette({ commands: customCommands, context: propContext 
                 return (
                   <div
                     key={cmd.id}
-                    onClick={() => {
-                      addRecentCommand(cmd.id);
-                      setRecentCommandIds(getRecentCommands());
-                      cmd.action();
-                      close('commandPalette');
-                    }}
+                    onClick={() => executeCommand(cmd)}
                     style={{
                       display: 'flex',
                       justifyContent: 'space-between',

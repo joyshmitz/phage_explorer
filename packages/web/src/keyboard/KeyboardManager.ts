@@ -9,11 +9,9 @@ import type {
   ModifierState,
   KeyCombo,
   HotkeyDefinition,
-  SequenceBuffer,
   KeyboardState,
   KeyboardEvent,
   KeyboardEventListener,
-  KeyboardHandlerOptions,
 } from './types';
 
 const SEQUENCE_TIMEOUT = 1000; // 1 second to complete a sequence
