@@ -5,11 +5,12 @@
  * Uses canvas for the flux profile visualization.
  */
 
-import React, { useEffect, useRef, useMemo } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useTheme } from '../../hooks/useTheme';
 import { Overlay } from './Overlay';
 import { useOverlay } from './OverlayProvider';
-import { simulateTranscriptionFlow } from '@phage-explorer/core';
+import { getOrchestrator } from '../../workers/ComputeOrchestrator';
+import type { TranscriptionFlowResult } from '../../workers/types';
 
 interface TranscriptionFlowOverlayProps {
   sequence?: string;
@@ -21,11 +22,41 @@ export function TranscriptionFlowOverlay({ sequence = '', genomeLength = 0 }: Tr
   const colors = theme.colors;
   const { isOpen, toggle } = useOverlay();
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [data, setData] = useState<{ values: number[]; peaks: Array<{ start: number; end: number; flux: number }> }>({ values: [], peaks: [] });
+  const [isLoading, setIsLoading] = useState(false);
 
-  // Calculate transcription flow data
-  const { values, peaks } = useMemo(() => {
-    return simulateTranscriptionFlow(sequence);
+  // Calculate transcription flow data via worker
+  useEffect(() => {
+    if (!sequence) return;
+    
+    let cancelled = false;
+    
+    const runAnalysis = async () => {
+      setIsLoading(true);
+      try {
+        const result = await getOrchestrator().runAnalysis({ 
+          type: 'transcription-flow', 
+          sequence 
+        }) as TranscriptionFlowResult;
+        
+        if (!cancelled) {
+          setData({ values: result.values, peaks: result.peaks });
+        }
+      } catch (err) {
+        console.error('Transcription flow analysis failed:', err);
+      } finally {
+        if (!cancelled) setIsLoading(false);
+      }
+    };
+
+    runAnalysis();
+    
+    return () => {
+      cancelled = true;
+    };
   }, [sequence]);
+
+  const { values, peaks } = data;
 
   // Register hotkey
   useEffect(() => {
