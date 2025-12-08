@@ -47,8 +47,7 @@ export default defineConfig({
     },
   },
   optimizeDeps: {
-    exclude: ['sql.js'],
-    include: ['react', 'react-dom'],
+    include: ['react', 'react-dom', 'sql.js'],
     esbuildOptions: {
       define: {
         global: 'globalThis',

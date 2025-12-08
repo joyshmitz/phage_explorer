@@ -38,31 +38,18 @@ export default function App(): JSX.Element {
   const highContrast = useWebPreferences((s) => s.highContrast);
   const setHighContrast = useWebPreferences((s) => s.setHighContrast);
 
-  const {
-    phages,
-    currentPhageIndex,
-    currentPhage,
-    isLoadingPhage,
-    setPhages,
-    setCurrentPhageIndex,
-    setCurrentPhage,
-    setLoadingPhage,
-    setError,
-    setTheme: storeSetTheme,
-    closeAllOverlays: storeCloseAllOverlays,
-  } = usePhageStore((state) => ({
-    phages: state.phages,
-    currentPhageIndex: state.currentPhageIndex,
-    currentPhage: state.currentPhage,
-    isLoadingPhage: state.isLoadingPhage,
-    setPhages: state.setPhages,
-    setCurrentPhageIndex: state.setCurrentPhageIndex,
-    setCurrentPhage: state.setCurrentPhage,
-    setLoadingPhage: state.setLoadingPhage,
-    setError: state.setError,
-    setTheme: state.setTheme,
-    closeAllOverlays: state.closeAllOverlays,
-  }));
+  // Use individual selectors to avoid React 18 getSnapshot caching issues
+  const phages = usePhageStore((s) => s.phages);
+  const currentPhageIndex = usePhageStore((s) => s.currentPhageIndex);
+  const currentPhage = usePhageStore((s) => s.currentPhage);
+  const isLoadingPhage = usePhageStore((s) => s.isLoadingPhage);
+  const setPhages = usePhageStore((s) => s.setPhages);
+  const setCurrentPhageIndex = usePhageStore((s) => s.setCurrentPhageIndex);
+  const setCurrentPhage = usePhageStore((s) => s.setCurrentPhage);
+  const setLoadingPhage = usePhageStore((s) => s.setLoadingPhage);
+  const setError = usePhageStore((s) => s.setError);
+  const storeSetTheme = usePhageStore((s) => s.setTheme);
+  const storeCloseAllOverlays = usePhageStore((s) => s.closeAllOverlays);
   const { open: openOverlayCtx, closeAll: closeAllOverlaysCtx } = useOverlay();
   const { mode } = useKeyboardMode();
   const pendingSequence = usePendingSequence();

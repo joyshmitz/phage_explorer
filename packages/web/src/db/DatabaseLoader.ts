@@ -7,14 +7,26 @@
 
 import type { Database, SqlJsStatic } from 'sql.js';
 
-// sql.js uses CommonJS exports, so we need dynamic import for Vite compatibility
+// Cached sql.js instance - use dynamic import because sql.js is CommonJS
 let sqlJsPromise: Promise<SqlJsStatic> | null = null;
-async function initSqlJs(config?: { locateFile?: (file: string) => string }): Promise<SqlJsStatic> {
+async function getSqlJs(config?: { locateFile?: (file: string) => string }): Promise<SqlJsStatic> {
   if (!sqlJsPromise) {
-    sqlJsPromise = import('sql.js').then((mod) => {
-      const init = mod.default || mod;
-      return init(config);
-    });
+    sqlJsPromise = (async () => {
+      // Dynamic import for CommonJS compatibility
+      const SqlJs = await import('sql.js');
+      // Access the init function - handle various module formats
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const mod = SqlJs as any;
+      const initFn = mod.default ?? mod;
+      if (typeof initFn === 'function') {
+        return initFn(config);
+      }
+      // If mod.default is an object with default (double-wrapped), unwrap it
+      if (typeof initFn?.default === 'function') {
+        return initFn.default(config);
+      }
+      throw new Error(`Cannot find sql.js init function`);
+    })();
   }
   return sqlJsPromise;
 }
@@ -154,7 +166,7 @@ export class DatabaseLoader {
    */
   private async getSqlJs(): Promise<SqlJsStatic> {
     if (!this.sqlPromise) {
-      this.sqlPromise = initSqlJs({
+      this.sqlPromise = getSqlJs({
         // Load WASM from CDN
         locateFile: (file: string) =>
           `https://sql.js.org/dist/${file}`,
