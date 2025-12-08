@@ -1,4 +1,5 @@
 import type { PhageFull, GeneInfo } from '@phage-explorer/core';
+import { translateSequence } from '@phage-explorer/core';
 
 export interface ReceptorCandidate {
   receptor: string;
@@ -8,6 +9,8 @@ export interface ReceptorCandidate {
 
 export interface TailFiberHit {
   gene: GeneInfo;
+  aaLength?: number;
+  motifs?: string[];
   receptorCandidates: ReceptorCandidate[];
 }
 
@@ -49,32 +52,134 @@ function containsAny(text: string, needles: string[]): boolean {
   return needles.some(n => text.includes(n));
 }
 
-function findReceptors(productText: string): ReceptorCandidate[] {
+function isTailFiberGene(gene: GeneInfo): boolean {
+  const text = `${gene.name ?? ''} ${gene.product ?? ''}`.toLowerCase();
+  return containsAny(text, fiberKeywords);
+}
+
+function reverseComplement(seq: string): string {
+  const map: Record<string, string> = { A: 'T', T: 'A', C: 'G', G: 'C', N: 'N' };
+  return seq
+    .split('')
+    .reverse()
+    .map(c => map[c] ?? 'N')
+    .join('');
+}
+
+function translateGeneSequence(genome: string, gene: GeneInfo): string {
+  if (!genome) return '';
+  const start = Math.max(0, gene.startPos - 1); // stored as 1-based
+  const end = Math.min(genome.length, gene.endPos);
+  const raw = genome.slice(start, end);
+  const dna = gene.strand === '-' ? reverseComplement(raw) : raw;
+  return translateSequence(dna, 0);
+}
+
+function aminoAcidComposition(aa: string): Record<string, number> {
+  const counts: Record<string, number> = {};
+  for (const c of aa) {
+    counts[c] = (counts[c] ?? 0) + 1;
+  }
+  const total = aa.length || 1;
+  for (const k of Object.keys(counts)) counts[k] /= total;
+  return counts;
+}
+
+function motifHits(aa: string): string[] {
+  const motifs: Array<{ id: string; re: RegExp }> = [
+    { id: 'beta-helix (GGXGXD)', re: /GG.GD/i },
+    { id: 'RGD integrin-like', re: /RGD/i },
+    { id: 'collagen-like (GXT)n', re: /(G..){4,}/i },
+    { id: 'pilus-binding (VQGDT)', re: /VQGDT/i },
+    { id: 'porin-tip (SYG/ALG)', re: /(SYG|ALG)/i },
+    { id: 'polysaccharide lyase (HXH)', re: /H.H/i },
+  ];
+  return motifs.filter(m => m.re.test(aa)).map(m => m.id);
+}
+
+function sequenceDrivenReceptors(aa: string): ReceptorCandidate[] {
+  const hits = motifHits(aa);
+  const comp = aminoAcidComposition(aa);
+  const gly = comp['G'] ?? 0;
+  const acidic = (comp['D'] ?? 0) + (comp['E'] ?? 0);
+  const basic = (comp['K'] ?? 0) + (comp['R'] ?? 0);
+
+  const candidates: ReceptorCandidate[] = [];
+
+  // LPS / tailspike signatures: gly-rich, beta-helix motif
+  if (gly > 0.12 || hits.includes('beta-helix (GGXGXD)')) {
+    candidates.push({
+      receptor: 'LPS / tailspike',
+      confidence: clamp01(0.4 + gly * 1.5 + (hits.includes('beta-helix (GGXGXD)') ? 0.2 : 0)),
+      evidence: [
+        `gly=${gly.toFixed(2)}`,
+        ...(hits.includes('beta-helix (GGXGXD)') ? ['beta-helix motif'] : []),
+      ],
+    });
+  }
+
+  // Porin tips: slightly acidic, SYG/ALG motifs
+  if (hits.some(h => h.includes('porin-tip'))) {
+    candidates.push({
+      receptor: 'Porin (LamB/OmpC family)',
+      confidence: clamp01(0.5 + acidic * 0.8),
+      evidence: hits.filter(h => h.includes('porin-tip')),
+    });
+  }
+
+  // Pilus binding
+  if (hits.some(h => h.includes('pilus'))) {
+    candidates.push({
+      receptor: 'Type IV pilus',
+      confidence: clamp01(0.55 + basic * 0.5),
+      evidence: hits.filter(h => h.includes('pilus')),
+    });
+  }
+
+  // Generic tail fiber if nothing else
+  if (candidates.length === 0) {
+    candidates.push({
+      receptor: 'Unknown tail receptor',
+      confidence: 0.25,
+      evidence: ['no motif match'],
+    });
+  }
+
+  return dedupeReceptors(candidates);
+}
+
+function annotationDrivenReceptors(productText: string): ReceptorCandidate[] {
   const results: ReceptorCandidate[] = [];
   for (const { receptor, patterns } of receptorPatterns) {
     const matches = patterns.filter(p => productText.includes(p));
     if (matches.length > 0) {
-      const confidence = Math.min(1, 0.5 + matches.length * 0.1);
+      const confidence = clamp01(0.55 + matches.length * 0.1);
       results.push({ receptor, confidence, evidence: matches });
     }
   }
   return results;
 }
 
-function isTailFiberGene(gene: GeneInfo): boolean {
-  const text = `${gene.name ?? ''} ${gene.product ?? ''}`.toLowerCase();
-  return containsAny(text, fiberKeywords);
+function clamp01(n: number): number {
+  return Math.min(1, Math.max(0, n));
 }
 
-export function analyzeTailFiberTropism(phage: PhageFull): TropismAnalysis {
+export function analyzeTailFiberTropism(phage: PhageFull, genomeSequence = ''): TropismAnalysis {
   const hits: TailFiberHit[] = [];
 
   for (const gene of phage.genes ?? []) {
     if (!isTailFiberGene(gene)) continue;
     const text = `${gene.name ?? ''} ${gene.product ?? ''}`.toLowerCase();
-    const receptorCandidates = findReceptors(text);
-    const unique = dedupeReceptors(receptorCandidates);
-    hits.push({ gene, receptorCandidates: unique });
+    const aaSeq = genomeSequence ? translateGeneSequence(genomeSequence, gene) : '';
+    const annotationReceptors = annotationDrivenReceptors(text);
+    const sequenceReceptors = aaSeq ? sequenceDrivenReceptors(aaSeq) : [];
+    const merged = dedupeReceptors([...annotationReceptors, ...sequenceReceptors]);
+    hits.push({
+      gene,
+      aaLength: aaSeq.length || undefined,
+      motifs: aaSeq ? motifHits(aaSeq) : undefined,
+      receptorCandidates: merged,
+    });
   }
 
   const receptors = new Set<string>();

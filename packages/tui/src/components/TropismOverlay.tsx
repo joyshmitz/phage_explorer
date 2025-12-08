@@ -75,7 +75,11 @@ export function TropismOverlay(): React.ReactElement {
                     {hit.gene.startPos}–{hit.gene.endPos} ({hit.gene.strand ?? '?'} strand)
                   </Text>
                 </Box>
-                <Text color={colors.textMuted}>{hit.gene.product ?? 'Unnamed receptor-binding protein'}</Text>
+                <Text color={colors.textMuted}>
+                  {hit.gene.product ?? 'Unnamed receptor-binding protein'}
+                  {hit.aaLength ? ` · ${hit.aaLength} aa` : ''}
+                  {hit.motifs && hit.motifs.length > 0 ? ` · motifs: ${hit.motifs.join('; ')}` : ''}
+                </Text>
 
                 {hit.receptorCandidates.length === 0 ? (
                   <Text color={colors.textMuted}>No receptor hints in annotation.</Text>

@@ -100,6 +100,9 @@ export function App({ repository, foldEmbeddings = [] }: AppProps): React.ReactE
   const setError = usePhageStore(s => s.setError);
   const overlayData = usePhageStore(s => s.overlayData);
   const currentError = usePhageStore(s => s.error);
+  const diffEnabled = usePhageStore(s => s.diffEnabled);
+  const diffReferencePhageId = usePhageStore(s => s.diffReferencePhageId);
+  const setDiffReference = usePhageStore(s => s.setDiffReference);
 
   // Actions
   const nextPhage = usePhageStore(s => s.nextPhage);
@@ -211,7 +214,7 @@ export function App({ repository, foldEmbeddings = [] }: AppProps): React.ReactE
          } else {
            const data = computeAllOverlays(seq);
             const hgt = analyzeHGTProvenance(seq, phage.genes ?? [], referenceSketchesRef.current);
-            const tropism = analyzeTailFiberTropism(phage);
+            const tropism = analyzeTailFiberTropism(phage, seq);
             const enriched = { ...data, hgt, tropism };
             overlayCacheRef.current.set(phage.id, { length, hash: seqHash, refVersion: referenceVersionRef.current, data: enriched });
             setOverlayData(enriched);
@@ -229,6 +232,37 @@ export function App({ repository, foldEmbeddings = [] }: AppProps): React.ReactE
 
     loadPhage();
   }, [repository, phages, currentPhageIndex, setCurrentPhage, setLoadingPhage, setError]);
+
+  // Load diff reference sequence when needed
+  useEffect(() => {
+    if (!diffEnabled || !diffReferencePhageId) {
+      // Only clear if we have something to clear, to avoid infinite loop if setDiffReference triggers this
+      if (diffEnabled === false) {
+         // We don't clear here because setDiffReference might trigger re-render.
+         // But actually setDiffReference(null, null) is fine.
+      }
+      return;
+    }
+
+    let cancelled = false;
+    const loadDiffRef = async () => {
+      try {
+        const length = await repository.getFullGenomeLength(diffReferencePhageId);
+        const seq = await repository.getSequenceWindow(diffReferencePhageId, 0, length);
+        if (!cancelled) {
+          setDiffReference(diffReferencePhageId, seq);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setError(`Failed to load reference phage: ${err}`);
+        }
+      }
+    };
+    loadDiffRef();
+    return () => {
+      cancelled = true;
+    };
+  }, [diffEnabled, diffReferencePhageId, repository, setDiffReference, setError]);
 
   // Progressive disclosure: auto-promote after time in app (5m -> intermediate, 60m -> power)
   useEffect(() => {
