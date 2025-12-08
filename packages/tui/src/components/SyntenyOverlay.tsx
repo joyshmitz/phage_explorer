@@ -13,6 +13,7 @@ interface SyntenyOverlayProps {
 export function SyntenyOverlay({ repository }: SyntenyOverlayProps): React.ReactElement {
   const theme = usePhageStore(s => s.currentTheme);
   const closeOverlay = usePhageStore(s => s.closeOverlay);
+  const setOverlayData = usePhageStore(s => s.setOverlayData);
   const colors = theme.colors;
   const terminalCols = usePhageStore(s => s.terminalCols);
   
@@ -28,10 +29,14 @@ export function SyntenyOverlay({ repository }: SyntenyOverlayProps): React.React
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedAIndex, setSelectedAIndex] = useState<number>(() => {
+    const remembered = (usePhageStore.getState().overlayData as { synteny?: { a: number; b: number } }).synteny;
+    if (remembered && typeof remembered.a === 'number') return remembered.a;
     if (typeof comparisonPhageAIndex === 'number') return comparisonPhageAIndex;
     return currentPhageIndex;
   });
   const [selectedBIndex, setSelectedBIndex] = useState<number>(() => {
+    const remembered = (usePhageStore.getState().overlayData as { synteny?: { a: number; b: number } }).synteny;
+    if (remembered && typeof remembered.b === 'number') return remembered.b;
     if (typeof comparisonPhageBIndex === 'number') return comparisonPhageBIndex;
     const prev = currentPhageIndex - 1;
     if (prev >= 0) return prev;
@@ -52,7 +57,11 @@ export function SyntenyOverlay({ repository }: SyntenyOverlayProps): React.React
         }
 
         const normalizedA = Math.max(0, Math.min(selectedAIndex, phages.length - 1));
-        const normalizedB = Math.max(0, Math.min(selectedBIndex, phages.length - 1));
+        let normalizedB = Math.max(0, Math.min(selectedBIndex, phages.length - 1));
+        if (phages.length > 1 && normalizedA === normalizedB) {
+          normalizedB = (normalizedB + 1) % phages.length;
+          setSelectedBIndex(normalizedB);
+        }
 
         if (phages.length < 2 || normalizedA === normalizedB) {
           const pA = await repository.getPhageByIndex(normalizedA);
@@ -85,8 +94,12 @@ export function SyntenyOverlay({ repository }: SyntenyOverlayProps): React.React
     if (cached) return cached;
     const result = alignSynteny(phageA.genes, phageB.genes);
     analysisCache.current.set(key, result);
+    setOverlayData({
+      ...usePhageStore.getState().overlayData,
+      synteny: { a: selectedAIndex, b: selectedBIndex }
+    });
     return result;
-  }, [phageA, phageB]);
+  }, [phageA, phageB, selectedAIndex, selectedBIndex, setOverlayData]);
 
   const coverageA = useMemo(() => {
     if (!analysis || !phageA?.genes?.length) return 0;
@@ -154,7 +167,18 @@ export function SyntenyOverlay({ repository }: SyntenyOverlayProps): React.React
     const chars = Array(width).fill('░');
     
     // Fill blocks
-    blocks.forEach((block, blockIdx) => {
+    const sortedBlocks = [...blocks].sort((a, b) => {
+      const genes = phage.genes;
+      const lenA = isGenomeA
+        ? (genes[a.endIdxA]?.endPos ?? 0) - (genes[a.startIdxA]?.startPos ?? 0)
+        : (genes[a.endIdxB]?.endPos ?? 0) - (genes[a.startIdxB]?.startPos ?? 0);
+      const lenB = isGenomeA
+        ? (genes[b.endIdxA]?.endPos ?? 0) - (genes[b.startIdxA]?.startPos ?? 0)
+        : (genes[b.endIdxB]?.endPos ?? 0) - (genes[b.startIdxB]?.startPos ?? 0);
+      return lenB - lenA;
+    });
+
+    sortedBlocks.forEach((block, blockIdx) => {
       // Determine range in genome
       const genes = phage.genes;
       const startGeneIdx = isGenomeA ? block.startIdxA : block.startIdxB;
@@ -187,7 +211,13 @@ export function SyntenyOverlay({ repository }: SyntenyOverlayProps): React.React
   const renderConnections = () => {
     const lines = Array(3).fill('').map(() => Array(width).fill(' '));
     
-    analysis.blocks.forEach((block) => {
+    const sortedBlocks = [...analysis.blocks].sort((a, b) => {
+      const lenA = (phageA.genes[b.endIdxA]?.endPos ?? 0) - (phageA.genes[b.startIdxA]?.startPos ?? 0);
+      const lenB = (phageA.genes[a.endIdxA]?.endPos ?? 0) - (phageA.genes[a.startIdxA]?.startPos ?? 0);
+      return lenA - lenB;
+    });
+
+    sortedBlocks.forEach((block) => {
         const genesA = phageA.genes;
         const genesB = phageB.genes;
         
