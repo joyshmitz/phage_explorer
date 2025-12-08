@@ -64,6 +64,7 @@ export function Overlay({
   const { theme } = useTheme();
   const colors = theme.colors;
   const overlayRef = useRef<HTMLDivElement>(null);
+  const previousFocus = useRef<HTMLElement | null>(null);
 
   // Don't render if not open
   if (!isOpen(id)) {
@@ -91,6 +92,7 @@ export function Overlay({
     if (!overlay) return;
 
     // Focus the overlay on mount
+    previousFocus.current = (document.activeElement as HTMLElement) ?? null;
     overlay.focus();
 
     // Get all focusable elements
@@ -119,8 +121,23 @@ export function Overlay({
       }
     };
 
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.stopPropagation();
+        handleClose();
+      }
+    };
+
     overlay.addEventListener('keydown', handleTab);
-    return () => overlay.removeEventListener('keydown', handleTab);
+    overlay.addEventListener('keydown', handleEscape);
+
+    return () => {
+      overlay.removeEventListener('keydown', handleTab);
+      overlay.removeEventListener('keydown', handleEscape);
+      if (previousFocus.current && typeof previousFocus.current.focus === 'function') {
+        previousFocus.current.focus();
+      }
+    };
   }, []);
 
   // Styles

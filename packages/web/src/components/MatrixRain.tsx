@@ -7,28 +7,30 @@
 
 import React, { useRef, useEffect } from 'react';
 import { useTheme } from '../hooks/useTheme';
-import { useWebPreferences } from '../store/createWebStore';
 import { useReducedMotion } from '../hooks/useReducedMotion';
+
+const CHAR_SETS = {
+  dna: 'ATGC',
+  amino: 'ARNDCQEGHILKMFPSTWYV*',
+  binary: '01',
+  matrix: 'ﾊﾐﾋﾑﾒﾍﾛﾝ012345789:・.=*+-<>¦｜',
+  hex: '0123456789ABCDEF',
+};
 
 export interface MatrixRainProps {
   width?: number;
   height?: number;
   opacity?: number;
   className?: string;
+  charSet?: keyof typeof CHAR_SETS;
 }
-
-const CHAR_SETS = {
-  dna: 'ATGC',
-  binary: '01',
-  matrix: 'ﾊﾐﾋﾑﾒﾍﾛﾝ012345789:・.=*+-<>¦｜',
-  hex: '0123456789ABCDEF',
-};
 
 export const MatrixRain: React.FC<MatrixRainProps> = ({
   width,
   height,
   opacity = 0.1,
   className = '',
+  charSet = 'dna',
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const { theme } = useTheme();
@@ -38,7 +40,6 @@ export const MatrixRain: React.FC<MatrixRainProps> = ({
   // For now, we default to 'dna' and moderate settings
   const density = 1.0; // 0.5 - 2.0
   const speed = 1.0;   // 0.5 - 3.0
-  const charSet = 'dna';
 
   useEffect(() => {
     if (reducedMotion) return;

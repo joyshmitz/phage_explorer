@@ -19,7 +19,7 @@ export const RecentCommands: React.FC = () => {
       <ul className="recent-commands__list">
         {history.slice(0, 5).map((h, i) => (
           <li key={h.at + i} className="recent-commands__item">
-            <span className="dot" />
+            <span className="dot" aria-hidden="true" />
             <span>{h.label}</span>
           </li>
         ))}
