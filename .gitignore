@@ -68,6 +68,14 @@ test-output/
 /tmp/phage-explorer-install.lock
 
 # Rust / Wasm build artifacts
+**/target/
+**/.cargo/
+**/wasm-pack.log
+**/*.wasm
+**/*.rmeta
+**/*.rlib
 packages/wasm-compute/target/
 packages/wasm-compute/pkg/
 packages/wasm-compute/node_modules/
+.vercel
+.env*.local

@@ -1,0 +1,5 @@
+.beads/
+*.sock
+data/
+.git/
+node_modules/
