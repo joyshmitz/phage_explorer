@@ -1,15 +1,22 @@
 /**
  * OverlayManager
  *
- * Orchestrates the rendering of all available overlays.
+ * Orchestrates the rendering of available overlays.
  * Connects overlays to the application state.
  */
 
 import React from 'react';
+import type { PhageFull } from '@phage-explorer/core';
+import type { PhageRepository } from '../../db';
+import { SearchOverlay } from './SearchOverlay';
 
-export function OverlayManager(): React.ReactElement | null {
-  // For the web landing, overlays are disabled to keep the static demo lightweight.
-  return null;
+interface OverlayManagerProps {
+  repository: PhageRepository | null;
+  currentPhage: PhageFull | null;
+}
+
+export function OverlayManager({ repository, currentPhage }: OverlayManagerProps): React.ReactElement | null {
+  return <SearchOverlay repository={repository} currentPhage={currentPhage} />;
 }
 
 export default OverlayManager;

@@ -37,6 +37,7 @@ export { PromoterOverlay } from './PromoterOverlay';
 export { RepeatsOverlay } from './RepeatsOverlay';
 export { TranscriptionFlowOverlay } from './TranscriptionFlowOverlay';
 export { RecentCommands } from './RecentCommands';
+export { SearchOverlay } from './SearchOverlay';
 
 // Layer 2 Advanced Overlays
 export { KmerAnomalyOverlay } from './KmerAnomalyOverlay';

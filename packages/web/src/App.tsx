@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AppShell } from './components/layout/AppShell';
 import OverlayManager from './components/overlays/OverlayManager';
 import { OverlayProvider } from './components/overlays/OverlayProvider';
+import { useOverlay } from './components/overlays/OverlayProvider';
 import { DataLoadingOverlay } from './components/DataLoadingOverlay';
 import { useDatabase } from './hooks/useDatabase';
 import {
@@ -48,9 +49,8 @@ export default function App(): JSX.Element {
     setCurrentPhage,
     setLoadingPhage,
     setError,
-    openOverlay,
     setTheme: storeSetTheme,
-    closeAllOverlays,
+    closeAllOverlays: storeCloseAllOverlays,
   } = usePhageStore((state) => ({
     phages: state.phages,
     currentPhageIndex: state.currentPhageIndex,
@@ -61,10 +61,10 @@ export default function App(): JSX.Element {
     setCurrentPhage: state.setCurrentPhage,
     setLoadingPhage: state.setLoadingPhage,
     setError: state.setError,
-    openOverlay: state.openOverlay,
     setTheme: state.setTheme,
     closeAllOverlays: state.closeAllOverlays,
   }));
+  const { open: openOverlayCtx, closeAll: closeAllOverlaysCtx } = useOverlay();
   const { mode } = useKeyboardMode();
   const pendingSequence = usePendingSequence();
   const [sequencePreview, setSequencePreview] = useState<string>('');
@@ -168,10 +168,18 @@ export default function App(): JSX.Element {
     { combo: { key: 'j' }, description: 'Next phage', action: handleNextPhage, modes: ['NORMAL'] },
     { combo: { key: 'k' }, description: 'Previous phage', action: handlePrevPhage, modes: ['NORMAL'] },
     { combo: { key: 't' }, description: 'Cycle theme', action: nextTheme, modes: ['NORMAL'] },
-    { combo: { key: '?' }, description: 'Help overlay', action: () => openOverlay('help'), modes: ['NORMAL'] },
-    { combo: { key: '/' }, description: 'Search', action: () => openOverlay('search'), modes: ['NORMAL'] },
-    { combo: { key: ':' }, description: 'Command palette', action: () => openOverlay('commandPalette'), modes: ['NORMAL'] },
-    { combo: { key: 'Escape' }, description: 'Close overlays', action: closeAllOverlays, modes: ['NORMAL'] },
+    { combo: { key: '?' }, description: 'Help overlay', action: () => openOverlayCtx('help'), modes: ['NORMAL'] },
+    { combo: { key: '/' }, description: 'Search', action: () => openOverlayCtx('search'), modes: ['NORMAL'] },
+    { combo: { key: ':' }, description: 'Command palette', action: () => openOverlayCtx('commandPalette'), modes: ['NORMAL'] },
+    {
+      combo: { key: 'Escape' },
+      description: 'Close overlays',
+      action: () => {
+        closeAllOverlaysCtx();
+        storeCloseAllOverlays();
+      },
+      modes: ['NORMAL'],
+    },
   ]);
 
   const footerHints = useMemo(() => ([
@@ -336,7 +344,7 @@ export default function App(): JSX.Element {
           </div>
         </section>
       </AppShell>
-      <OverlayManager />
+      <OverlayManager repository={repository} currentPhage={currentPhage} />
     </OverlayProvider>
   );
 }
