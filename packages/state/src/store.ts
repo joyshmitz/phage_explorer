@@ -50,6 +50,7 @@ export type OverlayId =
   | 'repeats'
   | 'transcriptionFlow'
   | 'pressure'
+  | 'stability'
   | 'modules'
   | 'hgt'
   | 'kmerAnomaly'

@@ -103,6 +103,15 @@ export function AnalysisMenuOverlay({ onClose }: MenuOverlayProps): React.ReactE
             action: () => openOverlay('pressure'),
             minLevel: 'intermediate',
           },
+        {
+          id: 'analysis-stability',
+          label: 'Virion Stability Predictor',
+          description: 'Capsid robustness vs temperature / salt',
+          icon: '🧊',
+          shortcut: 'A→VS',
+          action: () => openOverlay('stability' as OverlayId),
+          minLevel: 'intermediate',
+        },
           {
             id: 'analysis-gcskew',
             label: 'GC Skew Overlay',

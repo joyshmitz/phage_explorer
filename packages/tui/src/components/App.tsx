@@ -23,6 +23,7 @@ import { BendabilityOverlay } from './BendabilityOverlay';
 import { PromoterOverlay } from './PromoterOverlay';
 import { RepeatOverlay } from './RepeatOverlay';
 import { PackagingPressureOverlay } from './PackagingPressureOverlay';
+import { VirionStabilityOverlay } from './VirionStabilityOverlay';
 import { TranscriptionFlowOverlay } from './TranscriptionFlowOverlay';
 import { PhasePortraitOverlay } from './PhasePortraitOverlay';
 import { NonBDNAOverlay } from './NonBDNAOverlay';
@@ -66,6 +67,7 @@ const REPEAT_ID: OverlayId = 'repeats';
 const KMER_ID: OverlayId = 'kmerAnomaly';
 const MODULES_ID: OverlayId = 'modules';
 const PRESSURE_ID: OverlayId = 'pressure';
+const STABILITY_ID: OverlayId = 'stability';
 const TRANSCRIPTION_ID: OverlayId = 'transcriptionFlow';
 const BIAS_ID: OverlayId = 'biasDecomposition';
 const HGT_ID: OverlayId = 'hgt';
@@ -428,7 +430,7 @@ export function App({ repository, foldEmbeddings = [] }: AppProps): React.ReactE
     }
 
     // F1: Help (always available)
-    if (fKey === 'F1' || key.f1) {
+    if (fKey === 'F1') {
       toggleOverlay('help');
       return;
     }
@@ -903,6 +905,16 @@ export function App({ repository, foldEmbeddings = [] }: AppProps): React.ReactE
           marginTop={Math.floor((terminalRows - 14) / 2)}
         >
           <PackagingPressureOverlay />
+        </Box>
+      )}
+
+      {activeOverlay === STABILITY_ID && (
+        <Box
+          position="absolute"
+          marginLeft={Math.floor((terminalCols - 96) / 2)}
+          marginTop={Math.floor((terminalRows - 18) / 2)}
+        >
+          <VirionStabilityOverlay />
         </Box>
       )}
 
