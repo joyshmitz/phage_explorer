@@ -24,7 +24,9 @@ export { SimulationHub } from './SimulationHub';
 // Layer 1 Analysis Overlays
 export { GCSkewOverlay } from './GCSkewOverlay';
 export { ComplexityOverlay } from './ComplexityOverlay';
-export { BendabilityOverlay } from './BendabilityOverlay';
+export * from './ModuleOverlay';
+export * from './BendabilityOverlay';
+
 export { PromoterOverlay } from './PromoterOverlay';
 export { RepeatsOverlay } from './RepeatsOverlay';
 export { TranscriptionFlowOverlay } from './TranscriptionFlowOverlay';

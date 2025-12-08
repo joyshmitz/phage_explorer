@@ -12,6 +12,7 @@ import {
   CommandPalette,
   GCSkewOverlay,
   TranscriptionFlowOverlay,
+  ModuleOverlay,
 } from './index';
 
 export function OverlayManager(): React.ReactElement {
@@ -47,6 +48,7 @@ export function OverlayManager(): React.ReactElement {
       {/* Analysis Overlays */}
       <GCSkewOverlay sequence={sequence} />
       <TranscriptionFlowOverlay sequence={sequence} genomeLength={genomeLength} />
+      <ModuleOverlay />
       
       {/* Future: Add other overlays here */}
     </>

@@ -132,11 +132,16 @@ export class GeneMapRenderer {
 
     // Draw density histogram if enabled
     if (this.showDensity) {
-      this.renderDensityHistogram(genes, genomeLength, width, scale);
+      this.renderDensityHistogram(genes, genomeLength, width);
     }
 
     // Draw gene tracks
     this.renderGeneTracks(genes, scale, highlightedGene);
+
+    // Draw labels if enabled
+    if (this.showLabels) {
+      this.renderLabels(genes, scale);
+    }
 
     // Draw viewport indicator
     this.renderViewportIndicator(viewportStart, viewportEnd, scale, height);
@@ -148,8 +153,7 @@ export class GeneMapRenderer {
   private renderDensityHistogram(
     genes: GeneInfo[],
     genomeLength: number,
-    width: number,
-    scale: number
+    width: number
   ): void {
     const binCount = Math.min(100, Math.floor(width / 4));
     const binSize = genomeLength / binCount;
@@ -184,6 +188,51 @@ export class GeneMapRenderer {
         intensity
       );
       this.ctx.fillRect(x, histY + histHeight - normalizedHeight, binWidth - 0.5, normalizedHeight);
+    }
+  }
+
+  /**
+   * Render gene labels
+   */
+  private renderLabels(genes: GeneInfo[], scale: number): void {
+    this.ctx.font = '10px monospace';
+    this.ctx.fillStyle = this.theme.colors.textMuted;
+    this.ctx.textAlign = 'center';
+    this.ctx.textBaseline = 'top';
+
+    const labelY = 34;
+    const minSpacing = 60; // Minimum pixels between labels
+    let lastLabelX = -minSpacing;
+
+    // Sort genes by position to ensure we process them in order
+    const sortedGenes = [...genes].sort((a, b) => a.startPos - b.startPos);
+
+    for (const gene of sortedGenes) {
+      // Only label named genes or significant ones
+      if (!gene.name && !gene.locusTag) continue;
+      
+      // Skip small genes if cluttered
+      if ((gene.endPos - gene.startPos) < 100) continue;
+
+      const centerPos = (gene.startPos + gene.endPos) / 2;
+      const x = centerPos * scale;
+
+      // Check for overlap with previous label
+      if (x - lastLabelX < minSpacing) continue;
+
+      const label = gene.name || gene.locusTag || '';
+      
+      // Draw tick mark
+      this.ctx.strokeStyle = this.theme.colors.border;
+      this.ctx.beginPath();
+      this.ctx.moveTo(x, labelY - 4);
+      this.ctx.lineTo(x, labelY);
+      this.ctx.stroke();
+
+      // Draw label
+      this.ctx.fillText(label, x, labelY + 2);
+      
+      lastLabelX = x;
     }
   }
 

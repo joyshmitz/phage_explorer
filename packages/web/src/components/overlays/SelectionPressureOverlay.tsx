@@ -104,8 +104,6 @@ function estimateSelectionPressure(
 
   // Calculate RSCU (Relative Synonymous Codon Usage)
   let rscuVariance = 0;
-  let totalSynSites = 0;
-  let totalNonSynSites = 0;
 
   for (const [codon, count] of codonCounts) {
     const aa = CODON_TABLE[codon];
@@ -116,10 +114,6 @@ function estimateSelectionPressure(
 
     // RSCU deviation indicates selection
     rscuVariance += Math.pow(observedFreq - expectedFreq, 2);
-
-    // Approximate sites
-    totalSynSites += countSynonymousSites(codon) * count;
-    totalNonSynSites += (3 - countSynonymousSites(codon)) * count;
   }
 
   // Normalize to get pseudo-dN/dS
@@ -242,7 +236,6 @@ export function SelectionPressureOverlay({
 
     // Draw bars
     const barWidth = chartWidth / results.length * 0.8;
-    const gap = chartWidth / results.length * 0.2;
 
     results.forEach((result, i) => {
       const x = padding.left + (i + 0.5) * (chartWidth / results.length) - barWidth / 2;

@@ -6,6 +6,7 @@
  */
 
 import * as Comlink from 'comlink';
+import { simulateTranscriptionFlow } from '@phage-explorer/core';
 import type {
   AnalysisRequest,
   AnalysisResult,
@@ -339,7 +340,7 @@ function calculateCodonUsage(sequence: string): CodonUsageResult {
     aaGroups[aa].push(codon);
   }
 
-  for (const [aa, codons] of Object.entries(aaGroups)) {
+  for (const [, codons] of Object.entries(aaGroups)) {
     const total = codons.reduce((sum, c) => sum + (usage[c] || 0), 0);
     const expected = total / codons.length;
     for (const codon of codons) {
@@ -403,6 +404,9 @@ const workerAPI: AnalysisWorkerAPI = {
         return calculateCodonUsage(sequence);
       case 'kmer-spectrum':
         return calculateKmerSpectrum(sequence, options.kmerSize || 6);
+      case 'transcription-flow':
+        const flow = simulateTranscriptionFlow(sequence);
+        return { type: 'transcription-flow', ...flow };
       default:
         throw new Error(`Unknown analysis type: ${type}`);
     }

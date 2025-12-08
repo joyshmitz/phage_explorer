@@ -68,7 +68,7 @@ export function GCSkewOverlay({ sequence = '' }: GCSkewOverlayProps): React.Reac
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   // Calculate GC skew data
-  const { skew, cumulative } = useMemo(() => {
+  const { cumulative } = useMemo(() => {
     return calculateGCSkew(sequence, 500);
   }, [sequence]);
 

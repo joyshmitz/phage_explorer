@@ -1,7 +1,7 @@
 import React, { useEffect, useRef } from 'react';
 import { useTheme } from '../../theme/themes';
 
-export type SparklineVariant = 'line' | 'dots' | 'wave';
+export type SparklineVariant = 'line' | 'dots' | 'wave' | 'bar';
 
 export interface SparklineProps {
   values: number[];
@@ -13,8 +13,6 @@ export interface SparklineProps {
   showValleys?: boolean;
   className?: string;
 }
-
-const clamp = (v: number, min: number, max: number) => Math.min(max, Math.max(min, v));
 
 export const Sparkline: React.FC<SparklineProps> = ({
   values,
@@ -86,8 +84,19 @@ export const Sparkline: React.FC<SparklineProps> = ({
       ctx.fill();
     }
 
-    // Line/dots
-    if (variant !== 'dots') {
+    // Bar chart
+    if (variant === 'bar') {
+      const barWidth = Math.max(1, (width / values.length) - 1);
+      ctx.fillStyle = grad;
+      points.forEach(p => {
+        const h = height - p.y;
+        // Align bar center to point x
+        ctx.fillRect(p.x - barWidth/2, p.y, barWidth, h);
+      });
+    }
+
+    // Line/dots (line is default if not bar/wave/dots, or explicit line)
+    if (variant === 'line' || variant === 'wave') {
       ctx.strokeStyle = grad;
       ctx.beginPath();
       ctx.moveTo(points[0].x, points[0].y);

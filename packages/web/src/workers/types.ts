@@ -37,7 +37,8 @@ export type AnalysisType =
   | 'promoters'
   | 'repeats'
   | 'codon-usage'
-  | 'kmer-spectrum';
+  | 'kmer-spectrum'
+  | 'transcription-flow';
 
 /**
  * Analysis request
@@ -138,6 +139,15 @@ export interface KmerSpectrumResult {
 }
 
 /**
+ * Transcription flow result
+ */
+export interface TranscriptionFlowResult {
+  type: 'transcription-flow';
+  values: number[];
+  peaks: Array<{ start: number; end: number; flux: number }>;
+}
+
+/**
  * Union of all analysis results
  */
 export type AnalysisResult =
@@ -147,7 +157,8 @@ export type AnalysisResult =
   | PromoterResult
   | RepeatResult
   | CodonUsageResult
-  | KmerSpectrumResult;
+  | KmerSpectrumResult
+  | TranscriptionFlowResult;
 
 /**
  * Progress callback for long-running operations

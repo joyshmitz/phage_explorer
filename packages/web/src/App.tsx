@@ -1,8 +1,10 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import { useTheme, getNucleotideClass, useHotkey, useKeyboardMode, usePendingSequence } from './hooks';
 import { AppShell } from './components';
 import { HotkeyCategories } from './keyboard/types';
 import { OverlayProvider, OverlayManager, useOverlay } from './components/overlays';
+import { useWebPreferences } from './store/createWebStore';
+import type { ExperienceLevel } from '@phage-explorer/state';
 
 const PhageExplorerContent: React.FC = () => {
   const { theme, nextTheme, availableThemes } = useTheme();
@@ -10,6 +12,12 @@ const PhageExplorerContent: React.FC = () => {
   const { toggle } = useOverlay();
   const pendingSequence = usePendingSequence();
   const [lastAction, setLastAction] = useState<string>('');
+  const { experienceLevel, setExperienceLevel } = useWebPreferences((s) => ({
+    experienceLevel: s.experienceLevel as ExperienceLevel,
+    setExperienceLevel: s.setExperienceLevel,
+  }));
+
+  const experienceLevels = useMemo<ExperienceLevel[]>(() => ['novice', 'intermediate', 'power'], []);
 
   // Register hotkeys
   const handleThemeCycle = useCallback(() => {
@@ -53,6 +61,11 @@ const PhageExplorerContent: React.FC = () => {
     toggle('transcriptionFlow');
     setLastAction('Transcription flow toggled');
   }, [toggle]);
+
+  const handleExperienceChange = useCallback((level: ExperienceLevel) => {
+    setExperienceLevel(level);
+    setLastAction(`Experience set to ${level}`);
+  }, [setExperienceLevel]);
 
   // Theme hotkey
   useHotkey({ key: 't' }, 'Cycle theme', handleThemeCycle, {
@@ -104,13 +117,37 @@ const PhageExplorerContent: React.FC = () => {
   return (
     <AppShell
       header={{
-        subtitle: `Theme: ${theme.name}`,
+        subtitle: `Theme: ${theme.name} · Level: ${experienceLevel}`,
         mode,
         pendingSequence,
         children: (
-          <button className="btn" onClick={handleThemeCycle}>
-            <span className="key-hint">t</span> Theme
-          </button>
+          <div className="flex gap-2" style={{ alignItems: 'center', flexWrap: 'wrap' }}>
+            <button className="btn" onClick={handleThemeCycle}>
+              <span className="key-hint">t</span> Theme
+            </button>
+            <div className="flex gap-1" style={{ alignItems: 'center' }}>
+              <span className="text-dim" style={{ fontSize: '0.85rem' }}>Experience</span>
+              {experienceLevels.map((level) => {
+                const active = level === experienceLevel;
+                return (
+                  <button
+                    key={level}
+                    className="badge"
+                    onClick={() => handleExperienceChange(level)}
+                    style={{
+                      border: `1px solid ${active ? 'var(--color-accent)' : 'var(--color-border)'}`,
+                      background: active ? 'var(--color-accent)' : 'var(--color-badge)',
+                      color: active ? '#000' : 'var(--color-badge-text)',
+                      textTransform: 'capitalize',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    {level}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
         ),
       }}
     >
