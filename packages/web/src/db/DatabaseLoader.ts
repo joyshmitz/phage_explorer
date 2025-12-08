@@ -106,7 +106,7 @@ async function decompressData(
   }
 
   try {
-    const ds = new DecompressionStream(format === 'br' ? 'deflate-raw' : 'gzip');
+    const ds = new DecompressionStream(format === 'br' ? 'brotli' : 'gzip');
     const stream = new Response(compressedData).body;
     if (!stream) throw new Error('No response body');
 

@@ -394,3 +394,39 @@
 .stagger-children > *:nth-child(8) {
   animation-delay: 350ms;
 }
+
+/* Reduced motion overrides */
+@media (prefers-reduced-motion: reduce) {
+  .animate-fade-in,
+  .animate-fade-out,
+  .animate-slide-up,
+  .animate-slide-down,
+  .animate-slide-left,
+  .animate-slide-right,
+  .animate-scale-in,
+  .animate-scale-out,
+  .animate-pulse,
+  .animate-blink,
+  .animate-glow-pulse,
+  .animate-spin,
+  .animate-bounce,
+  .animate-shake,
+  .theme-transitioning,
+  .theme-transitioning * {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    animation: none !important;
+    transition-duration: 0.01ms !important;
+  }
+
+  .scanline-overlay::after,
+  .with-scanlines::before {
+    display: none !important;
+    animation: none !important;
+  }
+
+  .crt-flicker,
+  .typing-cursor::after {
+    animation: none !important;
+  }
+}
