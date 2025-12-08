@@ -1,17 +1,13 @@
 // Quick overlay computations for GC skew, complexity, bendability, promoters, repeats.
 // These are lightweight, computed once per loaded phage sequence.
 
-import { computeStructuralConstraints } from '@phage-explorer/core';
-import type { GeneInfo } from '@phage-explorer/core';
-
 export type OverlayId =
   | 'gcSkew'
   | 'complexity'
   | 'bendability'
   | 'promoter'
   | 'repeats'
-  | 'kmerAnomaly'
-  | 'structureConstraints';
+  | 'kmerAnomaly';
 
 export interface NumericOverlay {
   id: OverlayId;
@@ -43,28 +39,7 @@ export interface KmerAnomalyOverlay extends NumericOverlay {
   hotspots: KmerHotspot[];
 }
 
-export interface ConstraintOverlay {
-  id: 'structureConstraints';
-  label: string;
-  windows: Array<{
-    start: number;
-    end: number;
-    fragility: number;
-    burial: number;
-    stress: number;
-    notes: string[];
-  }>;
-  hotspots: Array<{
-    start: number;
-    end: number;
-    fragility: number;
-    burial: number;
-    stress: number;
-    notes: string[];
-  }>;
-}
-
-export type OverlayResult = NumericOverlay | MarkOverlay | KmerAnomalyOverlay | ConstraintOverlay;
+export type OverlayResult = NumericOverlay | MarkOverlay | KmerAnomalyOverlay;
 
 export type OverlayData = Partial<Record<OverlayId, OverlayResult>>;
 
@@ -400,11 +375,7 @@ export function computeKmerAnomaly(
   };
 }
 
-export function computeAllOverlays(
-  sequence: string,
-  genes: GeneInfo[] = []
-): Record<OverlayId, OverlayResult> {
-  const constraints = computeStructuralConstraints(sequence, genes);
+export function computeAllOverlays(sequence: string): Record<OverlayId, OverlayResult> {
   return {
     gcSkew: computeGCskew(sequence),
     complexity: computeComplexity(sequence),
@@ -412,11 +383,5 @@ export function computeAllOverlays(
     promoter: computePromoterMarks(sequence),
     repeats: computeRepeatMarks(sequence),
     kmerAnomaly: computeKmerAnomaly(sequence),
-    structureConstraints: {
-      id: 'structureConstraints',
-      label: 'Structural constraints',
-      windows: constraints.windows,
-      hotspots: constraints.hotspots,
-    },
   };
 }
