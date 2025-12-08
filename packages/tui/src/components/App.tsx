@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Box, Text, useInput, useApp, useStdout } from 'ink';
 import { usePhageStore, useOverlayStack } from '@phage-explorer/state';
+import type { OverlayId, ExperienceLevel } from '@phage-explorer/state';
 import type { PhageRepository } from '@phage-explorer/db-runtime';
 
 import { Header } from './Header';
@@ -47,6 +48,8 @@ import { SyntenyOverlay } from './SyntenyOverlay';
 import { LogoOverlay } from './LogoOverlay';
 import { StructureConstraintOverlay } from './StructureConstraintOverlay';
 import { analyzeHGTProvenance, analyzeTailFiberTropism } from '@phage-explorer/comparison';
+import type { FoldEmbedding, StructuralConstraintReport } from '@phage-explorer/core';
+import { analyzeStructuralConstraints } from '@phage-explorer/core';
 import { analyzeStructuralConstraints } from '@phage-explorer/core';
 import type { StructuralConstraintReport, FoldEmbedding } from '@phage-explorer/core';
 import type { OverlayId, ExperienceLevel } from '@phage-explorer/state';
@@ -75,6 +78,12 @@ const CRISPR_ID: OverlayId = 'crispr';
 const SYNTENY_ID: OverlayId = 'synteny';
 const TROPISM_ID: OverlayId = 'tropism';
 const NONB_ID: OverlayId = 'nonB';
+const DOTPLOT_ID: OverlayId = 'dotPlot';
+const STRUCTURE_ID: OverlayId = 'structureConstraints';
+const CGR_ID: OverlayId = 'cgr';
+const DOTPLOT_ID: OverlayId = 'dotPlot';
+const LOGO_ID: OverlayId = 'logo';
+const STRUCTURE_ID: OverlayId = 'structureConstraints';
 const LOGO_ID: OverlayId = 'logo';
 
 interface AppProps {
