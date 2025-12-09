@@ -255,7 +255,7 @@ export default function App(): JSX.Element {
         }}
       >
         {/* Database loading/error status - only shown when needed */}
-        {!repository || error ? (
+        {(!repository || error) && (
           <section className="panel panel-compact" aria-label="Repository status">
             <div className="panel-header">
               <h2>Database</h2>
