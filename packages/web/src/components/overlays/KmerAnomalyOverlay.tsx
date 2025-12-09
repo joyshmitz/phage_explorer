@@ -9,6 +9,7 @@ import React, { useEffect, useRef, useMemo, useState } from 'react';
 import { useTheme } from '../../hooks/useTheme';
 import { Overlay } from './Overlay';
 import { useOverlay } from './OverlayProvider';
+import { ColorLegend, createLinearColorScale } from './primitives';
 
 interface KmerAnomalyOverlayProps {
   sequence?: string;
@@ -95,6 +96,10 @@ export function KmerAnomalyOverlay({ sequence = '' }: KmerAnomalyOverlayProps): 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [selectedPoint, setSelectedPoint] = useState<KmerResult | null>(null);
   const [kSize, setKSize] = useState(4);
+  const colorScale = useMemo(
+    () => createLinearColorScale(['#0b4dd8', '#22c55e', '#ef4444']),
+    []
+  );
 
   const results = useMemo(() => calculateKmerAnomalies(sequence, kSize), [sequence, kSize]);
 
@@ -125,7 +130,7 @@ export function KmerAnomalyOverlay({ sequence = '' }: KmerAnomalyOverlayProps): 
 
     canvas.width = width * dpr;
     canvas.height = height * dpr;
-    ctx.scale(dpr, dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
     // Clear
     ctx.fillStyle = colors.background;
@@ -145,23 +150,7 @@ export function KmerAnomalyOverlay({ sequence = '' }: KmerAnomalyOverlayProps): 
       const normalized = (deviation - minDev) / range;
       const x = i * barWidth;
 
-      // Color from blue (normal) through green to red (anomalous)
-      let r = 0, g = 0, b = 0;
-      if (normalized < 0.5) {
-        // Blue to green
-        const t = normalized * 2;
-        r = 0;
-        g = Math.round(t * 200);
-        b = Math.round((1 - t) * 200);
-      } else {
-        // Green to red
-        const t = (normalized - 0.5) * 2;
-        r = Math.round(t * 255);
-        g = Math.round((1 - t) * 200);
-        b = 0;
-      }
-
-      ctx.fillStyle = `rgb(${r}, ${g}, ${b})`;
+      ctx.fillStyle = colorScale(normalized);
       ctx.fillRect(x, padding, barWidth + 1, height - padding * 2);
     }
 
@@ -179,7 +168,7 @@ export function KmerAnomalyOverlay({ sequence = '' }: KmerAnomalyOverlayProps): 
       else ctx.lineTo(x, y);
     }
     ctx.stroke();
-  }, [isOpen, results, colors]);
+  }, [colorScale, colors, isOpen, results]);
 
   // Handle canvas click
   const handleCanvasClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
@@ -324,20 +313,15 @@ export function KmerAnomalyOverlay({ sequence = '' }: KmerAnomalyOverlayProps): 
         )}
 
         {/* Legend */}
-        <div style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          padding: '0.5rem',
-        }}>
-          <span style={{ color: 'rgb(0, 0, 200)', fontSize: '0.85rem' }}>Normal</span>
-          <div style={{
-            width: '200px',
-            height: '12px',
-            background: 'linear-gradient(to right, rgb(0, 0, 200), rgb(0, 200, 0), rgb(255, 0, 0))',
-            borderRadius: '4px',
-          }} />
-          <span style={{ color: 'rgb(255, 0, 0)', fontSize: '0.85rem' }}>Anomalous</span>
+        <div style={{ padding: '0.5rem' }}>
+          <ColorLegend
+            width={220}
+            height={32}
+            colorScale={colorScale}
+            tickCount={4}
+            minLabel="Low deviation"
+            maxLabel="High deviation"
+          />
         </div>
 
         {sequence.length === 0 && (

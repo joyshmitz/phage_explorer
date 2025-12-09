@@ -1,9 +1,10 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { predictVirionStabilityFromPhage, AMINO_ACIDS, type PhageFull } from '@phage-explorer/core';
 import { useTheme } from '../../hooks/useTheme';
 import { usePhageStore } from '../../store';
 import { Overlay } from './Overlay';
 import { useOverlay } from './OverlayProvider';
+import { useHotkey } from '../../hooks/useHotkey';
 
 const clamp = (v: number, min: number, max: number) => Math.max(min, Math.min(max, v));
 const clamp01 = (v: number) => clamp(v, 0, 1);
@@ -75,16 +76,12 @@ export function VirionStabilityOverlay(): React.ReactElement | null {
   const [saltMilliMolar, setSaltMilliMolar] = useState(100);
 
   // Hotkey: Alt+V (avoid conflict with packaging pressure 'v')
-  useEffect(() => {
-    const onKeyDown = (e: KeyboardEvent) => {
-      if ((e.key === 'v' || e.key === 'V') && e.altKey && !e.metaKey && !e.ctrlKey) {
-        e.preventDefault();
-        toggle('stability');
-      }
-    };
-    window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
-  }, [toggle]);
+  useHotkey(
+    { key: 'v', modifiers: { alt: true } },
+    'Toggle Virion Stability overlay',
+    () => toggle('stability'),
+    { modes: ['NORMAL'], category: 'Analysis' }
+  );
 
   const estimate = useMemo(
     () => predictVirionStabilityFromPhage(phage, { temperatureC, saltMilliMolar }),
@@ -130,6 +127,8 @@ export function VirionStabilityOverlay(): React.ReactElement | null {
       : colors.error;
 
   const summary = phageSummary(phage);
+  const tempScore = clamp01(estimate.temperatureFactor);
+  const saltScore = clamp01(estimate.saltFactor);
 
   return (
     <Overlay
@@ -191,6 +190,16 @@ export function VirionStabilityOverlay(): React.ReactElement | null {
             }}
           >
             <div style={{ color: colors.text, fontWeight: 700 }}>Environment controls</div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '0.5rem' }}>
+              <div style={{ color: colors.textMuted, fontSize: '0.85rem' }}>
+                Temperature fitness
+              </div>
+              <Gauge value={tempScore} color={tempScore > 0.7 ? colors.success : colors.warning} />
+              <div style={{ color: colors.textMuted, fontSize: '0.85rem' }}>
+                Salt fitness
+              </div>
+              <Gauge value={saltScore} color={saltScore > 0.7 ? colors.success : colors.warning} />
+            </div>
             <label style={{ color: colors.textMuted, fontSize: '0.9rem' }}>
               Temperature (°C)
               <input
