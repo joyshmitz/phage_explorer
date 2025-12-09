@@ -39,6 +39,43 @@ export interface GridRenderState {
   diffMask: Uint8Array | null;
 }
 
+// Responsive cell sizes based on viewport width
+// EXTREMELY AGGRESSIVE for mobile: pure color visualization, no text
+// Each cell is just a colored pixel representing a nucleotide
+function getResponsiveCellSize(viewportWidth: number): { width: number; height: number } {
+  // PIXEL-LEVEL for tiny mobile (<320px): ~100+ chars per row
+  // Pure color blocks, no text at all
+  if (viewportWidth < 320) {
+    return { width: 3, height: 3 };
+  }
+  // ULTRA-DENSE for small mobile (<375px): ~90+ chars per row
+  if (viewportWidth < 375) {
+    return { width: 3, height: 4 };
+  }
+  // SUPER-COMPACT for mobile (<480px): ~80+ chars per row
+  if (viewportWidth < 480) {
+    return { width: 4, height: 5 };
+  }
+  // COMPACT for large phones (<640px): ~75+ chars per row
+  if (viewportWidth < 640) {
+    return { width: 5, height: 6 };
+  }
+  // DENSE for small tablets (<768px): ~60+ chars per row
+  if (viewportWidth < 768) {
+    return { width: 7, height: 8 };
+  }
+  // MEDIUM for tablets (<1024px): ~55+ chars per row
+  if (viewportWidth < 1024) {
+    return { width: 9, height: 11 };
+  }
+  // STANDARD for laptops (<1440px): ~50+ chars per row
+  if (viewportWidth < 1440) {
+    return { width: 12, height: 15 };
+  }
+  // LARGE for desktop (1440px+): comfortable reading
+  return { width: 15, height: 18 };
+}
+
 const DEFAULT_CELL_WIDTH = 16;
 const DEFAULT_CELL_HEIGHT = 20;
 
@@ -70,8 +107,6 @@ export class CanvasSequenceGridRenderer {
   constructor(options: SequenceGridOptions) {
     this.canvas = options.canvas;
     this.theme = options.theme;
-    this.cellWidth = options.cellWidth ?? DEFAULT_CELL_WIDTH;
-    this.cellHeight = options.cellHeight ?? DEFAULT_CELL_HEIGHT;
     this.scanlines = options.scanlines ?? true;
     this.glow = options.glow ?? false;
     this.postProcess = options.postProcess;
@@ -79,6 +114,16 @@ export class CanvasSequenceGridRenderer {
 
     // Get device pixel ratio for high-DPI
     this.dpr = window.devicePixelRatio || 1;
+
+    // Use responsive cell sizes if not explicitly provided
+    if (options.cellWidth !== undefined && options.cellHeight !== undefined) {
+      this.cellWidth = options.cellWidth;
+      this.cellHeight = options.cellHeight;
+    } else {
+      const responsiveSize = getResponsiveCellSize(this.canvas.clientWidth);
+      this.cellWidth = responsiveSize.width;
+      this.cellHeight = responsiveSize.height;
+    }
 
     // Get context
     const ctx = this.canvas.getContext('2d', { alpha: false });
@@ -116,6 +161,24 @@ export class CanvasSequenceGridRenderer {
     const width = rect.width;
     const height = rect.height;
 
+    // Recalculate responsive cell sizes
+    const responsiveSize = getResponsiveCellSize(width);
+    const cellSizeChanged =
+      this.cellWidth !== responsiveSize.width ||
+      this.cellHeight !== responsiveSize.height;
+
+    if (cellSizeChanged) {
+      this.cellWidth = responsiveSize.width;
+      this.cellHeight = responsiveSize.height;
+
+      // Rebuild glyph atlas with new cell sizes
+      this.glyphAtlas = new GlyphAtlas(this.theme, {
+        cellWidth: this.cellWidth,
+        cellHeight: this.cellHeight,
+        devicePixelRatio: this.dpr,
+      });
+    }
+
     // Set canvas size with DPI scaling
     this.canvas.width = width * this.dpr;
     this.canvas.height = height * this.dpr;
@@ -129,10 +192,12 @@ export class CanvasSequenceGridRenderer {
     // Create/resize back buffer
     this.createBackBuffer(width, height);
 
-    // Update scroller viewport
+    // Update scroller viewport and cell sizes
     this.scroller.updateOptions({
       viewportWidth: width,
       viewportHeight: height,
+      itemWidth: this.cellWidth,
+      itemHeight: this.cellHeight,
     });
 
     // Mark as needing full redraw
@@ -385,6 +450,28 @@ export class CanvasSequenceGridRenderer {
    */
   handleWheel(event: WheelEvent): void {
     this.scroller.handleWheel(event);
+  }
+
+  /**
+   * Handle touch start (for mobile scrolling)
+   */
+  handleTouchStart(event: TouchEvent): void {
+    this.scroller.handleTouchStart(event);
+  }
+
+  /**
+   * Handle touch move (for mobile scrolling)
+   */
+  handleTouchMove(event: TouchEvent): void {
+    this.scroller.handleTouchMove(event);
+    this.scheduleRender();
+  }
+
+  /**
+   * Handle touch end (for mobile momentum)
+   */
+  handleTouchEnd(event: TouchEvent): void {
+    this.scroller.handleTouchEnd(event);
   }
 
   /**

@@ -104,12 +104,33 @@ export function useSequenceGrid(options: UseSequenceGridOptions): UseSequenceGri
       setVisibleRange(renderer.getVisibleRange());
     };
 
+    // Handle touch events for mobile scrolling
+    const handleTouchStart = (e: TouchEvent) => {
+      renderer.handleTouchStart(e);
+    };
+
+    const handleTouchMove = (e: TouchEvent) => {
+      renderer.handleTouchMove(e);
+      setScrollPosition(renderer.getScrollPosition());
+      setVisibleRange(renderer.getVisibleRange());
+    };
+
+    const handleTouchEnd = (e: TouchEvent) => {
+      renderer.handleTouchEnd(e);
+    };
+
     canvas.addEventListener('wheel', handleWheel, { passive: false });
+    canvas.addEventListener('touchstart', handleTouchStart, { passive: true });
+    canvas.addEventListener('touchmove', handleTouchMove, { passive: false });
+    canvas.addEventListener('touchend', handleTouchEnd, { passive: true });
 
     // Cleanup
     return () => {
       resizeObserver.disconnect();
       canvas.removeEventListener('wheel', handleWheel);
+      canvas.removeEventListener('touchstart', handleTouchStart);
+      canvas.removeEventListener('touchmove', handleTouchMove);
+      canvas.removeEventListener('touchend', handleTouchEnd);
       renderer.dispose();
       rendererRef.current = null;
     };

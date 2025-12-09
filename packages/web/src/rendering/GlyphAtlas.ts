@@ -48,9 +48,22 @@ const DEFAULT_OPTIONS: GlyphAtlasOptions = {
   cellWidth: 16,
   cellHeight: 20,
   fontFamily: "'JetBrains Mono', 'Fira Code', 'Consolas', monospace",
-  fontSize: 14,
+  fontSize: 14, // Will be auto-calculated if not specified
   devicePixelRatio: 1,
 };
+
+// Calculate optimal font size for given cell dimensions
+// For tiny cells, we skip text entirely and just show colored blocks
+function calculateOptimalFontSize(cellWidth: number, cellHeight: number): number {
+  // For pixel-level cells (<=5px), don't bother with text
+  if (cellWidth <= 5 || cellHeight <= 5) {
+    return 0; // Signal to skip text rendering
+  }
+  // Use smaller of width-based or height-based calculation
+  const heightBased = Math.floor(cellHeight * 0.7);
+  const widthBased = Math.floor(cellWidth * 0.85);
+  return Math.max(6, Math.min(heightBased, widthBased)); // Min 6px for any legibility
+}
 
 export class GlyphAtlas {
   private canvas: HTMLCanvasElement | OffscreenCanvas;
@@ -68,7 +81,12 @@ export class GlyphAtlas {
   private atlasHeight: number;
 
   constructor(theme: Theme, options: Partial<GlyphAtlasOptions> = {}) {
-    this.options = { ...DEFAULT_OPTIONS, ...options };
+    // Auto-calculate font size if not explicitly provided
+    const cellWidth = options.cellWidth ?? DEFAULT_OPTIONS.cellWidth;
+    const cellHeight = options.cellHeight ?? DEFAULT_OPTIONS.cellHeight;
+    const fontSize = options.fontSize ?? calculateOptimalFontSize(cellWidth, cellHeight);
+
+    this.options = { ...DEFAULT_OPTIONS, ...options, fontSize };
     this.theme = theme;
     this.dpr = options.devicePixelRatio ?? (typeof window !== 'undefined' ? window.devicePixelRatio : 1);
 
@@ -149,16 +167,18 @@ export class GlyphAtlas {
     const width = this.options.cellWidth * this.dpr;
     const height = this.options.cellHeight * this.dpr;
 
-    // Draw background
+    // Draw background (always - this is the primary visual for tiny cells)
     this.ctx.fillStyle = colors.bg;
     this.ctx.fillRect(x, y, width, height);
 
-    // Draw character
-    this.ctx.font = `bold ${this.options.fontSize * this.dpr}px ${this.options.fontFamily}`;
-    this.ctx.fillStyle = colors.fg;
-    this.ctx.textAlign = 'center';
-    this.ctx.textBaseline = 'middle';
-    this.ctx.fillText(char, x + width / 2, y + height / 2);
+    // Only draw character if fontSize > 0 (skip for pixel-level cells)
+    if (this.options.fontSize > 0) {
+      this.ctx.font = `bold ${this.options.fontSize * this.dpr}px ${this.options.fontFamily}`;
+      this.ctx.fillStyle = colors.fg;
+      this.ctx.textAlign = 'center';
+      this.ctx.textBaseline = 'middle';
+      this.ctx.fillText(char, x + width / 2, y + height / 2);
+    }
   }
 
   /**

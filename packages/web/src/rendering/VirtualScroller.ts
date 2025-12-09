@@ -230,6 +230,15 @@ export class VirtualScroller {
     this.scrollTo(this.maxScrollX, this.maxScrollY);
   }
 
+  // Touch tracking state
+  private touchStartX = 0;
+  private touchStartY = 0;
+  private touchStartScrollX = 0;
+  private touchStartScrollY = 0;
+  private lastTouchX = 0;
+  private lastTouchY = 0;
+  private lastTouchTime = 0;
+
   /**
    * Handle wheel event
    */
@@ -259,6 +268,67 @@ export class VirtualScroller {
     } else {
       // Direct scrolling
       this.scrollBy(deltaX, deltaY);
+    }
+  }
+
+  /**
+   * Handle touch start
+   */
+  handleTouchStart(event: TouchEvent): void {
+    if (event.touches.length !== 1) return;
+
+    const touch = event.touches[0];
+    this.touchStartX = touch.clientX;
+    this.touchStartY = touch.clientY;
+    this.touchStartScrollX = this.state.scrollX;
+    this.touchStartScrollY = this.state.scrollY;
+    this.lastTouchX = touch.clientX;
+    this.lastTouchY = touch.clientY;
+    this.lastTouchTime = performance.now();
+
+    // Stop any ongoing momentum
+    this.stopMomentum();
+  }
+
+  /**
+   * Handle touch move
+   */
+  handleTouchMove(event: TouchEvent): void {
+    if (event.touches.length !== 1) return;
+    event.preventDefault(); // Prevent native scroll
+
+    const touch = event.touches[0];
+    const now = performance.now();
+    const dt = Math.max(1, now - this.lastTouchTime);
+
+    // Calculate velocity for momentum
+    const vx = (this.lastTouchX - touch.clientX) / dt * 16; // Scale to ~60fps
+    const vy = (this.lastTouchY - touch.clientY) / dt * 16;
+
+    // Apply scroll (inverted - drag down = scroll up)
+    const deltaX = this.touchStartX - touch.clientX;
+    const deltaY = this.touchStartY - touch.clientY;
+    this.scrollTo(
+      this.touchStartScrollX + deltaX,
+      this.touchStartScrollY + deltaY
+    );
+
+    // Update tracking
+    this.state.velocityX = vx;
+    this.state.velocityY = vy;
+    this.lastTouchX = touch.clientX;
+    this.lastTouchY = touch.clientY;
+    this.lastTouchTime = now;
+  }
+
+  /**
+   * Handle touch end
+   */
+  handleTouchEnd(event: TouchEvent): void {
+    // Start momentum if velocity is significant
+    const speed = Math.abs(this.state.velocityX) + Math.abs(this.state.velocityY);
+    if (this.options.momentum && speed > 2) {
+      this.startMomentum();
     }
   }
 
