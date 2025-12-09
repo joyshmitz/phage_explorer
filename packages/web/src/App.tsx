@@ -254,16 +254,8 @@ export default function App(): JSX.Element {
           hints: footerHints,
         }}
       >
-        {/* Compact database status - expands when loading/error */}
-        {repository && !error ? (
-          <div className="db-status-bar" aria-label="Database status">
-            <span className="db-status-icon">✓</span>
-            <span className="db-status-text">
-              SQLite loaded via sql.js. Data flows into the shared Zustand store.
-            </span>
-            {isCached && <span className="badge badge-small">Cached</span>}
-          </div>
-        ) : (
+        {/* Database loading/error status - only shown when needed */}
+        {!repository || error ? (
           <section className="panel panel-compact" aria-label="Repository status">
             <div className="panel-header">
               <h2>Database</h2>
