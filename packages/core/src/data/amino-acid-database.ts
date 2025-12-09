@@ -5,7 +5,8 @@
  * Used for educational HUD display and detailed amino acid information.
  */
 
-import type { AminoAcidProperty } from '../types';
+import type { AminoAcid, AminoAcidProperty } from '../types';
+import { CODON_TABLE } from '../codons';
 
 /**
  * Detailed amino acid information for educational display
