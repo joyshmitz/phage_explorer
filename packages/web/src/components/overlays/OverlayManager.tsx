@@ -26,6 +26,7 @@ import { CommandPalette } from './CommandPalette';
 import { CRISPROverlay } from './CRISPROverlay';
 import { AnomalyOverlay } from './AnomalyOverlay';
 import { GelOverlay } from './GelOverlay';
+import { NonBDNAOverlay } from './NonBDNAOverlay';
 
 interface OverlayManagerProps {
   repository: PhageRepository | null;
@@ -52,6 +53,7 @@ export function OverlayManager({ repository, currentPhage }: OverlayManagerProps
       <HGTOverlay repository={repository} currentPhage={currentPhage} />
       <CRISPROverlay repository={repository} phage={currentPhage} />
       <GelOverlay repository={repository} currentPhage={currentPhage} />
+      <NonBDNAOverlay repository={repository} currentPhage={currentPhage} />
       <CommandPalette />
     </>
   );
