@@ -28,6 +28,12 @@ export interface SequenceGridOptions {
   postProcess?: PostProcessPipeline;
   /** Reduced motion flag */
   reducedMotion?: boolean;
+  /** Initial zoom scale (0.1 to 4.0, default 1.0) */
+  zoomScale?: number;
+  /** Enable pinch-to-zoom on mobile */
+  enablePinchZoom?: boolean;
+  /** Callback when zoom changes */
+  onZoomChange?: (scale: number, preset: ZoomPreset) => void;
 }
 
 export interface GridRenderState {
@@ -39,41 +45,85 @@ export interface GridRenderState {
   diffMask: Uint8Array | null;
 }
 
-// Responsive cell sizes based on viewport width
-// EXTREMELY AGGRESSIVE for mobile: pure color visualization, no text
-// Each cell is just a colored pixel representing a nucleotide
-function getResponsiveCellSize(viewportWidth: number): { width: number; height: number } {
-  // PIXEL-LEVEL for tiny mobile (<320px): ~100+ chars per row
-  // Pure color blocks, no text at all
-  if (viewportWidth < 320) {
-    return { width: 3, height: 3 };
-  }
-  // ULTRA-DENSE for small mobile (<375px): ~90+ chars per row
+// Zoom level presets for mobile sequence grid
+// Users can pinch-to-zoom between these levels
+export type ZoomLevel = 'genome' | 'region' | 'codon' | 'base';
+
+export interface ZoomPreset {
+  cellWidth: number;
+  cellHeight: number;
+  showText: boolean;
+  showAA: boolean;  // Show amino acid row below DNA
+  label: string;
+}
+
+// Zoom presets - from ultra-dense genome overview to single-base detail
+const ZOOM_PRESETS: Record<ZoomLevel, ZoomPreset> = {
+  genome: { cellWidth: 1, cellHeight: 1, showText: false, showAA: false, label: 'Genome' },
+  region: { cellWidth: 3, cellHeight: 3, showText: false, showAA: false, label: 'Region' },
+  codon: { cellWidth: 8, cellHeight: 10, showText: true, showAA: true, label: 'Codon' },
+  base: { cellWidth: 16, cellHeight: 20, showText: true, showAA: true, label: 'Base' },
+};
+
+// Get zoom preset based on scale factor (0.25 to 4.0)
+function getZoomPresetForScale(scale: number): ZoomPreset {
+  if (scale <= 0.3) return ZOOM_PRESETS.genome;
+  if (scale <= 0.6) return ZOOM_PRESETS.region;
+  if (scale <= 1.5) return ZOOM_PRESETS.codon;
+  return ZOOM_PRESETS.base;
+}
+
+// Orientation detection for mobile devices
+function isLandscape(viewportWidth: number, viewportHeight: number): boolean {
+  return viewportWidth > viewportHeight;
+}
+
+// Responsive BASE cell sizes - these get multiplied by zoom scale
+// Mobile-first with orientation awareness for maximum utility
+function getResponsiveCellSize(
+  viewportWidth: number,
+  viewportHeight?: number
+): { width: number; height: number } {
+  const height = viewportHeight ?? viewportWidth * 0.6; // Assume portrait if no height
+  const landscape = isLandscape(viewportWidth, height);
+
+  // Mobile devices (< 768px width in portrait, < 1024px in landscape)
   if (viewportWidth < 375) {
-    return { width: 3, height: 4 };
+    // Tiny phones - use micro-text optimized cells
+    return landscape
+      ? { width: 5, height: 6 }   // Landscape: dense, many columns
+      : { width: 6, height: 8 };  // Portrait: slightly larger for touch
   }
-  // SUPER-COMPACT for mobile (<480px): ~80+ chars per row
   if (viewportWidth < 480) {
-    return { width: 4, height: 5 };
+    // Small phones (iPhone SE, etc.)
+    return landscape
+      ? { width: 5, height: 6 }
+      : { width: 7, height: 9 };
   }
-  // COMPACT for large phones (<640px): ~75+ chars per row
   if (viewportWidth < 640) {
-    return { width: 5, height: 6 };
+    // Standard phones
+    return landscape
+      ? { width: 6, height: 7 }
+      : { width: 7, height: 9 };
   }
-  // DENSE for small tablets (<768px): ~60+ chars per row
   if (viewportWidth < 768) {
-    return { width: 7, height: 8 };
+    // Large phones / small tablets portrait
+    return landscape
+      ? { width: 6, height: 8 }
+      : { width: 8, height: 10 };
   }
-  // MEDIUM for tablets (<1024px): ~55+ chars per row
   if (viewportWidth < 1024) {
-    return { width: 9, height: 11 };
+    // Tablets
+    return landscape
+      ? { width: 8, height: 10 }
+      : { width: 10, height: 12 };
   }
-  // STANDARD for laptops (<1440px): ~50+ chars per row
   if (viewportWidth < 1440) {
-    return { width: 12, height: 15 };
+    // Small laptops / tablets landscape
+    return { width: 12, height: 14 };
   }
-  // LARGE for desktop (1440px+): comfortable reading
-  return { width: 15, height: 18 };
+  // Large screens - full readability
+  return { width: 16, height: 20 };
 }
 
 const DEFAULT_CELL_WIDTH = 16;
@@ -89,9 +139,20 @@ export class CanvasSequenceGridRenderer {
   private glyphAtlas: GlyphAtlas;
   private scroller: VirtualScroller;
 
-  private cellWidth: number;
+  private baseCellWidth: number;  // Base cell size before zoom
+  private baseCellHeight: number;
+  private cellWidth: number;      // Effective cell size after zoom
   private cellHeight: number;
   private dpr: number;
+  private zoomScale: number = 1.0;
+  private currentZoomPreset: ZoomPreset;
+  private enablePinchZoom: boolean;
+  private onZoomChange?: (scale: number, preset: ZoomPreset) => void;
+
+  // Pinch-to-zoom state
+  private pinchStartDistance: number = 0;
+  private pinchStartScale: number = 1.0;
+  private isPinching: boolean = false;
 
   private currentState: GridRenderState | null = null;
   private dirtyRegions: DOMRect[] = [];
@@ -111,26 +172,39 @@ export class CanvasSequenceGridRenderer {
     this.glow = options.glow ?? false;
     this.postProcess = options.postProcess;
     this.reducedMotion = options.reducedMotion ?? false;
+    this.enablePinchZoom = options.enablePinchZoom ?? true;
+    this.onZoomChange = options.onZoomChange;
 
     // Get device pixel ratio for high-DPI
     this.dpr = window.devicePixelRatio || 1;
 
-    // Use responsive cell sizes if not explicitly provided
+    // Initialize zoom scale
+    this.zoomScale = options.zoomScale ?? 1.0;
+    this.currentZoomPreset = getZoomPresetForScale(this.zoomScale);
+
+    // Use responsive BASE cell sizes (before zoom) with orientation awareness
     if (options.cellWidth !== undefined && options.cellHeight !== undefined) {
-      this.cellWidth = options.cellWidth;
-      this.cellHeight = options.cellHeight;
+      this.baseCellWidth = options.cellWidth;
+      this.baseCellHeight = options.cellHeight;
     } else {
-      const responsiveSize = getResponsiveCellSize(this.canvas.clientWidth);
-      this.cellWidth = responsiveSize.width;
-      this.cellHeight = responsiveSize.height;
+      const responsiveSize = getResponsiveCellSize(
+        this.canvas.clientWidth,
+        this.canvas.clientHeight
+      );
+      this.baseCellWidth = responsiveSize.width;
+      this.baseCellHeight = responsiveSize.height;
     }
+
+    // Apply zoom to get effective cell sizes
+    this.cellWidth = Math.max(1, Math.round(this.baseCellWidth * this.zoomScale));
+    this.cellHeight = Math.max(1, Math.round(this.baseCellHeight * this.zoomScale));
 
     // Get context
     const ctx = this.canvas.getContext('2d', { alpha: false });
     if (!ctx) throw new Error('Failed to get 2D context');
     this.ctx = ctx;
 
-    // Create glyph atlas
+    // Create glyph atlas with effective (zoomed) cell sizes
     this.glyphAtlas = new GlyphAtlas(this.theme, {
       cellWidth: this.cellWidth,
       cellHeight: this.cellHeight,
@@ -161,23 +235,13 @@ export class CanvasSequenceGridRenderer {
     const width = rect.width;
     const height = rect.height;
 
-    // Recalculate responsive cell sizes
-    const responsiveSize = getResponsiveCellSize(width);
-    const cellSizeChanged =
-      this.cellWidth !== responsiveSize.width ||
-      this.cellHeight !== responsiveSize.height;
+    // Recalculate responsive BASE cell sizes with orientation awareness
+    const responsiveSize = getResponsiveCellSize(width, height);
+    this.baseCellWidth = responsiveSize.width;
+    this.baseCellHeight = responsiveSize.height;
 
-    if (cellSizeChanged) {
-      this.cellWidth = responsiveSize.width;
-      this.cellHeight = responsiveSize.height;
-
-      // Rebuild glyph atlas with new cell sizes
-      this.glyphAtlas = new GlyphAtlas(this.theme, {
-        cellWidth: this.cellWidth,
-        cellHeight: this.cellHeight,
-        devicePixelRatio: this.dpr,
-      });
-    }
+    // Apply zoom to get effective cell sizes
+    this.updateCellSizes();
 
     // Set canvas size with DPI scaling
     this.canvas.width = width * this.dpr;
@@ -203,6 +267,26 @@ export class CanvasSequenceGridRenderer {
     // Mark as needing full redraw
     this.needsFullRedraw = true;
     this.scheduleRender();
+  }
+
+  /**
+   * Update effective cell sizes based on zoom scale
+   */
+  private updateCellSizes(): void {
+    const newCellWidth = Math.max(1, Math.round(this.baseCellWidth * this.zoomScale));
+    const newCellHeight = Math.max(1, Math.round(this.baseCellHeight * this.zoomScale));
+
+    if (newCellWidth !== this.cellWidth || newCellHeight !== this.cellHeight) {
+      this.cellWidth = newCellWidth;
+      this.cellHeight = newCellHeight;
+
+      // Rebuild glyph atlas with new cell sizes
+      this.glyphAtlas = new GlyphAtlas(this.theme, {
+        cellWidth: this.cellWidth,
+        cellHeight: this.cellHeight,
+        devicePixelRatio: this.dpr,
+      });
+    }
   }
 
   /**
@@ -287,6 +371,121 @@ export class CanvasSequenceGridRenderer {
     this.postProcess = pipeline;
     this.needsFullRedraw = true;
     this.scheduleRender();
+  }
+
+  /**
+   * Set zoom scale (0.1 to 4.0)
+   * - 0.1-0.3: Ultra-dense genome view (1-3px cells)
+   * - 0.3-0.6: Region view (3-7px cells)
+   * - 0.6-1.5: Codon view (8-15px cells, text visible)
+   * - 1.5-4.0: Base view (16-48px cells, large text)
+   */
+  setZoomScale(scale: number): void {
+    const clampedScale = Math.max(0.1, Math.min(4.0, scale));
+    if (clampedScale === this.zoomScale) return;
+
+    this.zoomScale = clampedScale;
+    this.currentZoomPreset = getZoomPresetForScale(clampedScale);
+
+    // Update cell sizes based on new zoom
+    this.updateCellSizes();
+
+    // Update scroller with new cell sizes
+    this.scroller.updateOptions({
+      itemWidth: this.cellWidth,
+      itemHeight: this.cellHeight,
+    });
+
+    // Notify listeners
+    if (this.onZoomChange) {
+      this.onZoomChange(this.zoomScale, this.currentZoomPreset);
+    }
+
+    this.needsFullRedraw = true;
+    this.scheduleRender();
+  }
+
+  /**
+   * Get current zoom scale
+   */
+  getZoomScale(): number {
+    return this.zoomScale;
+  }
+
+  /**
+   * Get current zoom preset
+   */
+  getZoomPreset(): ZoomPreset {
+    return this.currentZoomPreset;
+  }
+
+  /**
+   * Zoom in by a factor
+   */
+  zoomIn(factor = 1.3): void {
+    this.setZoomScale(this.zoomScale * factor);
+  }
+
+  /**
+   * Zoom out by a factor
+   */
+  zoomOut(factor = 1.3): void {
+    this.setZoomScale(this.zoomScale / factor);
+  }
+
+  /**
+   * Set zoom to a specific preset level
+   */
+  setZoomLevel(level: ZoomLevel): void {
+    const presetScales: Record<ZoomLevel, number> = {
+      genome: 0.15,
+      region: 0.45,
+      codon: 1.0,
+      base: 2.0,
+    };
+    this.setZoomScale(presetScales[level]);
+  }
+
+  /**
+   * Handle pinch gesture start (two-finger touch)
+   */
+  handlePinchStart(event: TouchEvent): void {
+    if (!this.enablePinchZoom || event.touches.length !== 2) return;
+
+    this.isPinching = true;
+    this.pinchStartScale = this.zoomScale;
+    this.pinchStartDistance = this.getTouchDistance(event.touches[0], event.touches[1]);
+    this.scroller.stopMomentum(); // Stop any ongoing scroll
+  }
+
+  /**
+   * Handle pinch gesture move
+   */
+  handlePinchMove(event: TouchEvent): void {
+    if (!this.isPinching || event.touches.length !== 2) return;
+    event.preventDefault();
+
+    const currentDistance = this.getTouchDistance(event.touches[0], event.touches[1]);
+    const scaleRatio = currentDistance / this.pinchStartDistance;
+    const newScale = this.pinchStartScale * scaleRatio;
+
+    this.setZoomScale(newScale);
+  }
+
+  /**
+   * Handle pinch gesture end
+   */
+  handlePinchEnd(): void {
+    this.isPinching = false;
+  }
+
+  /**
+   * Calculate distance between two touch points
+   */
+  private getTouchDistance(touch1: Touch, touch2: Touch): number {
+    const dx = touch2.clientX - touch1.clientX;
+    const dy = touch2.clientY - touch1.clientY;
+    return Math.sqrt(dx * dx + dy * dy);
   }
 
   /**
@@ -479,24 +678,44 @@ export class CanvasSequenceGridRenderer {
   }
 
   /**
-   * Handle touch start (for mobile scrolling)
+   * Handle touch start (for mobile scrolling or pinch-to-zoom)
    */
   handleTouchStart(event: TouchEvent): void {
-    this.scroller.handleTouchStart(event);
+    // Two fingers = pinch-to-zoom
+    if (event.touches.length === 2) {
+      this.handlePinchStart(event);
+      return;
+    }
+    // One finger = scroll
+    if (event.touches.length === 1) {
+      this.scroller.handleTouchStart(event);
+    }
   }
 
   /**
-   * Handle touch move (for mobile scrolling)
+   * Handle touch move (for mobile scrolling or pinch-to-zoom)
    */
   handleTouchMove(event: TouchEvent): void {
-    this.scroller.handleTouchMove(event);
-    this.scheduleRender();
+    // Handle pinch
+    if (this.isPinching && event.touches.length === 2) {
+      this.handlePinchMove(event);
+      return;
+    }
+    // Handle scroll
+    if (!this.isPinching && event.touches.length === 1) {
+      this.scroller.handleTouchMove(event);
+      this.scheduleRender();
+    }
   }
 
   /**
-   * Handle touch end (for mobile momentum)
+   * Handle touch end (for mobile momentum or end pinch)
    */
   handleTouchEnd(event: TouchEvent): void {
+    if (this.isPinching) {
+      this.handlePinchEnd();
+      return;
+    }
     this.scroller.handleTouchEnd(event);
   }
 

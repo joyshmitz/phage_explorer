@@ -62,7 +62,7 @@ const DEFAULT_OPTIONS: Required<VirtualScrollerOptions> = {
   viewportHeight: 600,
   overscan: 3,
   momentum: true,
-  friction: 0.95,
+  friction: 0.92, // Lower friction = more natural iOS-like feel
 };
 
 export class VirtualScroller {
@@ -301,9 +301,14 @@ export class VirtualScroller {
     const now = performance.now();
     const dt = Math.max(1, now - this.lastTouchTime);
 
-    // Calculate velocity for momentum
-    const vx = (this.lastTouchX - touch.clientX) / dt * 16; // Scale to ~60fps
-    const vy = (this.lastTouchY - touch.clientY) / dt * 16;
+    // Calculate instantaneous velocity (scale to ~60fps frame time)
+    const instantVx = (this.lastTouchX - touch.clientX) / dt * 16.67;
+    const instantVy = (this.lastTouchY - touch.clientY) / dt * 16.67;
+
+    // Smooth velocity with exponential moving average for better feel
+    const smoothing = 0.4;
+    const vx = this.state.velocityX * (1 - smoothing) + instantVx * smoothing;
+    const vy = this.state.velocityY * (1 - smoothing) + instantVy * smoothing;
 
     // Apply scroll (inverted - drag down = scroll up)
     const deltaX = this.touchStartX - touch.clientX;
