@@ -156,7 +156,7 @@ function initPackaging(params?: Record<string, number | boolean | string>): Pack
     genomeKb: 50, capsidRadius: 30, ionic: 50, mode: 'cos',
     ...params,
   };
-  return {
+  const initial: PackagingMotorState & { history: Array<{ time: number; fill: number; pressure: number; force: number }> } = {
     type: 'packaging-motor',
     time: 0,
     running: true,
@@ -166,7 +166,14 @@ function initPackaging(params?: Record<string, number | boolean | string>): Pack
     pressure: 5,
     force: 20,
     stallProbability: 0,
+    history: [{
+      time: 0,
+      fill: 0.1,
+      pressure: 5,
+      force: 20,
+    }],
   };
+  return initial;
 }
 
 function initInfection(params?: Record<string, number | boolean | string>): InfectionKineticsState {
@@ -431,7 +438,25 @@ function stepPackaging(state: PackagingMotorState, dt: number): PackagingMotorSt
   const pressure = clamp(5 + 30 * fill + 200 * bendingEnergy * 1e-6 + 80 * electrostatic * 1e-3, 0, 80) * modeFactor;
   const force = clamp(10 + 150 * fill + pressure * 0.8, 0, 200);
 
-  return { ...state, time: state.time + dt, fillFraction: fill, pressure, force, stallProbability: 0 };
+  const history = (state as any).history as Array<{ time: number; fill: number; pressure: number; force: number }> | undefined;
+  const nextHistory = [...(history ?? []), {
+    time: state.time + dt,
+    fill,
+    pressure,
+    force,
+  }].slice(-600);
+
+  const nextState: PackagingMotorState & { history: typeof nextHistory } = {
+    ...state,
+    time: state.time + dt,
+    fillFraction: fill,
+    pressure,
+    force,
+    stallProbability: 0,
+    history: nextHistory,
+  };
+
+  return nextState;
 }
 
 function stepInfection(state: InfectionKineticsState, dt: number): InfectionKineticsState {
