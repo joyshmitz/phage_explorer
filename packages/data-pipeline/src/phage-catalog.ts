@@ -27,7 +27,7 @@ export const PHAGE_CATALOG: PhageCatalogEntry[] = [
     genomeType: 'dsDNA',
     baltimoreGroup: 'I',
     description: 'Lambda phage is a temperate bacteriophage that infects E. coli. It has an icosahedral capsid and a long, flexible tail. Famous for its role in molecular biology research.',
-    pdbIds: ['7VI9', '8K35'],
+    pdbIds: ['7VI9'],  // 8K35 no longer available on RCSB
   },
   {
     slug: 't4',
