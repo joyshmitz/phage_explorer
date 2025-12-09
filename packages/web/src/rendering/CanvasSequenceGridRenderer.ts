@@ -336,9 +336,11 @@ export class CanvasSequenceGridRenderer {
       this.postProcess.process(this.canvas);
     }
 
-    // Copy back buffer to main canvas
+    // Copy back buffer to main canvas (reset transform to avoid double-scaling)
     if (this.backBuffer && this.backCtx) {
+      this.ctx.setTransform(1, 0, 0, 1, 0, 0);
       this.ctx.drawImage(this.backBuffer, 0, 0);
+      this.ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0); // Restore DPR scaling
     }
 
     // Performance tracking
@@ -408,11 +410,15 @@ export class CanvasSequenceGridRenderer {
               ctx.fillStyle = this.theme.colors.diffHighlight ?? '#facc15';
           }
           ctx.fillRect(x, rowY, cellWidth, cellHeight);
-          ctx.font = `bold ${14}px 'JetBrains Mono', monospace`;
-          ctx.fillStyle = '#ffffff';
-          ctx.textAlign = 'center';
-          ctx.textBaseline = 'middle';
-          ctx.fillText(char, x + cellWidth / 2, rowY + cellHeight / 2);
+          // Only draw text if cells are large enough
+          const fontSize = Math.max(0, Math.floor(cellHeight * 0.7));
+          if (fontSize >= 6) {
+            ctx.font = `bold ${fontSize}px 'JetBrains Mono', monospace`;
+            ctx.fillStyle = '#ffffff';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(char, x + cellWidth / 2, rowY + cellHeight / 2);
+          }
         } else {
           drawMethod(ctx, char, x, rowY, cellWidth, cellHeight);
         }
