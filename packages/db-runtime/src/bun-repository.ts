@@ -15,6 +15,20 @@ import type { PhageRepository, CacheEntry, TropismPrediction } from './types';
 import { CHUNK_SIZE } from './types';
 import { readFileSync, writeFileSync, existsSync } from 'fs';
 
+/**
+ * Safely parse JSON with fallback default value
+ * Prevents crashes from corrupted database JSON fields
+ */
+function safeJsonParse<T>(json: string | null | undefined, fallback: T): T {
+  if (!json) return fallback;
+  try {
+    return JSON.parse(json) as T;
+  } catch {
+    console.warn('Failed to parse JSON from database:', json.substring(0, 100));
+    return fallback;
+  }
+}
+
 export class BunSqliteRepository implements PhageRepository {
   private sqlite: Database;
   private db: ReturnType<typeof drizzle>;
@@ -145,7 +159,7 @@ export class BunSqliteRepository implements PhageRepository {
       description: phage.description,
       baltimoreGroup: phage.baltimoreGroup,
       genomeType: phage.genomeType,
-      pdbIds: phage.pdbIds ? JSON.parse(phage.pdbIds) : [],
+      pdbIds: safeJsonParse<string[]>(phage.pdbIds, []),
       genes: geneList,
       codonUsage: usage,
       hasModel,
@@ -255,8 +269,8 @@ export class BunSqliteRepository implements PhageRepository {
     }
 
     return {
-      aaCounts: JSON.parse(result[0].aaCounts),
-      codonCounts: JSON.parse(result[0].codonCounts),
+      aaCounts: safeJsonParse<Record<string, number>>(result[0].aaCounts, {}),
+      codonCounts: safeJsonParse<Record<string, number>>(result[0].codonCounts, {}),
     };
   }
 
@@ -293,7 +307,7 @@ export class BunSqliteRepository implements PhageRepository {
 
     const parsed = rows.map(r => ({
       ...r,
-      evidence: r.evidence ? JSON.parse(r.evidence) : [],
+      evidence: safeJsonParse<string[]>(r.evidence, []),
     }));
 
     this.cache.set(cacheKey, { data: parsed, timestamp: Date.now() });
@@ -311,7 +325,7 @@ export class BunSqliteRepository implements PhageRepository {
       return null;
     }
 
-    return JSON.parse(result[0].asciiFrames);
+    return safeJsonParse<string[]>(result[0].asciiFrames, []);
   }
 
   async prefetchAround(index: number, radius: number): Promise<void> {

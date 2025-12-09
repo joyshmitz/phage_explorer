@@ -89,9 +89,12 @@ export function useSimulation(simId: SimulationId): UseSimulationResult {
 
   // Load metadata on mount
   useEffect(() => {
+    mountedRef.current = true;
     const orchestrator = getOrchestrator();
     orchestrator.getSimulationMetadata(simId)
       .then(meta => {
+        // Check if component is still mounted before updating state
+        if (!mountedRef.current) return;
         setMetadata({ name: meta.name, description: meta.description });
         setParameters(meta.parameters);
         // Initialize default params
@@ -102,6 +105,7 @@ export function useSimulation(simId: SimulationId): UseSimulationResult {
         paramsRef.current = defaults;
       })
       .catch(err => {
+        if (!mountedRef.current) return;
         setError(`Failed to load simulation metadata: ${err.message}`);
       });
 
@@ -128,6 +132,8 @@ export function useSimulation(simId: SimulationId): UseSimulationResult {
         params: mergedParams,
         seed: Date.now(),
       });
+      // Check if component is still mounted before updating state
+      if (!mountedRef.current) return;
       setState(newState);
       setIsRunning(false);
       if (animationRef.current) {
@@ -135,9 +141,12 @@ export function useSimulation(simId: SimulationId): UseSimulationResult {
         animationRef.current = null;
       }
     } catch (err) {
+      if (!mountedRef.current) return;
       setError(`Failed to initialize simulation: ${(err as Error).message}`);
     } finally {
-      setIsLoading(false);
+      if (mountedRef.current) {
+        setIsLoading(false);
+      }
     }
   }, [simId]);
 

@@ -11,6 +11,20 @@ import type { PhageRepository, CacheEntry } from './types';
 import { CHUNK_SIZE, CACHE_TTL } from './types';
 
 /**
+ * Safely parse JSON with fallback default value
+ * Prevents crashes from corrupted database JSON fields
+ */
+function safeJsonParse<T>(json: string | null | undefined, fallback: T): T {
+  if (!json) return fallback;
+  try {
+    return JSON.parse(json) as T;
+  } catch {
+    console.warn('Failed to parse JSON from database:', json.substring(0, 100));
+    return fallback;
+  }
+}
+
+/**
  * Prepared statement pool for common queries
  */
 interface PreparedStatements {
@@ -197,7 +211,7 @@ export class SqlJsRepository implements PhageRepository {
       description: phage.description,
       baltimoreGroup: phage.baltimoreGroup,
       genomeType: phage.genomeType,
-      pdbIds: phage.pdbIds ? JSON.parse(phage.pdbIds) : [],
+      pdbIds: safeJsonParse<string[]>(phage.pdbIds, []),
       genes: geneList,
       codonUsage: usage,
       hasModel: hasModelFlag,
@@ -290,8 +304,8 @@ export class SqlJsRepository implements PhageRepository {
     }
 
     return {
-      aaCounts: JSON.parse(results[0].aaCounts),
-      codonCounts: JSON.parse(results[0].codonCounts),
+      aaCounts: safeJsonParse<Record<string, number>>(results[0].aaCounts, {}),
+      codonCounts: safeJsonParse<Record<string, number>>(results[0].codonCounts, {}),
     };
   }
 
@@ -322,7 +336,7 @@ export class SqlJsRepository implements PhageRepository {
       return null;
     }
 
-    return JSON.parse(results[0].asciiFrames);
+    return safeJsonParse<string[]>(results[0].asciiFrames, []);
   }
 
   async prefetchAround(index: number, radius: number): Promise<void> {

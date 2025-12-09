@@ -24,14 +24,22 @@ interface WorkerMessage {
 self.onmessage = async (event: MessageEvent<ComparisonJob>) => {
   const job = event.data;
   const message: WorkerMessage = { ok: false };
+
+  // Validate input
+  if (!job || !job.sequenceA || !job.sequenceB) {
+    message.error = 'Invalid comparison job: missing required sequences';
+    (self as any).postMessage(message);
+    return;
+  }
+
   try {
     const result = await compareGenomes(
       job.phageA,
       job.phageB,
       job.sequenceA,
       job.sequenceB,
-      job.genesA,
-      job.genesB,
+      job.genesA ?? [],
+      job.genesB ?? [],
       job.codonUsageA ?? null,
       job.codonUsageB ?? null
     );
@@ -44,10 +52,17 @@ self.onmessage = async (event: MessageEvent<ComparisonJob>) => {
     message.diffPositions = diff.positions;
     message.diffStats = diff.stats;
 
+    // Transfer ArrayBuffer if valid and not empty
+    const transferList: Transferable[] = [];
+    if (diff.mask.buffer && diff.mask.buffer.byteLength > 0) {
+      transferList.push(diff.mask.buffer);
+    }
+
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (self as any).postMessage(message, [diff.mask.buffer]);
+    (self as any).postMessage(message, transferList);
     return;
   } catch (err) {
+    console.error('Comparison worker error:', err);
     message.error = err instanceof Error ? err.message : 'Comparison failed';
   }
   // eslint-disable-next-line @typescript-eslint/no-explicit-any

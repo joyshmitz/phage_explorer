@@ -328,7 +328,17 @@ function runSearchInternal(request: SearchRequest): SearchResponse {
 
 const workerAPI: SearchWorkerAPI = {
   async runSearch(request: SearchRequest): Promise<SearchResponse> {
-    return runSearchInternal(request);
+    try {
+      return runSearchInternal(request);
+    } catch (error) {
+      // Log error for debugging and return empty results instead of crashing worker
+      console.error('Search worker error:', error);
+      return {
+        mode: 'text',
+        query: request.query,
+        hits: [],
+      };
+    }
   },
 };
 

@@ -71,9 +71,20 @@ async function getFromIndexedDB<T>(key: string): Promise<T | null> {
     const store = transaction.objectStore(INDEXEDDB_STORE);
     const request = store.get(key);
 
-    request.onerror = () => reject(request.error);
+    request.onerror = () => {
+      db.close();
+      reject(request.error);
+    };
     request.onsuccess = () => resolve(request.result ?? null);
 
+    transaction.onerror = () => {
+      db.close();
+      reject(transaction.error);
+    };
+    transaction.onabort = () => {
+      db.close();
+      reject(new Error('IndexedDB transaction aborted'));
+    };
     transaction.oncomplete = () => db.close();
   });
 }
@@ -88,7 +99,18 @@ async function setInIndexedDB<T>(key: string, value: T): Promise<void> {
     const store = transaction.objectStore(INDEXEDDB_STORE);
     const request = store.put(value, key);
 
-    request.onerror = () => reject(request.error);
+    request.onerror = () => {
+      db.close();
+      reject(request.error);
+    };
+    transaction.onerror = () => {
+      db.close();
+      reject(transaction.error);
+    };
+    transaction.onabort = () => {
+      db.close();
+      reject(new Error('IndexedDB transaction aborted'));
+    };
     transaction.oncomplete = () => {
       db.close();
       resolve();
@@ -106,7 +128,18 @@ async function deleteFromIndexedDB(key: string): Promise<void> {
     const store = transaction.objectStore(INDEXEDDB_STORE);
     const request = store.delete(key);
 
-    request.onerror = () => reject(request.error);
+    request.onerror = () => {
+      db.close();
+      reject(request.error);
+    };
+    transaction.onerror = () => {
+      db.close();
+      reject(transaction.error);
+    };
+    transaction.onabort = () => {
+      db.close();
+      reject(new Error('IndexedDB transaction aborted'));
+    };
     transaction.oncomplete = () => {
       db.close();
       resolve();
