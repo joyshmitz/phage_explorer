@@ -23,6 +23,9 @@ import { PhasePortraitOverlay } from './PhasePortraitOverlay';
 import { BiasDecompositionOverlay } from './BiasDecompositionOverlay';
 import { HGTOverlay } from './HGTOverlay';
 import { CommandPalette } from './CommandPalette';
+import { CRISPROverlay } from './CRISPROverlay';
+import { AnomalyOverlay } from './AnomalyOverlay';
+import { GelOverlay } from './GelOverlay';
 
 interface OverlayManagerProps {
   repository: PhageRepository | null;
@@ -40,12 +43,15 @@ export function OverlayManager({ repository, currentPhage }: OverlayManagerProps
       <SimulationView />
       <ComparisonOverlay repository={repository} />
       <PackagingPressureOverlay />
+      <AnomalyOverlay repository={repository} currentPhage={currentPhage} />
       <VirionStabilityOverlay />
       <CGROverlay repository={repository} currentPhage={currentPhage} />
       <HilbertOverlay repository={repository} currentPhage={currentPhage} />
       <PhasePortraitOverlay repository={repository} currentPhage={currentPhage} />
       <BiasDecompositionOverlay repository={repository} currentPhage={currentPhage} />
       <HGTOverlay repository={repository} currentPhage={currentPhage} />
+      <CRISPROverlay repository={repository} phage={currentPhage} />
+      <GelOverlay repository={repository} currentPhage={currentPhage} />
       <CommandPalette />
     </>
   );

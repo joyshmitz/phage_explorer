@@ -75,7 +75,7 @@ export interface GenomeTrackHover {
 }
 
 export interface GelBand {
-  position: number; // e.g., bp or kDa
+  size: number; // bp - used for position calculation
   intensity: number; // 0..1
   label?: string;
 }
@@ -84,6 +84,15 @@ export interface GelLane {
   id: string;
   label?: string;
   bands: GelBand[];
+  color?: string;
+}
+
+export interface GelInteraction {
+  laneIndex: number;
+  bandIndex: number;
+  band: GelBand;
+  clientX: number;
+  clientY: number;
 }
 
 // GenomeTrack interaction types
