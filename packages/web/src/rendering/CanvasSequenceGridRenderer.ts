@@ -375,6 +375,13 @@ export class CanvasSequenceGridRenderer {
       ? this.glyphAtlas.drawAminoAcid.bind(this.glyphAtlas)
       : this.glyphAtlas.drawNucleotide.bind(this.glyphAtlas);
 
+    // Pre-calculate diff text settings (avoid setting font on every cell)
+    const diffFontSize = Math.max(0, Math.floor(cellHeight * 0.7));
+    const shouldDrawDiffText = diffFontSize >= 6;
+
+    // Collect diff cells for batch rendering
+    const diffCells: Array<{ x: number; y: number; char: string; fillStyle: string }> = [];
+
     // Render row by row
     for (let row = startRow; row < endRow; row++) {
       const rowY = (row - startRow) * cellHeight + offsetY;
@@ -396,33 +403,46 @@ export class CanvasSequenceGridRenderer {
         }
 
         if (diffCode > 0) {
+          let fillStyle: string;
           switch (diffCode) {
             case 1:
-              ctx.fillStyle = this.theme.colors.diffHighlight ?? '#facc15'; // substitution
+              fillStyle = this.theme.colors.diffHighlight ?? '#facc15'; // substitution
               break;
             case 2:
-              ctx.fillStyle = '#22c55e'; // insertion relative to A
+              fillStyle = '#22c55e'; // insertion relative to A
               break;
             case 3:
-              ctx.fillStyle = '#ef4444'; // deletion from A
+              fillStyle = '#ef4444'; // deletion from A
               break;
             default:
-              ctx.fillStyle = this.theme.colors.diffHighlight ?? '#facc15';
+              fillStyle = this.theme.colors.diffHighlight ?? '#facc15';
           }
+          ctx.fillStyle = fillStyle;
           ctx.fillRect(x, rowY, cellWidth, cellHeight);
-          // Only draw text if cells are large enough
-          const fontSize = Math.max(0, Math.floor(cellHeight * 0.7));
-          if (fontSize >= 6) {
-            ctx.font = `bold ${fontSize}px 'JetBrains Mono', monospace`;
-            ctx.fillStyle = '#ffffff';
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
-            ctx.fillText(char, x + cellWidth / 2, rowY + cellHeight / 2);
+
+          // Collect for batch text rendering
+          if (shouldDrawDiffText) {
+            diffCells.push({ x, y: rowY, char, fillStyle });
           }
         } else {
           drawMethod(ctx, char, x, rowY, cellWidth, cellHeight);
         }
       }
+    }
+
+    // Batch render diff text with proper save/restore
+    if (diffCells.length > 0) {
+      ctx.save();
+      ctx.font = `bold ${diffFontSize}px 'JetBrains Mono', monospace`;
+      ctx.fillStyle = '#ffffff';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+
+      for (const cell of diffCells) {
+        ctx.fillText(cell.char, cell.x + cellWidth / 2, cell.y + cellHeight / 2);
+      }
+
+      ctx.restore();
     }
   }
 
