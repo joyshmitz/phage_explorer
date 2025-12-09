@@ -185,16 +185,19 @@ export function CommandPalette({ commands: customCommands, context: propContext 
   const experienceLevel = usePhageStore((s) => s.experienceLevel) as ExperienceLevel;
   const setExperienceLevel = usePhageStore((s) => s.setExperienceLevel);
   const viewMode = usePhageStore((s) => s.viewMode);
+  const currentPhage = usePhageStore((s) => s.currentPhage);
+  const diffReferenceSequence = usePhageStore((s) => s.diffReferenceSequence);
+  const activeSimulationId = usePhageStore((s) => s.activeSimulationId);
 
   // Merge prop context with inferred context
   const appContext: AppContext = useMemo(() => ({
-    hasPhage: true, // Would come from actual app state
-    viewMode: (viewMode === 'dna' || viewMode === 'aa') ? viewMode : 'dna',
+    hasPhage: Boolean(currentPhage),
+    viewMode: viewMode === 'aa' ? 'amino' : 'dna',
     hasSelection: false,
-    hasDiffRef: false,
-    simulationActive: false,
+    hasDiffRef: Boolean(diffReferenceSequence),
+    simulationActive: Boolean(activeSimulationId),
     ...propContext,
-  }), [viewMode, propContext]);
+  }), [activeSimulationId, currentPhage, diffReferenceSequence, propContext, viewMode]);
 
   // Load recent commands on mount
   useEffect(() => {
