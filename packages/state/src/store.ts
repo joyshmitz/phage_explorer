@@ -154,6 +154,13 @@ export interface PhageExplorerState {
   simulationState: SimState | null;
   simulationPaused: boolean;
   simulationSpeed: number;
+
+  // Beginner mode (educational layer for non-biologists)
+  beginnerModeEnabled: boolean;
+  glossarySidebarOpen: boolean;
+  activeTourId: string | null;
+  completedModules: string[];
+  completedTours: string[];
 }
 
 // Store actions interface
@@ -244,6 +251,16 @@ export interface PhageExplorerActions {
   simulationSpeedUp: () => void;
   simulationSpeedDown: () => void;
   resetSimulation: (initialState: SimState) => void;
+
+  // Beginner mode controls
+  toggleBeginnerMode: () => void;
+  setBeginnerModeEnabled: (enabled: boolean) => void;
+  openGlossary: () => void;
+  closeGlossary: () => void;
+  startTour: (tourId: string) => void;
+  completeTour: (tourId: string) => void;
+  completeModule: (moduleId: string) => void;
+  resetBeginnerProgress: () => void;
 }
 
 // Combined store type
@@ -292,6 +309,12 @@ const initialState: PhageExplorerState = {
   simulationState: null,
   simulationPaused: true,
   simulationSpeed: 1,
+  // Beginner mode initial state
+  beginnerModeEnabled: false,
+  glossarySidebarOpen: false,
+  activeTourId: null,
+  completedModules: [],
+  completedTours: [],
 };
 
 // Create the store
@@ -662,6 +685,71 @@ export const usePhageStore = create<PhageExplorerStore>((set, get) => ({
       simulationPaused: true,
     });
   },
+
+  // Beginner mode controls
+  toggleBeginnerMode: () => {
+    const { beginnerModeEnabled } = get();
+    const newValue = !beginnerModeEnabled;
+    set({ beginnerModeEnabled: newValue });
+    // Persist to localStorage
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem('phage-explorer-beginner-mode', JSON.stringify(newValue));
+    }
+  },
+
+  setBeginnerModeEnabled: (enabled) => {
+    set({ beginnerModeEnabled: enabled });
+    // Persist to localStorage
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem('phage-explorer-beginner-mode', JSON.stringify(enabled));
+    }
+  },
+
+  openGlossary: () => set({ glossarySidebarOpen: true }),
+
+  closeGlossary: () => set({ glossarySidebarOpen: false }),
+
+  startTour: (tourId) => set({ activeTourId: tourId }),
+
+  completeTour: (tourId) => {
+    const { completedTours, activeTourId } = get();
+    const updated = completedTours.includes(tourId)
+      ? completedTours
+      : [...completedTours, tourId];
+    set({
+      completedTours: updated,
+      // Clear active tour if completing the current one
+      activeTourId: activeTourId === tourId ? null : activeTourId,
+    });
+    // Persist to localStorage
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem('phage-explorer-completed-tours', JSON.stringify(updated));
+    }
+  },
+
+  completeModule: (moduleId) => {
+    const { completedModules } = get();
+    if (completedModules.includes(moduleId)) return;
+    const updated = [...completedModules, moduleId];
+    set({ completedModules: updated });
+    // Persist to localStorage
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem('phage-explorer-completed-modules', JSON.stringify(updated));
+    }
+  },
+
+  resetBeginnerProgress: () => {
+    set({
+      completedModules: [],
+      completedTours: [],
+      activeTourId: null,
+    });
+    // Clear localStorage
+    if (typeof localStorage !== 'undefined') {
+      localStorage.removeItem('phage-explorer-completed-tours');
+      localStorage.removeItem('phage-explorer-completed-modules');
+    }
+  },
 }));
 
 // Selector hooks for common derived state
@@ -702,3 +790,51 @@ export const useSimulationSpeed = () => usePhageStore((s) => s.simulationSpeed);
 export const useIsSimulationActive = () => usePhageStore((s) => s.activeSimulationId !== null);
 export const useExperienceLevel = () => usePhageStore((s) => s.experienceLevel);
 export const useHelpDetail = () => usePhageStore((s) => s.helpDetail);
+
+// Beginner mode selectors
+export const useBeginnerModeEnabled = () => usePhageStore((s) => s.beginnerModeEnabled);
+export const useGlossarySidebarOpen = () => usePhageStore((s) => s.glossarySidebarOpen);
+export const useActiveTourId = () => usePhageStore((s) => s.activeTourId);
+export const useCompletedModules = () => usePhageStore((s) => s.completedModules);
+export const useCompletedTours = () => usePhageStore((s) => s.completedTours);
+export const useHasCompletedTour = (tourId: string) => usePhageStore((s) => s.completedTours.includes(tourId));
+export const useHasCompletedModule = (moduleId: string) => usePhageStore((s) => s.completedModules.includes(moduleId));
+
+// Helper to initialize beginner mode state from localStorage on app start
+export function initializeBeginnerModeFromStorage(
+  setBeginnerModeEnabled: (enabled: boolean) => void,
+  completeTour: (tourId: string) => void,
+  completeModule: (moduleId: string) => void
+): void {
+  if (typeof localStorage === 'undefined') return;
+
+  // Restore beginner mode preference
+  const storedBeginnerMode = localStorage.getItem('phage-explorer-beginner-mode');
+  if (storedBeginnerMode !== null) {
+    try {
+      setBeginnerModeEnabled(JSON.parse(storedBeginnerMode));
+    } catch { /* ignore parse errors */ }
+  }
+
+  // Restore completed tours
+  const storedTours = localStorage.getItem('phage-explorer-completed-tours');
+  if (storedTours !== null) {
+    try {
+      const tours = JSON.parse(storedTours);
+      if (Array.isArray(tours)) {
+        tours.forEach((tourId: string) => completeTour(tourId));
+      }
+    } catch { /* ignore parse errors */ }
+  }
+
+  // Restore completed modules
+  const storedModules = localStorage.getItem('phage-explorer-completed-modules');
+  if (storedModules !== null) {
+    try {
+      const modules = JSON.parse(storedModules);
+      if (Array.isArray(modules)) {
+        modules.forEach((moduleId: string) => completeModule(moduleId));
+      }
+    } catch { /* ignore parse errors */ }
+  }
+}
