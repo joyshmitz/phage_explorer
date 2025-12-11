@@ -1,1 +1,7 @@
-{"version": "1.0.0", "hash": "a6a5f66ff70dc0f8cbb6581642532114d9d47350a6c1fbe90fe15a0f5890d545", "size": 1449984, "tables": ["phages", "genes", "sequences", "codon_usage", "models", "tropism_predictions", "preferences"]}
+{
+  "version": 1,
+  "hash": "6ca7e1b97a644b82c90e7da04657899d8e334571163fa01c593f9b02c9a3835b",
+  "size": 1445888,
+  "sizeFormatted": "1.4 MB",
+  "generatedAt": "2025-12-11T01:47:57.384Z"
+}
