@@ -11,6 +11,7 @@
 @import './styles/holographic.css';
 @import './styles/mobile-overrides.css';
 @import './styles/mobile-landscape.css';
+@import './styles/control-deck.css';
 
 /* =============================================================================
    APP SHELL - Full viewport layout with refined spacing

@@ -1,0 +1,94 @@
+/* Mobile Control Deck Styles */
+.control-deck {
+  display: none; /* Hidden on desktop */
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: var(--color-background-elevated);
+  border-top: 1px solid var(--color-border);
+  z-index: 100;
+  padding-bottom: env(safe-area-inset-bottom);
+  box-shadow: 0 -4px 20px rgba(0,0,0,0.3);
+}
+
+@media (max-width: 640px) {
+  .control-deck {
+    display: flex;
+    flex-direction: column;
+  }
+  
+  /* Hide standard footer on mobile when deck is active */
+  .app-footer {
+    display: none;
+  }
+}
+
+.deck-content {
+  padding: 12px;
+  background: var(--color-background);
+  border-bottom: 1px solid var(--color-border-subtle);
+  min-height: 80px;
+  display: flex;
+  align-items: center;
+}
+
+.deck-row {
+  display: flex;
+  gap: 12px;
+  width: 100%;
+  justify-content: space-around;
+}
+
+.deck-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: var(--color-surface-1);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 8px;
+  padding: 8px;
+  flex: 1;
+  min-height: 60px; /* Big targets */
+  color: var(--color-text);
+  touch-action: manipulation;
+}
+
+.deck-btn.active {
+  background: var(--color-primary);
+  color: #000;
+  border-color: var(--color-primary);
+}
+
+.deck-btn .icon {
+  font-size: 20px;
+  margin-bottom: 4px;
+}
+
+.deck-btn .label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.deck-tabs {
+  display: flex;
+  height: 50px;
+}
+
+.tab-btn {
+  flex: 1;
+  background: transparent;
+  border: none;
+  border-top: 2px solid transparent;
+  color: var(--color-text-muted);
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.tab-btn.active {
+  color: var(--color-primary);
+  border-top-color: var(--color-primary);
+  background: var(--color-surface-0);
+}

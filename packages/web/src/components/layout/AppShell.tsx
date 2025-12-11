@@ -32,8 +32,12 @@ export const AppShell: React.FC<AppShellProps> = ({
       <SkipNavigation />
       {enableBackgroundEffects && (
         <>
-          <MatrixRain opacity={0.08} charSet={matrixCharSet} />
-          <CRTOverlay />
+          <div className="fx-layer fx-layer--matrix">
+            <MatrixRain opacity={0.08} charSet={matrixCharSet} />
+          </div>
+          <div className="fx-layer fx-layer--crt">
+            <CRTOverlay />
+          </div>
         </>
       )}
       <Header {...header} />

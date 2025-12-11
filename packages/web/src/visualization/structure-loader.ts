@@ -117,7 +117,7 @@ export interface FunctionalGroup {
 // CPK-based colors optimized for dark backgrounds
 const ELEMENT_COLORS: Record<string, Color> = {
   H: new Color('#f8fafc'),
-  C: new Color('#94a3b8'),
+  C: new Color('#cbd5e1'),
   N: new Color('#3b82f6'),
   O: new Color('#ef4444'),
   S: new Color('#fde047'),

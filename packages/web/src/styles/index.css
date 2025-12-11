@@ -317,28 +317,28 @@ body {
 .three-container {
   position: relative;
   width: 100%;
-  min-height: 320px;
-  height: clamp(320px, 55vh, 540px);
+  min-height: 340px;
+  height: clamp(340px, 60vh, 600px);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
   background:
-    radial-gradient(circle at 28% 20%, rgba(56, 189, 248, 0.12), transparent 36%),
-    radial-gradient(circle at 72% 62%, rgba(168, 85, 247, 0.12), transparent 42%),
-    linear-gradient(180deg, rgba(15, 23, 42, 0.92), rgba(15, 23, 42, 0.88)),
+    radial-gradient(circle at 28% 20%, rgba(56, 189, 248, 0.16), transparent 40%),
+    radial-gradient(circle at 72% 62%, rgba(168, 85, 247, 0.18), transparent 46%),
+    linear-gradient(180deg, rgba(12, 18, 36, 0.96), rgba(12, 18, 36, 0.9)),
     var(--color-background-alt);
   overflow: hidden;
 }
 
 @media (min-width: 1024px) {
   .three-container {
-    height: clamp(420px, 60vh, 620px);
+    height: clamp(460px, 62vh, 720px);
   }
 }
 
 @media (max-width: 640px) {
   .three-container {
-    min-height: 340px;
-    height: clamp(340px, 62vh, 520px);
+    min-height: 380px;
+    height: clamp(380px, 68vh, 640px);
   }
 }
 

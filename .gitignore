@@ -68,8 +68,8 @@ packages/web/audit-ui.ts
 # Temporary beads tracking data
 .beads/beads.left.*
 
-# Generated database in web public (fetched at runtime, not checked in)
-packages/web/public/phage.db
+# Web static database must be deployed with the site
+# (kept small ~1.4MB; required for initial load)
 
 # OS files
 .DS_Store

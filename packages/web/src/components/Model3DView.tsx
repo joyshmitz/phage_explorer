@@ -251,39 +251,39 @@ export function Model3DView({ phage }: Model3DViewProps): JSX.Element {
     }
 
     const scene = new Scene();
-    scene.background = new Color('#0f1b33');
-    scene.fog = new Fog(0x0f1b33, 120, 2400);
+    scene.background = new Color('#0f1529');
+    scene.fog = new Fog(0x0f1529, 120, 2600);
     const camera = new PerspectiveCamera(50, 1, 0.1, 5000);
     const renderer = new WebGLRenderer({ antialias: quality !== 'low', alpha: true });
     renderer.outputColorSpace = SRGBColorSpace;
     renderer.toneMapping = ACESFilmicToneMapping;
-    renderer.toneMappingExposure = 1.12;
-    renderer.setClearColor('#0f1b33', 1);
+    renderer.toneMappingExposure = 1.25;
+    renderer.setClearColor('#0f1529', 1);
     rendererRef.current = renderer;
     sceneRef.current = scene;
     cameraRef.current = camera;
 
     // Enhanced lighting setup for better 3D perception
-    const ambient = new AmbientLight(0xffffff, 0.82);
+    const ambient = new AmbientLight(0xffffff, 0.9);
     scene.add(ambient);
 
     // Hemisphere light for natural sky/ground lighting
-    const hemiLight = new HemisphereLight(0xc3ddff, 0x0d1326, 0.78);
+    const hemiLight = new HemisphereLight(0xd7e7ff, 0x0b1020, 0.9);
     scene.add(hemiLight);
 
     // Key light (main light from top-right)
-    const keyLight = new DirectionalLight(0xffffff, 1.25);
-    keyLight.position.set(4.5, 6.4, 5.4);
+    const keyLight = new DirectionalLight(0xffffff, 1.35);
+    keyLight.position.set(4.8, 6.6, 5.6);
     scene.add(keyLight);
 
     // Fill light (softer, from left)
-    const fillLight = new DirectionalLight(0xb0c4de, 0.9); // Light steel blue tint
-    fillLight.position.set(-3.2, 2.4, 3.2);
+    const fillLight = new DirectionalLight(0xb0c4de, 1.0); // Light steel blue tint
+    fillLight.position.set(-3.4, 2.6, 3.4);
     scene.add(fillLight);
 
     // Rim light (from behind for depth)
-    const rimLight = new DirectionalLight(0x88ccff, 0.65); // Cyan tint
-    rimLight.position.set(0.2, 0.1, -4.2);
+    const rimLight = new DirectionalLight(0x88ccff, 0.8); // Cyan tint
+    rimLight.position.set(0.3, 0.15, -4.4);
     scene.add(rimLight);
 
     const controls = new OrbitControls(camera, renderer.domElement);
@@ -292,7 +292,7 @@ export function Model3DView({ phage }: Model3DViewProps): JSX.Element {
     controlsRef.current = controls;
 
     // Headlamp (camera-attached light) to ensure visibility from all angles
-    const headlamp = new DirectionalLight(0xffffff, 0.95);
+    const headlamp = new DirectionalLight(0xffffff, 1.05);
     scene.add(headlamp);
     const syncHeadlamp = () => {
       headlamp.position.copy(camera.position);
@@ -555,6 +555,27 @@ export function Model3DView({ phage }: Model3DViewProps): JSX.Element {
     link.click();
   };
 
+  const handleResetView = () => {
+    const data = structureDataRef.current;
+    const camera = cameraRef.current;
+    const controls = controlsRef.current;
+    const scene = sceneRef.current;
+    if (!data || !camera || !controls || !scene) return;
+    const vFovRad = (camera.fov * Math.PI) / 180;
+    const hFovRad = 2 * Math.atan(Math.tan(vFovRad / 2) * camera.aspect);
+    const effectiveFov = Math.min(vFovRad, hFovRad);
+    const optimalDist = (data.radius / Math.tan(effectiveFov / 2)) * 1.08;
+    const dist = Math.max(optimalDist, data.radius * 1.8);
+    const viewDirection = new Vector3(1, 0.8, 1).normalize();
+    camera.position.copy(viewDirection.multiplyScalar(dist));
+    camera.near = Math.max(0.1, data.radius * 0.01);
+    camera.far = Math.max(5000, data.radius * 10);
+    camera.updateProjectionMatrix();
+    controls.target.set(0, 0, 0);
+    controls.update();
+    rendererRef.current?.render(scene, camera);
+  };
+
   const stateLabel = loadState === 'ready'
     ? 'Loaded'
     : loadState === 'loading'
@@ -611,6 +632,15 @@ export function Model3DView({ phage }: Model3DViewProps): JSX.Element {
           title="Fullscreen"
         >
           {fullscreen ? '⤓' : '⤢'}
+        </button>
+        <button
+          type="button"
+          className="btn compact"
+          onClick={handleResetView}
+          style={{ minHeight: '36px', minWidth: '40px' }}
+          title="Reset view"
+        >
+          ⟳
         </button>
         <button
           type="button"

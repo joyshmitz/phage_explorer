@@ -26,6 +26,8 @@ import { ReadingFrameVisualizer } from './components/ReadingFrameVisualizer';
 import { GlossaryPanel } from './education/glossary/GlossaryPanel';
 import { LearnMenu } from './components/LearnMenu';
 
+import { ControlDeck } from './components/mobile/ControlDeck';
+
 /** Number of bases to show in the sequence preview */
 const SEQUENCE_PREVIEW_LENGTH = 500;
 
@@ -73,15 +75,31 @@ export default function App(): JSX.Element {
   const [fullSequence, setFullSequence] = useState<string>('');
   const enableBackgroundEffects = !reducedMotion;
   const [isNarrow, setIsNarrow] = useState(false);
+  const [isLandscape, setIsLandscape] = useState(false);
 
   useEffect(() => {
-    const media = window.matchMedia('(max-width: 900px)');
-    const update = () => setIsNarrow(media.matches);
-    update();
-    media.addEventListener('change', update);
-    return () => media.removeEventListener('change', update);
+    const checkLayout = () => {
+      const width = window.innerWidth;
+      const height = window.innerHeight;
+      setIsNarrow(width < 900);
+      setIsLandscape(width > height);
+    };
+    checkLayout();
+    window.addEventListener('resize', checkLayout);
+    return () => window.removeEventListener('resize', checkLayout);
   }, []);
-  const sequenceHeight = isNarrow ? 360 : 480;
+
+  // Smart height calculation:
+  // - Landscape mobile: Maximize height (85vh), hide header/footer visual clutter
+  // - Portrait mobile: Taller than before (65vh)
+  // - Desktop: Standard fixed heights
+  const sequenceHeight = isNarrow
+    ? isLandscape ? '85vh' : '65vh'
+    : 480;
+
+  // In landscape mobile, we hide the 3D view by default to focus on the sequence
+  // The user can still toggle it via the 'M' key or menu if they really want it
+  const show3DInLayout = !isNarrow || !isLandscape;
 
   // React 19: useOptimistic for instant visual feedback on phage selection
   // Shows selection immediately while data loads in background
@@ -435,7 +453,7 @@ export default function App(): JSX.Element {
                     )}
                   </div>
                   <div className="viewer-panel">
-                    <Model3DView phage={currentPhage} />
+                    {show3DInLayout && <Model3DView phage={currentPhage} />}
                   </div>
                 </div>
                 {beginnerModeEnabled && fullSequence && (

@@ -100,7 +100,8 @@ const MICRO_AMINO_FONT: Record<AminoAcid, number[]> = {
 
 const MICRO_NUCLEOTIDE_SIZE = { width: 4, height: 6 };
 const MICRO_AMINO_SIZE = { width: 5, height: 7 };
-const MICRO_TEXT_MAX_CELL = 8;
+// Allow micro-text for cells as small as 5px (down from 8px)
+const MICRO_TEXT_MAX_CELL = 5;
 
 export interface GlyphMetrics {
   width: number;
