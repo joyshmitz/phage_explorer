@@ -65,7 +65,7 @@ export class SqlJsRepository implements PhageRepository {
         SELECT id, slug, name, accession, family, host, genome_length as genomeLength,
                gc_content as gcContent, morphology, lifecycle
         FROM phages
-        ORDER BY name ASC
+        ORDER BY id ASC
       `),
 
       getPhageById: this.db.prepare(`

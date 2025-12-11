@@ -108,7 +108,7 @@ export class BunSqliteRepository implements PhageRepository {
         lifecycle: phages.lifecycle,
       })
       .from(phages)
-      .orderBy(asc(phages.name));
+      .orderBy(asc(phages.id)); // Preserve catalog order (Lambda first)
 
     this.phageList = result;
     return result;
