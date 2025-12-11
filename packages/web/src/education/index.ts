@@ -17,3 +17,10 @@ export * from './glossary/GlossaryPanel';
 export * from './components/TermTooltip';
 export * from './components/CodonWheelVisualizer';
 export * from './components/ContextHelpPanel';
+export * from './components/TranslationVisualizer';
+
+// Module exports
+export * from './modules';
+
+// Context mapping
+export * from './contextMapping';
