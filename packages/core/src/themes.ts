@@ -720,110 +720,6 @@ export const CYBERPUNK_THEME: Theme = {
   aminoAcids: cyberpunkAminoAcids,
 };
 
-// Pastel theme - soft, accessible colors
-const pastelNucleotides: NucleotideTheme = {
-  'A': { fg: '#2d3436', bg: '#a8e6cf' }, // Mint
-  'C': { fg: '#2d3436', bg: '#dcedc1' }, // Light green
-  'G': { fg: '#2d3436', bg: '#ffd3b6' }, // Peach
-  'T': { fg: '#2d3436', bg: '#ffaaa5' }, // Salmon
-  'N': { fg: '#636e72', bg: '#dfe6e9' }, // Light gray
-};
-
-const pastelAminoAcids: AminoTheme = {
-  'A': { fg: '#2d3436', bg: '#b8e0d2' },
-  'V': { fg: '#2d3436', bg: '#95b8d1' },
-  'L': { fg: '#2d3436', bg: '#95b8d1' },
-  'I': { fg: '#2d3436', bg: '#95b8d1' },
-  'M': { fg: '#2d3436', bg: '#f0e6ef' },
-  'F': { fg: '#2d3436', bg: '#d4a5a5' },
-  'W': { fg: '#2d3436', bg: '#c9b1ff' },
-  'P': { fg: '#2d3436', bg: '#ffd6a5' },
-  'S': { fg: '#2d3436', bg: '#caffbf' },
-  'T': { fg: '#2d3436', bg: '#caffbf' },
-  'Y': { fg: '#2d3436', bg: '#d4a5a5' },
-  'N': { fg: '#2d3436', bg: '#9bf6ff' },
-  'Q': { fg: '#2d3436', bg: '#9bf6ff' },
-  'C': { fg: '#2d3436', bg: '#fdffb6' },
-  'K': { fg: '#2d3436', bg: '#a0c4ff' },
-  'R': { fg: '#2d3436', bg: '#a0c4ff' },
-  'H': { fg: '#2d3436', bg: '#bdb2ff' },
-  'D': { fg: '#2d3436', bg: '#ffc6ff' },
-  'E': { fg: '#2d3436', bg: '#ffc6ff' },
-  'G': { fg: '#2d3436', bg: '#f0f0f0' },
-  '*': { fg: '#2d3436', bg: '#ffb5b5' },
-  'X': { fg: '#636e72', bg: '#dfe6e9' },
-};
-
-const pastelHud: HudTheme = {
-  // Core colors - soft and pleasant
-  primary: '#74b9ff',
-  secondary: '#a29bfe',
-  accent: '#ffeaa7',
-  background: '#f8f9fa',
-  backgroundAlt: '#ffffff',
-
-  // Text hierarchy
-  text: '#2d3436',
-  textDim: '#636e72',
-  textMuted: '#b2bec3',
-
-  // Borders
-  border: '#dfe6e9',
-  borderFocus: '#74b9ff',
-  borderLight: '#e8eaed',
-
-  // Status colors
-  success: '#00cec9',
-  warning: '#fdcb6e',
-  error: '#ff7675',
-  info: '#74b9ff',
-
-  // Diff
-  diffHighlight: '#fab1a0',
-
-  // Gene visualization
-  geneForward: '#55efc4',
-  geneReverse: '#81ecec',
-  geneHighlight: '#ffeaa7',
-
-  // Analysis gradients
-  gradientLow: '#dfe6e9',
-  gradientMid: '#74b9ff',
-  gradientHigh: '#00b894',
-
-  // K-mer
-  kmerNormal: '#b2bec3',
-  kmerAnomaly: '#e17055',
-
-  // Effects
-  shadow: '#c8d6e5',
-  highlight: '#ffffff',
-
-  // Enhanced visual elements
-  sparklineGradient: ['#dfe6e9', '#a8e6cf', '#74b9ff', '#a29bfe', '#fd79a8'],
-  glow: '#74b9ff',
-  badge: '#e8eaed',
-  badgeText: '#2d3436',
-  separator: '#dfe6e9',
-
-  // Unicode decorations
-  iconPrimary: '#74b9ff',
-  iconSecondary: '#a29bfe',
-
-  // Panel styling
-  panelHeader: '#f1f2f6',
-  panelBorder: '#dfe6e9',
-  panelShadow: '#e8eaed',
-};
-
-export const PASTEL_THEME: Theme = {
-  id: 'pastel',
-  name: 'Pastel',
-  colors: pastelHud,
-  nucleotides: pastelNucleotides,
-  aminoAcids: pastelAminoAcids,
-};
-
 // Monochrome theme - elegant grayscale with accents
 const monochromeNucleotides: NucleotideTheme = {
   'A': { fg: '#ffffff', bg: '#1a1a1a' }, // Darkest
@@ -928,21 +824,128 @@ export const MONOCHROME_THEME: Theme = {
   aminoAcids: monochromeAminoAcids,
 };
 
-// All available themes
+// Holographic theme - Mind-blowing glassmorphic design
+const holographicNucleotides: NucleotideTheme = {
+  'A': { fg: '#000000', bg: '#00f5ff' },   // Cyan A
+  'C': { fg: '#ffffff', bg: '#bf00ff' },   // Magenta C
+  'G': { fg: '#000000', bg: '#00ffa3' },   // Mint G
+  'T': { fg: '#ffffff', bg: '#ff006e' },   // Pink T
+  'N': { fg: '#ffffff', bg: '#2a2a55' },   // Muted purple N
+};
+
+const holographicAminoAcids: AminoTheme = {
+  'A': { fg: '#000000', bg: '#00f5ff' },
+  'V': { fg: '#ffffff', bg: '#7b00ff' },
+  'L': { fg: '#ffffff', bg: '#7b00ff' },
+  'I': { fg: '#ffffff', bg: '#7b00ff' },
+  'M': { fg: '#000000', bg: '#ffaa00' },
+  'F': { fg: '#ffffff', bg: '#4a0080' },
+  'W': { fg: '#ffffff', bg: '#2a0050' },
+  'P': { fg: '#000000', bg: '#ff6b00' },
+  'S': { fg: '#000000', bg: '#00ffa3' },
+  'T': { fg: '#000000', bg: '#00ffa3' },
+  'Y': { fg: '#ffffff', bg: '#4a0080' },
+  'N': { fg: '#000000', bg: '#88ffff' },
+  'Q': { fg: '#000000', bg: '#88ffff' },
+  'C': { fg: '#000000', bg: '#ffaa00' },
+  'K': { fg: '#ffffff', bg: '#0066ff' },
+  'R': { fg: '#ffffff', bg: '#0066ff' },
+  'H': { fg: '#ffffff', bg: '#0088ff' },
+  'D': { fg: '#ffffff', bg: '#ff0055' },
+  'E': { fg: '#ffffff', bg: '#ff0055' },
+  'G': { fg: '#000000', bg: '#e0e0ff' },
+  '*': { fg: '#ffffff', bg: '#ff0033' },
+  'X': { fg: '#ffffff', bg: '#2a2a55' },
+};
+
+const holographicHud: HudTheme = {
+  // Iridescent primary colors that create holographic effect
+  primary: '#00f5ff',           // Electric cyan
+  secondary: '#bf00ff',         // Vivid magenta
+  accent: '#ff006e',            // Hot pink accent
+  background: '#030014',        // Deep space black with purple tint
+  backgroundAlt: '#0a0520',     // Slightly elevated dark purple
+
+  // Text hierarchy
+  text: '#f0f0ff',              // Cool white with slight blue
+  textDim: '#8888cc',           // Soft purple-gray
+  textMuted: '#4a4a77',         // Muted purple
+
+  // Borders - translucent for glassmorphic effect
+  border: '#bf00ff',            // Magenta border (solid fallback)
+  borderFocus: '#00f5ff',       // Electric cyan focus
+  borderLight: '#2a2a55',       // Translucent cyan fallback
+
+  // Status colors
+  success: '#00ffa3',           // Neon mint
+  warning: '#ffaa00',           // Golden amber
+  error: '#ff0055',             // Neon red-pink
+  info: '#00d4ff',              // Bright cyan
+
+  // Diff
+  diffHighlight: '#ff00aa',     // Hot magenta
+
+  // Gene visualization
+  geneForward: '#00f5ff',       // Electric cyan
+  geneReverse: '#bf00ff',       // Vivid magenta
+  geneHighlight: '#ff006e',     // Hot pink
+
+  // Analysis gradients
+  gradientLow: '#0a0025',       // Deep purple-black
+  gradientMid: '#bf00ff',       // Vivid magenta
+  gradientHigh: '#00f5ff',      // Electric cyan
+
+  // K-mer
+  kmerNormal: '#5555aa',
+  kmerAnomaly: '#ff0055',
+
+  // Effects
+  shadow: '#000008',
+  highlight: '#ffffff',
+
+  // Enhanced visual elements
+  sparklineGradient: ['#0a0025', '#4a00b4', '#bf00ff', '#00f5ff', '#00ffa3'],
+  glow: '#00f5ff',              // Cyan glow
+  badge: '#4a00b4',             // Translucent magenta fallback
+  badgeText: '#00f5ff',
+  separator: '#bf00ff',
+
+  // Unicode decorations
+  iconPrimary: '#00f5ff',
+  iconSecondary: '#bf00ff',
+
+  // Panel styling - glassmorphic
+  panelHeader: '#0a0520',       // Glassmorphic header fallback
+  panelBorder: '#bf00ff',
+  panelShadow: '#000010',
+};
+
+export const HOLOGRAPHIC_THEME: Theme = {
+  id: 'holographic',
+  name: 'Holographic',
+  colors: holographicHud,
+  nucleotides: holographicNucleotides,
+  aminoAcids: holographicAminoAcids,
+};
+
+// All available themes (Holographic is first/default)
 export const THEMES: Theme[] = [
+  HOLOGRAPHIC_THEME,
   CLASSIC_THEME,
   OCEAN_THEME,
   MATRIX_THEME,
   SUNSET_THEME,
   FOREST_THEME,
   CYBERPUNK_THEME,
-  PASTEL_THEME,
   MONOCHROME_THEME,
 ];
 
+// Default theme - Holographic for maximum visual impact
+export const DEFAULT_THEME = HOLOGRAPHIC_THEME;
+
 // Get theme by ID
 export function getThemeById(id: string): Theme {
-  return THEMES.find(t => t.id === id) ?? CLASSIC_THEME;
+  return THEMES.find(t => t.id === id) ?? DEFAULT_THEME;
 }
 
 // Get next theme in cycle

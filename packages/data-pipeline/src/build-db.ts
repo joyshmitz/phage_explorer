@@ -211,7 +211,7 @@ async function main() {
   }
 
   // Insert default preferences
-  await db.insert(preferences).values({ key: 'theme', value: 'classic' });
+  await db.insert(preferences).values({ key: 'theme', value: 'holographic' });
   await db.insert(preferences).values({ key: 'show3DModel', value: 'true' });
 
   // Optional: load precomputed tropism predictions (embedding-based) if available

@@ -9,7 +9,7 @@ import type {
   SimState,
 } from '@phage-explorer/core';
 import {
-  CLASSIC_THEME,
+  HOLOGRAPHIC_THEME,
   getNextTheme,
   getThemeById,
   nextSpeed,
@@ -278,7 +278,7 @@ const initialState: PhageExplorerState = {
   diffEnabled: false,
   diffReferencePhageId: null,
   diffReferenceSequence: null,
-  currentTheme: CLASSIC_THEME,
+  currentTheme: HOLOGRAPHIC_THEME,
   show3DModel: true,
   model3DPaused: true, // Paused by default to prevent flickering
   model3DSpeed: 1,

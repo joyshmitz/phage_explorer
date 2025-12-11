@@ -10,7 +10,7 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage, subscribeWithSelector } from 'zustand/middleware';
 import type { Theme, ViewMode, ReadingFrame } from '@phage-explorer/core';
-import { CLASSIC_THEME, getThemeById } from '@phage-explorer/core';
+import { HOLOGRAPHIC_THEME, getThemeById } from '@phage-explorer/core';
 import {
   usePhageStore,
   type PhageExplorerStore,
@@ -95,7 +95,7 @@ const defaultWebPreferences: WebPreferencesState = {
  * Default main store preferences (for initial hydration)
  */
 const defaultMainStorePrefs: PersistedMainState = {
-  currentTheme: CLASSIC_THEME,
+  currentTheme: HOLOGRAPHIC_THEME,
   viewMode: 'dna',
   readingFrame: 0,
   model3DQuality: 'medium',
