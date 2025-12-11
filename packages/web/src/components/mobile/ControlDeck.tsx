@@ -15,6 +15,35 @@ export function ControlDeck(): JSX.Element {
   const toggle3DModel = usePhageStore(s => s.toggle3DModel);
   const { open } = useOverlay();
 
+  const setScrollPosition = usePhageStore(s => s.setScrollPosition);
+  const currentPhage = usePhageStore(s => s.currentPhage);
+  const scrollPosition = usePhageStore(s => s.scrollPosition);
+
+  // Gene Navigation Logic
+  const handleGeneNav = (direction: 'prev' | 'next') => {
+    if (!currentPhage?.genes?.length) return;
+    
+    // Simple logic: find gene with startPos closest to current scroll
+    // Better logic: find gene immediately before/after current scroll
+    const sortedGenes = [...currentPhage.genes].sort((a, b) => a.startPos - b.startPos);
+    
+    if (direction === 'next') {
+      const nextGene = sortedGenes.find(g => g.startPos > scrollPosition + 50); // Buffer to avoid getting stuck
+      if (nextGene) setScrollPosition(nextGene.startPos);
+    } else {
+      // Find first gene that starts before current position
+      // Reverse iterate
+      for (let i = sortedGenes.length - 1; i >= 0; i--) {
+        if (sortedGenes[i].startPos < scrollPosition - 50) {
+          setScrollPosition(sortedGenes[i].startPos);
+          return;
+        }
+      }
+      // If none found (at start), go to first gene if we are past it, else 0
+      if (scrollPosition > 0) setScrollPosition(0);
+    }
+  };
+
   // Cycle Frame
   const cycleFrame = () => {
     const frames = [0, 1, 2, -1, -2, -3];
@@ -57,12 +86,12 @@ export function ControlDeck(): JSX.Element {
               <span className="icon">Go</span>
               <span className="label">Goto</span>
             </button>
-             {/* TODO: Add Gene Previous/Next logic here directly */}
-             <button className="deck-btn" disabled>
+             {/* Gene Navigation */}
+             <button className="deck-btn" onClick={() => handleGeneNav('prev')}>
               <span className="icon">←</span>
               <span className="label">Prev Gene</span>
             </button>
-            <button className="deck-btn" disabled>
+            <button className="deck-btn" onClick={() => handleGeneNav('next')}>
               <span className="icon">→</span>
               <span className="label">Next Gene</span>
             </button>
