@@ -12,6 +12,7 @@ import { useTheme } from '../hooks/useTheme';
 import { useSequenceGrid, useReducedMotion, useHotkeys } from '../hooks';
 import { useWebPreferences } from '../store/createWebStore';
 import { AminoAcidHUD } from './AminoAcidHUD';
+import { SequenceViewSkeleton } from './ui/Skeleton';
 
 type ViewModeOption = {
   id: ViewMode;
@@ -131,6 +132,9 @@ export function SequenceView({
   const [densityMode, setDensityMode] = useState<'compact' | 'standard'>(defaultDensity);
   const [jumpInput, setJumpInput] = useState<string>('');
 
+  // Loading state for skeleton - show skeleton on initial mount until sequence arrives or timeout
+  const [showLoadingSkeleton, setShowLoadingSkeleton] = useState(!sequence);
+
   // Amino acid HUD state
   const [hudAminoAcid, setHudAminoAcid] = useState<string | null>(null);
   const [hudPosition, setHudPosition] = useState<{ x: number; y: number } | null>(null);
@@ -196,6 +200,18 @@ export function SequenceView({
       setDensityMode(next);
     }
   }, [isMobile, orientation, defaultDensity, densityMode]);
+
+  // Manage skeleton loading state - hide when sequence arrives or after timeout
+  useEffect(() => {
+    if (sequence) {
+      // Sequence loaded - hide skeleton immediately
+      setShowLoadingSkeleton(false);
+    } else {
+      // No sequence - show skeleton for max 2 seconds then show empty state
+      const timer = setTimeout(() => setShowLoadingSkeleton(false), 2000);
+      return () => clearTimeout(timer);
+    }
+  }, [sequence]);
 
   useEffect(() => {
     if (onControlsReady) {
@@ -598,8 +614,23 @@ export function SequenceView({
             touchAction: hudVisible ? 'none' : 'pan-y',
           }}
         />
-        {/* Empty state */}
-        {!sequence && (
+        {/* Loading skeleton state */}
+        {!sequence && showLoadingSkeleton && (
+          <div
+            style={{
+              position: 'absolute',
+              inset: 0,
+              padding: '1rem',
+              background: colors.background,
+            }}
+            aria-busy="true"
+            aria-label="Loading sequence data"
+          >
+            <SequenceViewSkeleton rows={4} />
+          </div>
+        )}
+        {/* Empty state (after loading timeout) */}
+        {!sequence && !showLoadingSkeleton && (
           <div
             style={{
               position: 'absolute',
