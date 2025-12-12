@@ -33,44 +33,51 @@ interface Model3DViewProps {
   phage: PhageFull | null;
 }
 
+function isCoarsePointerDevice(): boolean {
+  if (typeof window === 'undefined') return false;
+  return window.matchMedia?.('(pointer: coarse)')?.matches ?? false;
+}
+
 const QUALITY_PRESETS = {
   low: {
-    pixelRatio: 0.9,
+    pixelRatio: 0.5,
     shadows: false,
-    sphereSegments: 12,
-    bondRadialSegments: 10,
-    tubeRadialSegments: 6,
-    tubeMinSegments: 24,
-    surfaceSegments: 10,
+    sphereSegments: 6,
+    bondRadialSegments: 4,
+    tubeRadialSegments: 4,
+    tubeMinSegments: 12,
+    surfaceSegments: 6,
   },
   medium: {
-    pixelRatio: 1,
-    shadows: true,
-    sphereSegments: 18,
-    bondRadialSegments: 14,
-    tubeRadialSegments: 8,
-    tubeMinSegments: 30,
-    surfaceSegments: 12,
+    pixelRatio: 0.75,
+    shadows: false,
+    sphereSegments: 8,
+    bondRadialSegments: 5,
+    tubeRadialSegments: 5,
+    tubeMinSegments: 16,
+    surfaceSegments: 8,
   },
   high: {
-    pixelRatio: 1.3,
+    pixelRatio: 1.0,
     shadows: true,
-    sphereSegments: 24,
-    bondRadialSegments: 16,
-    tubeRadialSegments: 10,
-    tubeMinSegments: 36,
-    surfaceSegments: 16,
+    sphereSegments: 12,
+    bondRadialSegments: 8,
+    tubeRadialSegments: 8,
+    tubeMinSegments: 24,
+    surfaceSegments: 12,
   },
   ultra: {
-    pixelRatio: 1.6,
+    pixelRatio: 1.5,
     shadows: true,
-    sphereSegments: 32,
-    bondRadialSegments: 20,
-    tubeRadialSegments: 12,
-    tubeMinSegments: 42,
-    surfaceSegments: 20,
+    sphereSegments: 16,
+    bondRadialSegments: 10,
+    tubeRadialSegments: 10,
+    tubeMinSegments: 32,
+    surfaceSegments: 16,
   },
 } as const;
+
+type QualityLevel = keyof typeof QUALITY_PRESETS;
 
 const chainPalette = [
   '#3b82f6',
@@ -99,7 +106,19 @@ function disposeGroup(group: Group | null): void {
   });
 }
 
+function suggestInitialRenderMode(options: {
+  coarsePointer: boolean;
+  atomCount: number;
+  hasBackboneTraces: boolean;
+}): RenderMode {
+  const { coarsePointer, atomCount, hasBackboneTraces } = options;
+  if (!hasBackboneTraces) return 'ball';
+  if (coarsePointer || atomCount > 15000) return 'ribbon';
+  return 'ball';
+}
+
 export function Model3DView({ phage }: Model3DViewProps): JSX.Element {
+  const coarsePointer = useMemo(() => isCoarsePointerDevice(), []);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const rendererRef = useRef<WebGLRenderer | null>(null);
   const controlsRef = useRef<OrbitControls | null>(null);
@@ -110,6 +129,15 @@ export function Model3DView({ phage }: Model3DViewProps): JSX.Element {
   const animationRef = useRef<number | null>(null);
   const resizeObserverRef = useRef<ResizeObserver | null>(null);
   const structureDataRef = useRef<LoadedStructure | null>(null);
+  const tickRef = useRef<(now: number) => void>(() => {});
+  const lastTickTimeRef = useRef<number | null>(null);
+  const wasRotatingRef = useRef(false);
+  const qualityGuardRef = useRef<{ lowStreak: number; highStreak: number; lastChange: number }>({
+    lowStreak: 0,
+    highStreak: 0,
+    lastChange: 0,
+  });
+  const initialModeForPdbRef = useRef<string | null>(null);
 
   const show3DModel = usePhageStore(s => s.show3DModel);
   const paused = usePhageStore(s => s.model3DPaused);
@@ -119,17 +147,16 @@ export function Model3DView({ phage }: Model3DViewProps): JSX.Element {
   const togglePause = usePhageStore(s => s.toggle3DModelPause);
 
   // Auto-quality: start at 'high' and adapt based on performance
-  const [autoQuality, setAutoQuality] = useState<'low' | 'medium' | 'high' | 'ultra'>('high');
+  const [autoQuality, setAutoQuality] = useState<QualityLevel>(() => (coarsePointer ? 'medium' : 'high'));
   const quality = autoQuality;
 
-  const [renderMode, setRenderMode] = useState<RenderMode>('ball');
+  const [renderMode, setRenderMode] = useState<RenderMode>(() => (coarsePointer ? 'ribbon' : 'ball'));
 
   const [loadState, setLoadState] = useState<LoadState>('idle');
   const [progress, setProgress] = useState<number>(0);
   const [error, setError] = useState<string | null>(null);
   const [atomCount, setAtomCount] = useState<number | null>(null);
   const [fps, setFps] = useState<number>(0);
-  const lastFrameTimeRef = useRef<number | null>(null);
   const frameCounterRef = useRef<{ count: number; lastSample: number }>({
     count: 0,
     lastSample: performance.now(),
@@ -139,6 +166,13 @@ export function Model3DView({ phage }: Model3DViewProps): JSX.Element {
 
   const pdbId = useMemo(() => phage?.pdbIds?.[0] ?? null, [phage?.pdbIds]);
   const qualityPreset = QUALITY_PRESETS[quality] ?? QUALITY_PRESETS.medium;
+
+  const requestRender = useMemo(() => {
+    return () => {
+      if (animationRef.current != null) return;
+      animationRef.current = requestAnimationFrame((now) => tickRef.current(now));
+    };
+  }, []);
 
   const {
     data: structureData,
@@ -155,7 +189,6 @@ export function Model3DView({ phage }: Model3DViewProps): JSX.Element {
     const data = structureDataRef.current;
     const scene = sceneRef.current;
     if (!data || !scene) return;
-
 
     if (structureRef.current) {
       scene.remove(structureRef.current);
@@ -184,7 +217,7 @@ export function Model3DView({ phage }: Model3DViewProps): JSX.Element {
         group = buildTubeFromTraces(
           data.backboneTraces,
           0.3,
-          Math.max(6, qualityPreset.tubeRadialSegments - 2),
+          Math.max(4, qualityPreset.tubeRadialSegments - 2),
           '#c084fc',
           0.9,
           chainColors,
@@ -226,6 +259,8 @@ export function Model3DView({ phage }: Model3DViewProps): JSX.Element {
         scene.add(fg);
       }
     }
+
+    requestRender();
   };
 
   // Initialize scene + renderer
@@ -244,9 +279,9 @@ export function Model3DView({ phage }: Model3DViewProps): JSX.Element {
       rendererRef.current.outputColorSpace = SRGBColorSpace;
       rendererRef.current.toneMapping = ACESFilmicToneMapping;
       rendererRef.current.toneMappingExposure = 1.12;
-      rendererRef.current.setPixelRatio(Math.min(dpr * qualityPreset.pixelRatio, 2));
+      rendererRef.current.setPixelRatio(Math.min(dpr, qualityPreset.pixelRatio, 2));
       rendererRef.current.setSize(width, height);
-      rendererRef.current.render(sceneRef.current, cameraRef.current);
+      requestRender();
       return;
     }
 
@@ -254,7 +289,7 @@ export function Model3DView({ phage }: Model3DViewProps): JSX.Element {
     scene.background = new Color('#0f1529');
     scene.fog = new Fog(0x0f1529, 120, 2600);
     const camera = new PerspectiveCamera(50, 1, 0.1, 5000);
-    const renderer = new WebGLRenderer({ antialias: quality !== 'low', alpha: true });
+    const renderer = new WebGLRenderer({ antialias: !coarsePointer && quality !== 'low', alpha: true });
     renderer.outputColorSpace = SRGBColorSpace;
     renderer.toneMapping = ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1.25;
@@ -290,13 +325,21 @@ export function Model3DView({ phage }: Model3DViewProps): JSX.Element {
     controls.enableDamping = true;
     controls.dampingFactor = 0.1;
     controlsRef.current = controls;
+    
+    // Wake up on user interaction
+    controls.addEventListener('start', requestRender);
+    controls.addEventListener('change', requestRender);
 
     // Headlamp (camera-attached light) to ensure visibility from all angles
     const headlamp = new DirectionalLight(0xffffff, 1.05);
     scene.add(headlamp);
     const syncHeadlamp = () => {
       headlamp.position.copy(camera.position);
+      requestRender();
     };
+    // Note: syncHeadlamp is redundant if we listen to 'change' for requestRender, but needed for light update.
+    // Actually, 'change' fires every frame of damping. 'start' fires on interaction.
+    // We need to sync headlamp on every frame if camera moves.
     controls.addEventListener('change', syncHeadlamp);
     syncHeadlamp();
 
@@ -312,9 +355,9 @@ export function Model3DView({ phage }: Model3DViewProps): JSX.Element {
       renderer.outputColorSpace = SRGBColorSpace;
       renderer.toneMapping = ACESFilmicToneMapping;
       renderer.toneMappingExposure = 1.12;
-      renderer.setPixelRatio(Math.min(dpr * qualityPreset.pixelRatio, 2));
+      renderer.setPixelRatio(Math.min(dpr, qualityPreset.pixelRatio, 2));
       renderer.setSize(width, height);
-      renderer.render(scene, camera);
+      requestRender();
     };
 
     resize();
@@ -324,6 +367,8 @@ export function Model3DView({ phage }: Model3DViewProps): JSX.Element {
 
     return () => {
       observer.disconnect();
+      controls.removeEventListener('start', requestRender);
+      controls.removeEventListener('change', requestRender);
       controls.removeEventListener('change', syncHeadlamp);
       controls.dispose();
       renderer.dispose();
@@ -334,57 +379,104 @@ export function Model3DView({ phage }: Model3DViewProps): JSX.Element {
       controlsRef.current = null;
       structureRef.current = null;
     };
-  }, [quality, qualityPreset.pixelRatio, qualityPreset.shadows]);
+  }, [coarsePointer, quality, qualityPreset.pixelRatio, qualityPreset.shadows, requestRender]);
 
-  // Animation loop - CRITICAL: always schedule next frame first to keep loop running
+  // Render loop (on-demand): keep animating only while rotating or damping is active.
   useEffect(() => {
-    const tick = () => {
-      // Always schedule next frame FIRST to keep loop running even if refs not ready
-      animationRef.current = requestAnimationFrame(tick);
+    tickRef.current = (now: number) => {
+      animationRef.current = null;
+      const renderer = rendererRef.current;
+      const scene = sceneRef.current;
+      const camera = cameraRef.current;
+      if (!renderer || !scene || !camera) return;
 
-      // Only render if everything is ready
-      if (!rendererRef.current || !sceneRef.current || !cameraRef.current) return;
-
-      if (structureRef.current && !paused) {
-        structureRef.current.rotation.y += 0.003 * speed;
+      if (!show3DModel) {
+        lastTickTimeRef.current = null;
+        wasRotatingRef.current = false;
+        return;
       }
-      controlsRef.current?.update();
-      rendererRef.current.render(sceneRef.current, cameraRef.current);
 
-      // FPS sampling with auto-quality adaptation
-      const now = performance.now();
-      const last = lastFrameTimeRef.current;
-      lastFrameTimeRef.current = now;
-      if (last != null) {
+      const lastTick = lastTickTimeRef.current;
+      const deltaMs = lastTick != null ? now - lastTick : 16.6667;
+      lastTickTimeRef.current = now;
+      const deltaSeconds = deltaMs / 1000;
+
+      const hasStructure = Boolean(structureRef.current);
+      const rotating = hasStructure && !paused;
+
+      if (rotating !== wasRotatingRef.current) {
+        wasRotatingRef.current = rotating;
+        frameCounterRef.current.count = 0;
+        frameCounterRef.current.lastSample = now;
+        qualityGuardRef.current.lowStreak = 0;
+        qualityGuardRef.current.highStreak = 0;
+        setFps(0);
+      }
+
+      if (rotating && structureRef.current) {
+        // ~0.18 rad/s at speed=1 to match the old 0.003/frame @ 60fps behavior.
+        structureRef.current.rotation.y += 0.18 * speed * deltaSeconds;
+      }
+
+      const controlsChanged = controlsRef.current?.update(deltaSeconds) ?? false;
+      renderer.render(scene, camera);
+
+      if (rotating) {
         frameCounterRef.current.count += 1;
         const elapsed = now - frameCounterRef.current.lastSample;
-        if (elapsed >= 1000) { // Sample every 1 second for stability
+        if (elapsed >= 1000) {
           const currentFps = (frameCounterRef.current.count * 1000) / elapsed;
           const roundedFps = Math.round(currentFps);
           setFps(roundedFps);
           frameCounterRef.current.count = 0;
           frameCounterRef.current.lastSample = now;
 
-          // Auto-quality: downgrade if FPS is poor, upgrade if excellent
-          setAutoQuality(prev => {
-            if (roundedFps < 20 && prev !== 'low') {
-              // Performance struggling - drop quality
-              return prev === 'ultra' ? 'high' : prev === 'high' ? 'medium' : 'low';
-            }
-            if (roundedFps > 55 && prev !== 'ultra') {
-              // Performance is great - try upgrading after stabilization
-              return prev === 'low' ? 'medium' : prev === 'medium' ? 'high' : 'ultra';
-            }
-            return prev;
-          });
+          // Auto-quality with hysteresis. On coarse pointers (phones/tablets), never upgrade beyond "high".
+          const guard = qualityGuardRef.current;
+          const low = roundedFps < 24;
+          const high = roundedFps > 58;
+          guard.lowStreak = low ? guard.lowStreak + 1 : 0;
+          guard.highStreak = high ? guard.highStreak + 1 : 0;
+
+          const canChangeNow = now - guard.lastChange > 2500;
+          if (canChangeNow && guard.lowStreak >= 2) {
+            guard.lastChange = now;
+            guard.lowStreak = 0;
+            setAutoQuality(prev => (prev === 'ultra' ? 'high' : prev === 'high' ? 'medium' : 'low'));
+          } else if (!coarsePointer && canChangeNow && guard.highStreak >= 6) {
+            guard.lastChange = now;
+            guard.highStreak = 0;
+            setAutoQuality(prev => (prev === 'low' ? 'medium' : prev === 'medium' ? 'high' : 'ultra'));
+          } else if (coarsePointer && canChangeNow && guard.highStreak >= 10) {
+            guard.lastChange = now;
+            guard.highStreak = 0;
+            setAutoQuality(prev => (prev === 'low' ? 'medium' : 'high'));
+          }
         }
       }
+
+      // Keep animating while rotation is on or controls are still damping.
+      if ((rotating || controlsChanged) && show3DModel) {
+        requestRender();
+      } else {
+        // Stop the loop if nothing is changing
+        animationRef.current = null;
+      }
     };
-    animationRef.current = requestAnimationFrame(tick);
+  }, [coarsePointer, paused, requestRender, show3DModel, speed]);
+
+  // Kick the loop when 3D becomes visible or unpaused.
+  useEffect(() => {
+    if (!show3DModel) return;
+    requestRender();
+  }, [paused, show3DModel, requestRender]);
+
+  // Ensure pending RAF is cleaned up on unmount.
+  useEffect(() => {
     return () => {
-      if (animationRef.current) cancelAnimationFrame(animationRef.current);
+      if (animationRef.current != null) cancelAnimationFrame(animationRef.current);
     };
-  }, [paused, speed]);
+  }, []);
 
   // Load structure via TanStack Query
   useEffect(() => {
@@ -421,9 +513,23 @@ export function Model3DView({ phage }: Model3DViewProps): JSX.Element {
       if (!scene || !camera || !controls) return;
 
       structureDataRef.current = structureData;
+      const hasBackboneTraces = structureData.backboneTraces.some(trace => trace.length >= 2);
+      let mode: RenderMode = renderMode;
+      if (initialModeForPdbRef.current !== pdbId) {
+        initialModeForPdbRef.current = pdbId;
+        const suggested = suggestInitialRenderMode({
+          coarsePointer,
+          atomCount: structureData.atomCount,
+          hasBackboneTraces,
+        });
+        if (suggested !== renderMode) {
+          setRenderMode(suggested);
+          mode = suggested;
+        }
+      }
       // Build immediately in addition to the loadState effect to avoid a race
       // where the renderMode effect fires before loadState flips to "ready".
-      rebuildStructure(renderMode);
+      rebuildStructure(mode);
 
       // ZOOM TO EXTENTS: Calculate optimal camera distance
       // Formula: dist = radius / tan(fov/2), with 1.15 padding for ~10% margin
@@ -448,6 +554,7 @@ export function Model3DView({ phage }: Model3DViewProps): JSX.Element {
       setAtomCount(structureData.atomCount);
       setProgress(100);
       setLoadState('ready');
+      requestRender();
     }
   }, [pdbId, renderMode, show3DModel, structureData, structureError, structureErr, structureFetching, structureLoading]);
 
@@ -480,7 +587,9 @@ export function Model3DView({ phage }: Model3DViewProps): JSX.Element {
 
     if (fullscreen && !document.fullscreenElement) {
       void container.requestFullscreen().catch((err) => {
-        console.warn('Fullscreen request failed', err);
+        if (import.meta.env.DEV) {
+          console.warn('Fullscreen request failed', err);
+        }
         // Revert state if browser rejected fullscreen
         toggleFullscreen();
       });

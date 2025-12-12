@@ -22,6 +22,11 @@
   .app-footer {
     display: none;
   }
+
+  /* Prevent content from being covered by the fixed deck */
+  .app-body {
+    padding-bottom: calc(140px + env(safe-area-inset-bottom));
+  }
 }
 
 .deck-content {

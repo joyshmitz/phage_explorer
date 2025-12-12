@@ -100,6 +100,25 @@
   }
 }
 
+/* Phone-only drawer behavior */
+@media (max-width: 640px) {
+  .column--list.mobile-drawer {
+    position: fixed;
+    inset: 0;
+    z-index: var(--z-modal);
+    background: var(--color-background);
+    padding: 12px;
+    padding-top: calc(12px + env(safe-area-inset-top));
+    padding-bottom: calc(12px + env(safe-area-inset-bottom));
+    overflow: hidden;
+  }
+
+  .column--list.mobile-drawer .list {
+    max-height: none;
+    min-height: 0;
+  }
+}
+
 /* Ultra-small devices */
 @media (max-width: 540px) {
   .app-header {

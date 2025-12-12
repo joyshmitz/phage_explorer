@@ -36,6 +36,8 @@ export interface SequenceGridOptions {
   enablePinchZoom?: boolean;
   /** Callback when zoom changes */
   onZoomChange?: (scale: number, preset: ZoomPreset) => void;
+  /** Callback when visible range changes (scroll/resize/momentum) */
+  onVisibleRangeChange?: (range: VisibleRange) => void;
   /** Snap scrolling to codon boundaries (3 bases) */
   snapToCodon?: boolean;
 }
@@ -165,6 +167,7 @@ export class CanvasSequenceGridRenderer {
   private currentZoomPreset: ZoomPreset;
   private enablePinchZoom: boolean;
   private onZoomChange?: (scale: number, preset: ZoomPreset) => void;
+  private onVisibleRangeChange?: (range: VisibleRange) => void;
 
   // Pinch-to-zoom state
   private pinchStartDistance: number = 0;
@@ -183,6 +186,7 @@ export class CanvasSequenceGridRenderer {
   private reducedMotion: boolean;
   private snapToCodon: boolean;
   private densityMode: 'compact' | 'standard';
+  private slowFrameLastLoggedAt = 0;
 
   constructor(options: SequenceGridOptions) {
     this.canvas = options.canvas;
@@ -193,11 +197,13 @@ export class CanvasSequenceGridRenderer {
     this.reducedMotion = options.reducedMotion ?? false;
     this.enablePinchZoom = options.enablePinchZoom ?? true;
     this.onZoomChange = options.onZoomChange;
+    this.onVisibleRangeChange = options.onVisibleRangeChange;
     this.snapToCodon = options.snapToCodon ?? false;
     this.densityMode = options.densityMode ?? 'standard';
 
     // Get device pixel ratio for high-DPI
-    this.dpr = window.devicePixelRatio || 1;
+    const rawDpr = window.devicePixelRatio || 1;
+    this.dpr = isMobileDevice() ? Math.min(rawDpr, 2) : rawDpr;
 
     // Initialize zoom scale - use mobile-aware default if not specified
     // This ensures mobile users start with readable cell sizes
@@ -247,7 +253,10 @@ export class CanvasSequenceGridRenderer {
     this.updateCodonSnap();
 
     // Set up scroll callback
-    this.scroller.onScroll(() => this.scheduleRender());
+    this.scroller.onScroll((range) => {
+      this.onVisibleRangeChange?.(range);
+      this.scheduleRender();
+    });
 
     // Initialize canvas size
     this.resize();
@@ -290,6 +299,7 @@ export class CanvasSequenceGridRenderer {
       itemHeight: this.rowHeight,
     });
     this.updateCodonSnap();
+    this.onVisibleRangeChange?.(this.scroller.getVisibleRange());
 
     // Mark as needing full redraw
     this.needsFullRedraw = true;
@@ -312,6 +322,7 @@ export class CanvasSequenceGridRenderer {
       viewportWidth: width,
       viewportHeight: height,
     });
+    this.onVisibleRangeChange?.(this.scroller.getVisibleRange());
     this.needsFullRedraw = true;
     this.scheduleRender();
   }
@@ -351,17 +362,32 @@ export class CanvasSequenceGridRenderer {
   private createBackBuffer(width: number, height: number): void {
     const safeWidth = Math.max(1, width);
     const safeHeight = Math.max(1, height);
-    if (typeof OffscreenCanvas !== 'undefined') {
-      this.backBuffer = new OffscreenCanvas(safeWidth * this.dpr, safeHeight * this.dpr);
-      const ctx = this.backBuffer.getContext('2d', { alpha: false });
-      if (ctx) {
-        this.backCtx = ctx;
-        if (typeof ctx.setTransform === 'function') {
-          ctx.setTransform(1, 0, 0, 1, 0, 0);
-        }
-        ctx.scale(this.dpr, this.dpr);
-      }
+    if (typeof OffscreenCanvas === 'undefined') {
+      this.backBuffer = null;
+      this.backCtx = null;
+      return;
     }
+
+    const targetWidth = safeWidth * this.dpr;
+    const targetHeight = safeHeight * this.dpr;
+
+    if (!this.backBuffer) {
+      this.backBuffer = new OffscreenCanvas(targetWidth, targetHeight);
+    } else if (this.backBuffer.width !== targetWidth || this.backBuffer.height !== targetHeight) {
+      this.backBuffer.width = targetWidth;
+      this.backBuffer.height = targetHeight;
+    }
+
+    const ctx = this.backBuffer.getContext('2d', { alpha: false });
+    if (!ctx) {
+      this.backCtx = null;
+      return;
+    }
+    this.backCtx = ctx;
+    if (typeof ctx.setTransform === 'function') {
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+    }
+    ctx.scale(this.dpr, this.dpr);
   }
 
   /**
@@ -392,6 +418,7 @@ export class CanvasSequenceGridRenderer {
       itemHeight: this.rowHeight,
     });
     this.updateCodonSnap();
+    this.onVisibleRangeChange?.(this.scroller.getVisibleRange());
 
     this.needsFullRedraw = true;
     this.scheduleRender();
@@ -472,6 +499,7 @@ export class CanvasSequenceGridRenderer {
       itemHeight: this.rowHeight,
     });
     this.updateCodonSnap();
+    this.onVisibleRangeChange?.(this.scroller.getVisibleRange());
 
     // Notify listeners
     if (this.onZoomChange) {
@@ -630,8 +658,12 @@ export class CanvasSequenceGridRenderer {
     const endTime = performance.now();
     const frameTime = endTime - startTime;
 
-    if (frameTime > 16.67) {
-      console.warn(`Frame took ${frameTime.toFixed(2)}ms (target: 16.67ms)`);
+    if (import.meta.env.DEV && frameTime > 16.67) {
+      // Avoid console spam (which itself can hurt perf).
+      if (endTime - this.slowFrameLastLoggedAt > 1000) {
+        this.slowFrameLastLoggedAt = endTime;
+        console.warn(`SequenceGrid slow frame: ${frameTime.toFixed(2)}ms (target: 16.67ms)`);
+      }
     }
 
     this.isRendering = false;
@@ -660,10 +692,7 @@ export class CanvasSequenceGridRenderer {
       return;
     }
 
-    // Batch rendering by color for performance
-    const drawMethod = viewMode === 'aa'
-      ? this.glyphAtlas.drawAminoAcid.bind(this.glyphAtlas)
-      : this.glyphAtlas.drawNucleotide.bind(this.glyphAtlas);
+    const drawAmino = viewMode === 'aa';
 
     // Pre-calculate diff text settings (avoid setting font on every cell)
     const diffFontSize = Math.max(0, Math.floor(cellHeight * 0.7));
@@ -716,7 +745,11 @@ export class CanvasSequenceGridRenderer {
             diffCells.push({ x, y: rowY, char, fillStyle });
           }
         } else {
-          drawMethod(ctx, char, x, rowY, cellWidth, cellHeight);
+          if (drawAmino) {
+            this.glyphAtlas.drawAminoAcid(ctx, char, x, rowY, cellWidth, cellHeight);
+          } else {
+            this.glyphAtlas.drawNucleotide(ctx, char, x, rowY, cellWidth, cellHeight);
+          }
         }
       }
     }
@@ -977,7 +1010,8 @@ export class CanvasSequenceGridRenderer {
   getScrollPosition(): number {
     const state = this.scroller.getScrollState();
     const layout = this.scroller.getLayout();
-    const row = Math.floor(state.scrollY / this.cellHeight);
+    const rowHeight = Math.max(1, this.rowHeight);
+    const row = Math.floor(state.scrollY / rowHeight);
     return row * layout.cols;
   }
 

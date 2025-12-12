@@ -19,7 +19,6 @@ export interface UseSequenceGridOptions {
   sequence: string;
   viewMode?: ViewMode;
   readingFrame?: ReadingFrame;
-  densityMode?: 'compact' | 'standard';
   diffSequence?: string | null;
   diffEnabled?: boolean;
   diffMask?: Uint8Array | null;
@@ -104,9 +103,6 @@ export interface UseSequenceGridResult {
 }
 
 export function useSequenceGrid(options: UseSequenceGridOptions): UseSequenceGridResult {
-  // Use mobile-aware zoom if not explicitly specified
-  const defaultZoom = getMobileAwareZoom();
-
   const {
     theme,
     sequence,
@@ -120,13 +116,19 @@ export function useSequenceGrid(options: UseSequenceGridOptions): UseSequenceGri
     glow = false,
     postProcess,
     reducedMotion = false,
-    initialZoomScale = defaultZoom, // Mobile-aware default
+    initialZoomScale: initialZoomScaleOption,
     enablePinchZoom = true,
     snapToCodon = true,
     onVisibleRangeChange,
     onZoomChange,
     densityMode = detectMobileDevice() ? 'compact' : 'standard',
   } = options;
+
+  const initialZoomScaleRef = useRef<number | null>(null);
+  if (initialZoomScaleRef.current === null) {
+    initialZoomScaleRef.current = initialZoomScaleOption ?? getMobileAwareZoom();
+  }
+  const initialZoomScale = initialZoomScaleRef.current;
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const rendererRef = useRef<CanvasSequenceGridRenderer | null>(null);
@@ -140,6 +142,54 @@ export function useSequenceGrid(options: UseSequenceGridOptions): UseSequenceGri
   });
   // Track mobile device state for responsive features
   const [isMobile, setIsMobile] = useState(() => detectMobileDevice());
+
+  const onVisibleRangeChangeRef = useRef(onVisibleRangeChange);
+  useEffect(() => {
+    onVisibleRangeChangeRef.current = onVisibleRangeChange;
+  }, [onVisibleRangeChange]);
+
+  const pendingUiSyncRafRef = useRef<number | null>(null);
+  const latestRangeRef = useRef<VisibleRange | null>(null);
+  const lastCommittedRangeRef = useRef<VisibleRange | null>(null);
+  const lastCommittedAtRef = useRef(0);
+
+  const commitUiState = useCallback(() => {
+    pendingUiSyncRafRef.current = null;
+
+    const renderer = rendererRef.current;
+    const latestRange = latestRangeRef.current ?? renderer?.getVisibleRange() ?? null;
+    if (!latestRange) return;
+
+    const now = performance.now();
+    if (now - lastCommittedAtRef.current < 50) {
+      pendingUiSyncRafRef.current = requestAnimationFrame(commitUiState);
+      return;
+    }
+    lastCommittedAtRef.current = now;
+
+    // Avoid re-rendering on sub-row scroll (offsetY) changes; only commit when indices change.
+    const prev = lastCommittedRangeRef.current;
+    if (!prev || prev.startIndex !== latestRange.startIndex || prev.endIndex !== latestRange.endIndex) {
+      lastCommittedRangeRef.current = latestRange;
+      setVisibleRange(latestRange);
+      onVisibleRangeChangeRef.current?.(latestRange);
+    }
+
+    if (renderer) {
+      const nextPos = renderer.getScrollPosition();
+      setScrollPosition(nextPos);
+    } else {
+      setScrollPosition(latestRange.startIndex);
+    }
+  }, []);
+
+  const handleVisibleRangeFromRenderer = useCallback((range: VisibleRange) => {
+    latestRangeRef.current = range;
+
+    if (pendingUiSyncRafRef.current === null) {
+      pendingUiSyncRafRef.current = requestAnimationFrame(commitUiState);
+    }
+  }, [commitUiState]);
 
   // Handle zoom change callback from renderer
   const handleZoomChange = useCallback((scale: number, preset: ZoomPreset) => {
@@ -166,6 +216,7 @@ export function useSequenceGrid(options: UseSequenceGridOptions): UseSequenceGri
       zoomScale: initialZoomScale,
       enablePinchZoom,
       onZoomChange: handleZoomChange,
+      onVisibleRangeChange: handleVisibleRangeFromRenderer,
       snapToCodon,
       densityMode,
     });
@@ -174,6 +225,8 @@ export function useSequenceGrid(options: UseSequenceGridOptions): UseSequenceGri
 
     // Initialize zoom preset state
     setZoomPreset(renderer.getZoomPreset());
+    latestRangeRef.current = renderer.getVisibleRange();
+    commitUiState();
 
     // Handle resize
     const handleResize = () => {
@@ -195,8 +248,6 @@ export function useSequenceGrid(options: UseSequenceGridOptions): UseSequenceGri
     // Handle wheel events
     const handleWheel = (e: WheelEvent) => {
       renderer.handleWheel(e);
-      setScrollPosition(renderer.getScrollPosition());
-      setVisibleRange(renderer.getVisibleRange());
     };
 
     // Handle touch events for mobile scrolling
@@ -206,8 +257,6 @@ export function useSequenceGrid(options: UseSequenceGridOptions): UseSequenceGri
 
     const handleTouchMove = (e: TouchEvent) => {
       renderer.handleTouchMove(e);
-      setScrollPosition(renderer.getScrollPosition());
-      setVisibleRange(renderer.getVisibleRange());
     };
 
     const handleTouchEnd = (e: TouchEvent) => {
@@ -221,6 +270,10 @@ export function useSequenceGrid(options: UseSequenceGridOptions): UseSequenceGri
 
     // Cleanup
     return () => {
+      if (pendingUiSyncRafRef.current !== null) {
+        cancelAnimationFrame(pendingUiSyncRafRef.current);
+        pendingUiSyncRafRef.current = null;
+      }
       resizeObserver.disconnect();
       window.removeEventListener('orientationchange', handleOrientationChange);
       window.removeEventListener('resize', handleOrientationChange);
@@ -231,7 +284,7 @@ export function useSequenceGrid(options: UseSequenceGridOptions): UseSequenceGri
       renderer.dispose();
       rendererRef.current = null;
     };
-  }, [scanlines, glow, postProcess, reducedMotion, initialZoomScale, enablePinchZoom, handleZoomChange]); // Recreate when visual pipeline changes
+  }, [scanlines, glow, postProcess, reducedMotion, initialZoomScale, enablePinchZoom, handleZoomChange, handleVisibleRangeFromRenderer, commitUiState]); // Recreate when visual pipeline changes
 
   // Update theme
   useEffect(() => {
@@ -244,11 +297,6 @@ export function useSequenceGrid(options: UseSequenceGridOptions): UseSequenceGri
   }, [snapToCodon]);
 
   // Update density mode without reconstructing renderer
-  useEffect(() => {
-    rendererRef.current?.setDensityMode(densityMode);
-  }, [densityMode]);
-
-  // Update density mode (compact vs standard) without rebuilding
   useEffect(() => {
     rendererRef.current?.setDensityMode(densityMode);
   }, [densityMode]);
@@ -286,13 +334,6 @@ export function useSequenceGrid(options: UseSequenceGridOptions): UseSequenceGri
     rendererRef.current?.setDiffMode(diffSequence, diffEnabled, diffMask ?? null);
   }, [diffSequence, diffEnabled, diffMask]);
 
-  // Notify visible range changes
-  useEffect(() => {
-    if (visibleRange && onVisibleRangeChange) {
-      onVisibleRangeChange(visibleRange);
-    }
-  }, [visibleRange, onVisibleRangeChange]);
-
   // Update reduced motion flag without reconstructing renderer
   useEffect(() => {
     rendererRef.current?.setReducedMotion(reducedMotion);
@@ -306,26 +347,14 @@ export function useSequenceGrid(options: UseSequenceGridOptions): UseSequenceGri
   // Scroll methods
   const scrollToPosition = useCallback((position: number) => {
     rendererRef.current?.scrollToPosition(position);
-    if (rendererRef.current) {
-      setScrollPosition(rendererRef.current.getScrollPosition());
-      setVisibleRange(rendererRef.current.getVisibleRange());
-    }
   }, []);
 
   const scrollToStart = useCallback(() => {
     rendererRef.current?.scrollToStart();
-    setScrollPosition(0);
-    if (rendererRef.current) {
-      setVisibleRange(rendererRef.current.getVisibleRange());
-    }
   }, []);
 
   const scrollToEnd = useCallback(() => {
     rendererRef.current?.scrollToEnd();
-    if (rendererRef.current) {
-      setScrollPosition(rendererRef.current.getScrollPosition());
-      setVisibleRange(rendererRef.current.getVisibleRange());
-    }
   }, []);
 
   const getIndexAtPoint = useCallback((x: number, y: number): number | null => {

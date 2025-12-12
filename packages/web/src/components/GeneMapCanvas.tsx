@@ -74,6 +74,63 @@ export function GeneMapCanvas({
     setHoveredGene(null);
   };
 
+  // Touch handling for mobile
+  const handleTouchStart = (e: React.TouchEvent<HTMLCanvasElement>) => {
+    e.preventDefault(); // Prevent scrolling while interacting with map
+    const touch = e.touches[0];
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = touch.clientX - rect.left;
+    const width = rect.width;
+    
+    if (onGeneClick && genomeLength) {
+      const clickRatio = x / width;
+      const targetPos = Math.floor(clickRatio * genomeLength);
+      onGeneClick(targetPos);
+    }
+    
+    // Also show tooltip
+    const y = touch.clientY - rect.top;
+    const hoverPos = Math.floor((x / width) * genomeLength);
+    const gene = genes.find(g => hoverPos >= g.startPos && hoverPos < g.endPos);
+    
+    if (gene) {
+      setHoveredGene({
+        name: gene.name || gene.locusTag || 'Unknown',
+        product: gene.product,
+        x: touch.clientX,
+        y: touch.clientY - 40
+      });
+    } else {
+      setHoveredGene(null);
+    }
+  };
+
+  const handleTouchMove = (e: React.TouchEvent<HTMLCanvasElement>) => {
+    e.preventDefault();
+    const touch = e.touches[0];
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = touch.clientX - rect.left;
+    const width = rect.width;
+    
+    const hoverPos = Math.floor((x / width) * genomeLength);
+    const gene = genes.find(g => hoverPos >= g.startPos && hoverPos < g.endPos);
+    
+    if (gene) {
+      setHoveredGene({
+        name: gene.name || gene.locusTag || 'Unknown',
+        product: gene.product,
+        x: touch.clientX,
+        y: touch.clientY - 40
+      });
+    } else {
+      setHoveredGene(null);
+    }
+  };
+
+  const handleTouchEnd = () => {
+    setHoveredGene(null);
+  };
+
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas || !currentPhage) return;
@@ -174,10 +231,13 @@ export function GeneMapCanvas({
     }}>
       <canvas
         ref={canvasRef}
-        style={{ width: '100%', height: '100%', display: 'block', cursor: 'pointer' }}
+        style={{ width: '100%', height: '100%', display: 'block', cursor: 'pointer', touchAction: 'none' }}
         onClick={handleClick}
         onMouseMove={handleMouseMove}
         onMouseLeave={handleMouseLeave}
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
         title="Click to jump to position"
       />
       {hoveredGene && (

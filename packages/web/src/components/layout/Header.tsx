@@ -8,6 +8,7 @@ import React from 'react';
 
 export interface HeaderProps {
   title?: string;
+  subtitle?: string;
   mode?: string;
   pendingSequence?: string | null;
   children?: React.ReactNode;
@@ -15,6 +16,7 @@ export interface HeaderProps {
 
 export const Header: React.FC<HeaderProps> = ({
   title = 'Phage Explorer',
+  subtitle,
   mode,
   pendingSequence,
   children,
@@ -23,6 +25,11 @@ export const Header: React.FC<HeaderProps> = ({
     <header className="app-header" role="banner" aria-label="Application Header">
       <div className="header-left">
         <span className="app-title chromatic-aberration" role="heading" aria-level={1}>{title}</span>
+        {subtitle && (
+          <span className="app-subtitle" role="status" aria-live="polite">
+            {subtitle}
+          </span>
+        )}
         <span className="badge" aria-label="Platform: Web">WEB</span>
         {mode && (
           <span 

@@ -67,6 +67,10 @@ export function Overlay({
   const previousFocus = useRef<HTMLElement | null>(null);
 
   const overlayIsOpen = isOpen(id);
+  const isPhone = typeof window !== 'undefined' && (window.matchMedia?.('(max-width: 640px)')?.matches ?? false);
+  const effectivePosition: OverlayPosition = isPhone && position === 'center' ? 'bottom' : position;
+  const isBottomSheet = isPhone && effectivePosition === 'bottom';
+  const overlayBorderRadius = isBottomSheet ? '16px 16px 0 0' : '8px';
 
   // Handle close - use useCallback to avoid stale closures
   const handleClose = useCallback(() => {
@@ -153,19 +157,19 @@ export function Overlay({
     bottom: 0,
     backgroundColor: showBackdrop ? 'rgba(0, 0, 0, 0.7)' : 'transparent',
     display: 'flex',
-    justifyContent: position === 'left' ? 'flex-start' : position === 'right' ? 'flex-end' : 'center',
-    alignItems: position === 'top' ? 'flex-start' : position === 'bottom' ? 'flex-end' : 'center',
-    padding: position === 'center' ? '2rem' : 0,
+    justifyContent: effectivePosition === 'left' ? 'flex-start' : effectivePosition === 'right' ? 'flex-end' : 'center',
+    alignItems: effectivePosition === 'top' ? 'flex-start' : effectivePosition === 'bottom' ? 'flex-end' : 'center',
+    padding: isBottomSheet ? 0 : isPhone ? '1rem' : effectivePosition === 'center' ? '2rem' : 0,
     zIndex,
   };
 
   const overlayStyle: CSSProperties = {
-    width: SIZE_WIDTHS[size],
-    maxWidth: '95vw',
-    maxHeight: SIZE_MAX_HEIGHTS[size],
+    width: isBottomSheet ? '100%' : SIZE_WIDTHS[size],
+    maxWidth: isBottomSheet ? '100%' : '95vw',
+    maxHeight: isBottomSheet ? '85dvh' : SIZE_MAX_HEIGHTS[size],
     backgroundColor: colors.background,
     border: `2px solid ${colors.borderFocus}`,
-    borderRadius: '8px',
+    borderRadius: overlayBorderRadius,
     boxShadow: `0 0 20px ${colors.shadow}, 0 0 60px ${colors.shadow}`,
     display: 'flex',
     flexDirection: 'column',
@@ -191,11 +195,13 @@ export function Overlay({
     flex: 1,
     overflow: 'auto',
     padding: '1rem',
+    paddingBottom: isBottomSheet ? 'calc(1rem + env(safe-area-inset-bottom))' : '1rem',
   };
 
   const footerStyle: CSSProperties = {
     padding: '0.75rem 1rem',
     borderTop: `1px solid ${colors.borderLight}`,
+    paddingBottom: isBottomSheet ? 'calc(0.75rem + env(safe-area-inset-bottom))' : '0.75rem',
   };
 
   return (
@@ -277,7 +283,7 @@ export function Overlay({
             bottom: 0,
             pointerEvents: 'none',
             background: 'repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.03) 2px, rgba(0,0,0,0.03) 4px)',
-            borderRadius: '8px',
+            borderRadius: overlayBorderRadius,
           }}
         />
       </div>

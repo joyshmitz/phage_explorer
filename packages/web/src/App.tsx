@@ -25,7 +25,6 @@ import {
   useWebPreferences,
 } from './store';
 import { useBeginnerMode, useBeginnerModeInit, TourEngine } from './education';
-import './styles.css';
 import { GeneMapCanvas } from './components/GeneMapCanvas';
 import { Model3DView } from './components/Model3DView';
 import { SequenceView } from './components/SequenceView';
@@ -36,18 +35,18 @@ import { LearnMenu } from './components/LearnMenu';
 
 // Mobile controls
 import { ControlDeck } from './components/mobile/ControlDeck';
-import { useBeginnerMode } from './education/hooks/useBeginnerMode';
-import { OverlayManager } from './components/overlays/OverlayManager';
 
 /** Number of bases to show in the sequence preview */
 const SEQUENCE_PREVIEW_LENGTH = 500;
+const BREAKPOINT_PHONE_PX = 640;
+const BREAKPOINT_NARROW_PX = 1100;
 
 export default function App(): JSX.Element {
   const { theme, nextTheme } = useTheme();
   const reducedMotion = useReducedMotion();
   const highContrast = useWebPreferences((s) => s.highContrast);
   const setHighContrast = useWebPreferences((s) => s.setHighContrast);
-  
+
   useBeginnerModeInit();
   const {
     repository,
@@ -78,11 +77,14 @@ export default function App(): JSX.Element {
   const setError = usePhageStore((s) => s.setError);
   const storeSetTheme = usePhageStore((s) => s.setTheme);
   const storeCloseAllOverlays = usePhageStore((s) => s.closeAllOverlays);
-  const { open: openOverlayCtx, closeAll: closeAllOverlaysCtx } = useOverlay();
+  const show3DModel = usePhageStore((s) => s.show3DModel);
+  const { open: openOverlayCtx, closeAll: closeAllOverlaysCtx, hasBlockingOverlay } = useOverlay();
   const { mode } = useKeyboardMode();
   const pendingSequence = usePendingSequence();
   const [sequencePreview, setSequencePreview] = useState<string>('');
   const [fullSequence, setFullSequence] = useState<string>('');
+  const [mobileListOpen, setMobileListOpen] = useState(false);
+  const swipeStartRef = useRef<{ x: number; y: number } | null>(null);
   const enableBackgroundEffects = !reducedMotion;
   const getLayoutSnapshot = useCallback(() => {
     if (typeof window === 'undefined') {
@@ -91,8 +93,8 @@ export default function App(): JSX.Element {
     const width = window.innerWidth;
     const height = window.innerHeight || 1;
     return {
-      isNarrow: width < 1100,
-      isMobile: width < 900,
+      isNarrow: width < BREAKPOINT_NARROW_PX,
+      isMobile: width < BREAKPOINT_PHONE_PX,
       isLandscape: width > height,
     };
   }, []);
@@ -100,8 +102,8 @@ export default function App(): JSX.Element {
   const [{ isNarrow, isMobile, isLandscape }, setLayout] = useState(() => getLayoutSnapshot());
 
   useLayoutEffect(() => {
-    const mobileMql = window.matchMedia('(max-width: 900px)');
-    const narrowMql = window.matchMedia('(max-width: 1100px)');
+    const mobileMql = window.matchMedia(`(max-width: ${BREAKPOINT_PHONE_PX}px)`);
+    const narrowMql = window.matchMedia(`(max-width: ${BREAKPOINT_NARROW_PX}px)`);
     const landscapeMql = window.matchMedia('(orientation: landscape)');
 
     const updateLayout = () => {
@@ -125,13 +127,13 @@ export default function App(): JSX.Element {
       landscapeMql.removeEventListener('change', updateLayout);
       window.removeEventListener('resize', updateLayout);
     };
-  }, [getLayoutSnapshot]);
+  }, []);
 
   const sequenceHeight = isNarrow ? (isLandscape ? '85vh' : '65vh') : 480;
-  const show3DInLayout = !isMobile && (!isNarrow || !isLandscape);
+  const show3DInLayout = (!isMobile && (!isNarrow || !isLandscape)) || (isMobile && show3DModel);
   const hasSelection = currentPhage !== null || isLoadingPhage;
-  const showList = !isMobile || (isMobile && !hasSelection);
-  const showDetail = !isMobile || (isMobile && hasSelection);
+  const showList = !isMobile || !hasSelection || mobileListOpen;
+  const showDetail = !isMobile || hasSelection;
 
   useEffect(() => {
     const root = document.documentElement;
@@ -201,6 +203,7 @@ export default function App(): JSX.Element {
     async (index: number) => {
       if (!repository) return;
       await loadPhage(repository, index);
+      setMobileListOpen(false);
     },
     [loadPhage, repository]
   );
@@ -216,6 +219,67 @@ export default function App(): JSX.Element {
     const prevIndex = (currentPhageIndex - 1 + phages.length) % phages.length;
     void loadPhage(repository, prevIndex);
   }, [currentPhageIndex, loadPhage, phages.length, repository]);
+
+  // Phone swipe gestures: left/right to change phage (avoids stealing gestures from sequence/3D).
+  useEffect(() => {
+    if (!isMobile) return;
+    if (hasBlockingOverlay) return;
+    if (mobileListOpen) return;
+
+    const container = document.getElementById('main-content');
+    if (!container) return;
+
+    const shouldIgnoreTarget = (target: EventTarget | null) => {
+      if (!(target instanceof HTMLElement)) return true;
+      return Boolean(
+        target.closest(
+          'input, textarea, select, button, a, .sequence-view, .three-container, .control-deck, .overlay, .glossary-shell'
+        )
+      );
+    };
+
+    const onTouchStart = (event: TouchEvent) => {
+      if (event.touches.length !== 1) return;
+      if (shouldIgnoreTarget(event.target)) return;
+      const t = event.touches[0];
+      swipeStartRef.current = { x: t.clientX, y: t.clientY };
+    };
+
+    const onTouchEnd = (event: TouchEvent) => {
+      const start = swipeStartRef.current;
+      swipeStartRef.current = null;
+      if (!start) return;
+      if (event.changedTouches.length !== 1) return;
+
+      const t = event.changedTouches[0];
+      const dx = t.clientX - start.x;
+      const dy = t.clientY - start.y;
+
+      // Require a deliberate horizontal swipe.
+      if (Math.abs(dx) < 80) return;
+      if (Math.abs(dy) > 60) return;
+
+      if (dx < 0) {
+        handleNextPhage();
+      } else {
+        handlePrevPhage();
+      }
+    };
+
+    const onTouchCancel = () => {
+      swipeStartRef.current = null;
+    };
+
+    container.addEventListener('touchstart', onTouchStart, { passive: true });
+    container.addEventListener('touchend', onTouchEnd, { passive: true });
+    container.addEventListener('touchcancel', onTouchCancel, { passive: true });
+
+    return () => {
+      container.removeEventListener('touchstart', onTouchStart);
+      container.removeEventListener('touchend', onTouchEnd);
+      container.removeEventListener('touchcancel', onTouchCancel);
+    };
+  }, [handleNextPhage, handlePrevPhage, hasBlockingOverlay, isMobile, mobileListOpen]);
 
   const headerSubtitle = useMemo(() => {
     if (error) return 'db: error';
@@ -384,10 +448,22 @@ export default function App(): JSX.Element {
 
         <section className="panel two-column" aria-label="Phage browser">
           {showList && (
-            <div className="column column--list">
+            <div className={`column column--list ${isMobile && hasSelection ? 'mobile-drawer' : ''}`}>
               <div className="panel-header">
                 <h3>Phages</h3>
-                <span className="badge">{phages.length}</span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <span className="badge">{phages.length}</span>
+                  {isMobile && hasSelection && (
+                    <button
+                      className="btn btn-sm"
+                      onClick={() => setMobileListOpen(false)}
+                      type="button"
+                      aria-label="Close phage list"
+                    >
+                      Close
+                    </button>
+                  )}
+                </div>
               </div>
               <div className="list">
                 {phages.map((phage, idx) => {
@@ -427,16 +503,16 @@ export default function App(): JSX.Element {
 
           {showDetail && (
             <div className="column column--detail">
-              <div className="panel-header">
+                  <div className="panel-header">
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                   {isMobile && (
                     <button 
                       className="btn btn-sm"
-                      onClick={() => setCurrentPhage(null)}
+                      onClick={() => setMobileListOpen(true)}
                       type="button"
-                      aria-label="Back to list"
+                      aria-label="Open phage list"
                     >
-                      ← Back
+                      Phages
                     </button>
                   )}
                   <h3>Details</h3>
@@ -487,11 +563,13 @@ export default function App(): JSX.Element {
                             ? sequencePreview
                             : 'Sequence preview will appear after phage load completes.'}
                         </pre>
-                      )}
-                    </div>
-                    <div className="viewer-panel">
-                      {show3DInLayout && <Model3DView phage={currentPhage} />}
-                    </div>
+                  )}
+                </div>
+                    {show3DInLayout && (
+                      <div className="viewer-panel">
+                        <Model3DView phage={currentPhage} />
+                      </div>
+                    )}
                   </div>
                   {beginnerModeEnabled && fullSequence && (
                     <div style={{ marginTop: '1rem' }}>

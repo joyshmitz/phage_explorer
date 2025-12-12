@@ -365,9 +365,27 @@ export class GlyphAtlas {
     destWidth?: number,
     destHeight?: number
   ): void {
-    // Use uniform scaling to avoid distorting letterforms when cells are rectangular.
     const dw = destWidth ?? this.options.cellWidth;
     const dh = destHeight ?? this.options.cellHeight;
+
+    // Fast path: when drawing at the atlas’ native cell size, the atlas already
+    // includes the background fill, so we can draw directly without an extra fillRect.
+    if (dw === this.options.cellWidth && dh === this.options.cellHeight) {
+      destCtx.drawImage(
+        this.canvas as CanvasImageSource,
+        glyph.x,
+        glyph.y,
+        glyph.width,
+        glyph.height,
+        destX,
+        destY,
+        dw,
+        dh
+      );
+      return;
+    }
+
+    // Use uniform scaling to avoid distorting letterforms when cells are rectangular.
     const scale = Math.min(dw / glyph.width, dh / glyph.height);
     const targetW = glyph.width * scale;
     const targetH = glyph.height * scale;

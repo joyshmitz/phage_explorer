@@ -183,9 +183,9 @@ export function SequenceView({
     initialZoomScale: densityMode === 'compact' ? 0.85 : 1.0,
     densityMode,
     onVisibleRangeChange: (range) => {
-    setScrollPosition(range.startIndex);
-  },
-});
+      setScrollPosition(range.startIndex);
+    },
+  });
 
   // Auto-compact for landscape mobile unless user overrode
   useEffect(() => {
@@ -695,12 +695,12 @@ export function SequenceView({
       </div>
 
       {/* Amino Acid HUD - shown on long press in AA mode */}
-  <AminoAcidHUD
-    aminoAcid={hudAminoAcid}
-    position={hudPosition}
-    visible={hudVisible}
-    onClose={() => setHudVisible(false)}
-  />
+      <AminoAcidHUD
+        aminoAcid={hudAminoAcid}
+        position={hudPosition}
+        visible={hudVisible}
+        onClose={() => setHudVisible(false)}
+      />
 
       {/* Mobile sticky badge for scroll progress */}
       {isMobile && seqLength > 0 && (
