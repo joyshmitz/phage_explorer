@@ -19,7 +19,7 @@ export interface UserPresence {
 }
 
 export interface SyncMessage {
-  type: 'presence' | 'state' | 'chat';
+  type: 'presence' | 'state' | 'chat' | 'join' | 'leave';
   sender: PeerId;
   timestamp: number;
   payload: any;

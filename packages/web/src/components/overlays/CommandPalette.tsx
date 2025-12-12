@@ -174,6 +174,7 @@ export function CommandPalette({ commands: customCommands, context: propContext 
   const { theme } = useTheme();
   const colors = theme.colors;
   const { isOpen, toggle, open, close } = useOverlay();
+  const paletteOpen = isOpen('commandPalette');
   const [query, setQuery] = useState('');
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [recentCommandIds, setRecentCommandIds] = useState<string[]>([]);
@@ -440,16 +441,24 @@ export function CommandPalette({ commands: customCommands, context: propContext 
 
   // Focus input when opened
   useEffect(() => {
-    if (isOpen('commandPalette') && inputRef.current) {
+    if (paletteOpen && inputRef.current) {
       inputRef.current.focus();
       setQuery('');
       setSelectedIndex(0);
     }
-  }, [isOpen]);
+  }, [paletteOpen]);
 
   // Register hotkey
   useEffect(() => {
+    const isTypingTarget = (target: EventTarget | null): boolean => {
+      if (!(target instanceof HTMLElement)) return false;
+      if (target.isContentEditable) return true;
+      return Boolean(target.closest('input, textarea, select'));
+    };
+
     const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.repeat) return;
+      if (isTypingTarget(e.target)) return;
       if (e.key === ':' && !e.ctrlKey && !e.metaKey) {
         e.preventDefault();
         toggle('commandPalette');
@@ -506,15 +515,13 @@ export function CommandPalette({ commands: customCommands, context: propContext 
 
   // Scroll selected item into view
   useEffect(() => {
-    if (listRef.current) {
-      const selectedElement = listRef.current.children[selectedIndex] as HTMLElement | undefined;
-      if (selectedElement) {
-        selectedElement.scrollIntoView({ block: 'nearest' });
-      }
-    }
+    const list = listRef.current;
+    if (!list) return;
+    const selectedElement = list.querySelector<HTMLElement>(`[data-cmd-index="${selectedIndex}"]`);
+    selectedElement?.scrollIntoView({ block: 'nearest' });
   }, [selectedIndex]);
 
-  if (!isOpen('commandPalette')) {
+  if (!paletteOpen) {
     return null;
   }
 
@@ -601,6 +608,7 @@ export function CommandPalette({ commands: customCommands, context: propContext 
                 return (
                   <div
                     key={`recent-${cmd.id}`}
+                    data-cmd-index={currentIndex}
                     onClick={() => executeCommand(cmd)}
                     className={`list-item ${isSelected ? 'active' : ''}`}
                   >
@@ -630,6 +638,7 @@ export function CommandPalette({ commands: customCommands, context: propContext 
                 return (
                   <div
                     key={cmd.id}
+                    data-cmd-index={currentIndex}
                     onClick={() => executeCommand(cmd)}
                     className={`list-item ${isSelected ? 'active' : ''}`}
                   >

@@ -56,7 +56,7 @@ function predictAcrCandidates(genes: GeneInfo[], fullSequence: string): AcrCandi
   const candidates: AcrCandidate[] = [];
 
   for (const gene of genes) {
-    const geneSeq = fullSequence.slice(gene.startPos - 1, gene.endPos);
+    const geneSeq = fullSequence.slice(gene.startPos, gene.endPos);
     const seqForTranslation = gene.strand === '-' ? reverseComplement(geneSeq) : geneSeq;
     const protein = translateSequence(seqForTranslation);
     const length = protein.length;

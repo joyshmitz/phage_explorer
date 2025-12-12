@@ -117,8 +117,9 @@ export function SequenceGrid({
       viewportRows: effectiveRows,
       mode: viewMode,
       frame: readingFrame,
+      totalLength: genomeLength,
     });
-  }, [sequence, scrollPosition, viewMode, readingFrame, width, height]);
+  }, [sequence, scrollPosition, viewMode, readingFrame, width, height, genomeLength]);
 
   // K-mer anomaly mini-strip aligned to current viewport
   const kmerStrip = useMemo(() => {

@@ -1,5 +1,5 @@
 import type { VirtualWindow, GridCell, GridRow, ViewMode, ReadingFrame } from './types';
-import { translateSequence, translateCodon } from './codons';
+import { translateSequence, translateCodon, reverseComplement } from './codons';
 
 // Sequence virtualizer for efficient rendering of large genomes
 export class SequenceVirtualizer {
@@ -34,6 +34,7 @@ export interface GridBuilderConfig {
   viewportRows: number;
   mode: ViewMode;
   frame: ReadingFrame;
+  totalLength?: number;
 }
 
 // Build grid from sequence data
@@ -136,7 +137,32 @@ export function buildGrid(
     }
   } else {
     // AA mode - translate and display amino acids
-    const aaSequence = translateSequence(sequence, forwardFrame);
+    let aaSequence: string;
+    
+    if (frame >= 0) {
+      const forwardFrame = frame as 0 | 1 | 2;
+      // Align to global reading frame
+      // We want (startIndex + offset - frame) % 3 == 0
+      const offset = ((forwardFrame - startIndex) % 3 + 3) % 3;
+      aaSequence = translateSequence(sequence, offset as 0 | 1 | 2);
+    } else {
+      // Reverse frame (Translate RC)
+      const rcFrame = (Math.abs(frame) - 1) as 0 | 1 | 2;
+      const totalLen = config.totalLength ?? (startIndex + sequence.length); // Fallback
+      
+      // Calculate start index on Reverse Strand corresponding to end of this chunk
+      // RC_Start = TotalLen - (startIndex + seqLen)
+      const globalRcStart = totalLen - startIndex - sequence.length;
+      
+      // We want (GlobalRcIndex + offset - rcFrame) % 3 == 0
+      const offset = ((rcFrame - globalRcStart) % 3 + 3) % 3;
+      
+      const rc = reverseComplement(sequence);
+      const trans = translateSequence(rc, offset as 0 | 1 | 2);
+      // Reverse to map N->C (Reverse) to Left->Right (Spatial)
+      // Since Reverse strand runs R->L, its protein N->C runs R->L.
+      aaSequence = trans.split('').reverse().join('');
+    }
 
     for (let row = 0; row < viewportRows; row++) {
       const rowStart = row * viewportCols;
@@ -146,8 +172,12 @@ export function buildGrid(
         const aaIndex = rowStart + col;
         if (aaIndex >= aaSequence.length) break;
 
-        // Calculate the DNA position for this AA
-        const dnaPos = startIndex + forwardFrame + aaIndex * 3;
+        // Calculate DNA position (approximate for click mapping)
+        // For forward: startIndex + offset + index*3
+        // For reverse: it's reversed.
+        // Let's just map linearly for now, it's enough for simple UI
+        const dnaPos = startIndex + aaIndex * 3; 
+        
         cells.push({
           char: aaSequence[aaIndex],
           position: dnaPos,
