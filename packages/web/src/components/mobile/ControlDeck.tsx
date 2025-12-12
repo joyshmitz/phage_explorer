@@ -1,9 +1,35 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { usePhageStore } from '@phage-explorer/state';
 import { useOverlay } from '../overlays/OverlayProvider';
 
+function useMediaQuery(query: string): boolean {
+  const [matches, setMatches] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    return window.matchMedia(query).matches;
+  });
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const mql = window.matchMedia(query);
+    const update = () => setMatches(mql.matches);
+    update();
+    mql.addEventListener('change', update);
+    return () => mql.removeEventListener('change', update);
+  }, [query]);
+
+  return matches;
+}
+
 export function ControlDeck(): JSX.Element {
   const [activeTab, setActiveTab] = useState<'view' | 'nav' | 'tools'>('view');
+  const isLandscape = useMediaQuery('(orientation: landscape)');
+  const isPhoneWidth = useMediaQuery('(max-width: 640px)');
+  const isLandscapePhone = isLandscape && isPhoneWidth;
+  const [expanded, setExpanded] = useState(false);
+
+  useEffect(() => {
+    if (isLandscapePhone) setExpanded(false);
+  }, [isLandscapePhone]);
   
   // Store Actions
   const toggleViewMode = usePhageStore(s => s.toggleViewMode);
@@ -52,64 +78,72 @@ export function ControlDeck(): JSX.Element {
   };
 
   return (
-    <div className="control-deck">
+    <div className={`control-deck${isLandscapePhone ? ' is-landscape' : ''}${expanded ? ' is-expanded' : ''}`}>
       {/* Tab Content Area */}
-      <div className="deck-content">
-        {activeTab === 'view' && (
-          <div className="deck-row">
-            <button className="deck-btn" onClick={toggleViewMode}>
-              <span className="icon">Aa</span>
-              <span className="label">Mode</span>
-            </button>
-            <button className="deck-btn" onClick={cycleFrame}>
-              <span className="icon">F{readingFrame}</span>
-              <span className="label">Frame</span>
-            </button>
-            <button className={`deck-btn ${diffEnabled ? 'active' : ''}`} onClick={toggleDiff}>
-              <span className="icon">±</span>
-              <span className="label">Diff</span>
-            </button>
-            <button className={`deck-btn ${show3DModel ? 'active' : ''}`} onClick={toggle3DModel}>
-              <span className="icon">🧊</span>
-              <span className="label">3D</span>
-            </button>
-          </div>
-        )}
+      {(!isLandscapePhone || expanded) && (
+        <div className="deck-content" aria-hidden={isLandscapePhone && !expanded}>
+          {activeTab === 'view' && (
+            <div className="deck-row">
+              <button className="deck-btn" onClick={toggleViewMode}>
+                <span className="icon">Aa</span>
+                <span className="label">Mode</span>
+              </button>
+              <button className="deck-btn" onClick={cycleFrame}>
+                <span className="icon">F{readingFrame}</span>
+                <span className="label">Frame</span>
+              </button>
+              <button className={`deck-btn ${diffEnabled ? 'active' : ''}`} onClick={toggleDiff}>
+                <span className="icon">±</span>
+                <span className="label">Diff</span>
+              </button>
+              <button className={`deck-btn ${show3DModel ? 'active' : ''}`} onClick={toggle3DModel}>
+                <span className="icon">🧊</span>
+                <span className="label">3D</span>
+              </button>
+            </div>
+          )}
 
-        {activeTab === 'nav' && (
-          <div className="deck-row">
-             <button className="deck-btn" onClick={() => open('search')}>
-              <span className="icon">🔍</span>
-              <span className="label">Search</span>
-            </button>
-            <button className="deck-btn" onClick={() => open('goto')}>
-              <span className="icon">Go</span>
-              <span className="label">Goto</span>
-            </button>
-             {/* Gene Navigation */}
-             <button className="deck-btn" onClick={() => handleGeneNav('prev')}>
-              <span className="icon">←</span>
-              <span className="label">Prev Gene</span>
-            </button>
-            <button className="deck-btn" onClick={() => handleGeneNav('next')}>
-              <span className="icon">→</span>
-              <span className="label">Next Gene</span>
-            </button>
-          </div>
-        )}
-      </div>
+          {activeTab === 'nav' && (
+            <div className="deck-row">
+              <button className="deck-btn" onClick={() => open('search')}>
+                <span className="icon">🔍</span>
+                <span className="label">Search</span>
+              </button>
+              <button className="deck-btn" onClick={() => open('goto')}>
+                <span className="icon">Go</span>
+                <span className="label">Goto</span>
+              </button>
+              {/* Gene Navigation */}
+              <button className="deck-btn" onClick={() => handleGeneNav('prev')}>
+                <span className="icon">←</span>
+                <span className="label">Prev Gene</span>
+              </button>
+              <button className="deck-btn" onClick={() => handleGeneNav('next')}>
+                <span className="icon">→</span>
+                <span className="label">Next Gene</span>
+              </button>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Bottom Tabs */}
       <div className="deck-tabs">
         <button 
           className={`tab-btn ${activeTab === 'view' ? 'active' : ''}`} 
-          onClick={() => setActiveTab('view')}
+          onClick={() => {
+            setActiveTab('view');
+            if (isLandscapePhone && !expanded) setExpanded(true);
+          }}
         >
           View
         </button>
         <button 
           className={`tab-btn ${activeTab === 'nav' ? 'active' : ''}`} 
-          onClick={() => setActiveTab('nav')}
+          onClick={() => {
+            setActiveTab('nav');
+            if (isLandscapePhone && !expanded) setExpanded(true);
+          }}
         >
           Navigate
         </button>
@@ -119,6 +153,17 @@ export function ControlDeck(): JSX.Element {
         >
           Tools
         </button>
+        {isLandscapePhone && (
+          <button
+            type="button"
+            className="tab-btn tab-btn-toggle"
+            aria-label={expanded ? 'Collapse control deck' : 'Expand control deck'}
+            aria-expanded={expanded}
+            onClick={() => setExpanded((prev) => !prev)}
+          >
+            {expanded ? '▼' : '▲'}
+          </button>
+        )}
       </div>
     </div>
   );
