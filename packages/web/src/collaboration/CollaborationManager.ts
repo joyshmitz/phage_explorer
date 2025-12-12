@@ -9,10 +9,10 @@ import { create } from 'zustand';
 import type { SessionId, UserPresence, SyncMessage, SessionState } from './types';
 
 // Generate a random ID
-const generateId = () => Math.random().toString(36).substr(2, 9);
+const generateId = () => Math.random().toString(36).slice(2, 11);
 
 // Generate a random color
-const generateColor = () => '#' + Math.floor(Math.random()*16777215).toString(16);
+const generateColor = () => `#${Math.floor(Math.random() * 0xffffff).toString(16).padStart(6, '0')}`;
 
 interface CollaborationStore extends SessionState {
   currentUser: UserPresence;
@@ -74,6 +74,7 @@ export const useCollaborationStore = create<CollaborationStore>((set, get) => {
         });
       }
     };
+    listenerSetup = true;
   };
 
   return {
@@ -102,7 +103,9 @@ export const useCollaborationStore = create<CollaborationStore>((set, get) => {
         peers: { [userId]: user }
       });
 
-      console.log(`[Collaboration] Session created: ${sessionId}`);
+      if (import.meta.env.DEV) {
+        console.log(`[Collaboration] Session created: ${sessionId}`);
+      }
       return sessionId;
     },
 
@@ -136,7 +139,9 @@ export const useCollaborationStore = create<CollaborationStore>((set, get) => {
         payload: { sessionId, user }
       });
 
-      console.log(`[Collaboration] Joined session: ${sessionId}`);
+      if (import.meta.env.DEV) {
+        console.log(`[Collaboration] Joined session: ${sessionId}`);
+      }
     },
 
     leaveSession: () => {
@@ -173,8 +178,9 @@ export const useCollaborationStore = create<CollaborationStore>((set, get) => {
       });
     },
 
-    broadcastState: () => {
+    broadcastState: (state) => {
       // Placeholder for state sync
+      void state;
     },
 
     dispose: () => {

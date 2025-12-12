@@ -10,6 +10,7 @@ interface GeneMapCanvasProps {
 
 export function GeneMapCanvas({
   height = 60,
+  className,
   onGeneClick,
 }: GeneMapCanvasProps): React.ReactElement {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -23,110 +24,239 @@ export function GeneMapCanvas({
   const genes = useMemo(() => currentPhage?.genes ?? [], [currentPhage]);
   const genomeLength = useMemo(() => currentPhage?.genomeLength ?? 1, [currentPhage]);
 
-  // Handle click to navigate
-  const handleClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    if (!onGeneClick || !genomeLength) return;
+  const [hoveredGene, setHoveredGene] = React.useState<{
+    name: string;
+    product?: string;
+    x: number;
+    y: number;
+  } | null>(null);
+
+  const lastTouchEndRef = useRef<number>(0);
+  const longPressTimerRef = useRef<number | null>(null);
+  const tooltipDismissTimerRef = useRef<number | null>(null);
+  const touchSessionRef = useRef<{
+    startClientX: number;
+    startClientY: number;
+    moved: boolean;
+    longPressed: boolean;
+    posBase: number;
+    gene: any | null;
+  } | null>(null);
+
+  const clearLongPressTimer = () => {
+    if (longPressTimerRef.current != null) {
+      window.clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+  };
+
+  const clearTooltipDismissTimer = () => {
+    if (tooltipDismissTimerRef.current != null) {
+      window.clearTimeout(tooltipDismissTimerRef.current);
+      tooltipDismissTimerRef.current = null;
+    }
+  };
+
+  useEffect(() => {
+    return () => {
+      clearLongPressTimer();
+      clearTooltipDismissTimer();
+    };
+  }, []);
+
+  const toScrollUnits = (posBase: number) => {
+    if (viewMode === 'aa') return Math.floor(posBase / 3);
+    return posBase;
+  };
+
+  const getHitInfo = (clientX: number, clientY: number) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
 
     const rect = canvas.getBoundingClientRect();
-    const x = e.clientX - rect.left;
+    const x = clientX - rect.left;
+    const y = clientY - rect.top;
+    const heightPx = rect.height;
     const width = rect.width;
-    
-    // Map click X to genome position
-    const clickRatio = x / width;
-    const targetPos = Math.floor(clickRatio * genomeLength);
-    
-    onGeneClick(targetPos);
+    if (width <= 0 || heightPx <= 0) return;
+    if (x < 0 || x > width) return;
+    if (y < 0 || y > heightPx) return;
+
+    const posBase = Math.floor((x / width) * genomeLength);
+
+    const trackHeight = 12;
+    const forwardY = 10;
+    const reverseY = 30;
+
+    const inForward = y >= forwardY && y <= forwardY + trackHeight;
+    const inReverse = y >= reverseY && y <= reverseY + trackHeight;
+
+    let bestGene: any | null = null;
+    let bestDistance = Number.POSITIVE_INFINITY;
+
+    if (inForward || inReverse) {
+      for (const gene of genes) {
+        const isForwardGene = gene.strand !== '-';
+        if (inForward && !isForwardGene) continue;
+        if (inReverse && isForwardGene) continue;
+
+        const startX = (gene.startPos / genomeLength) * width;
+        const endX = (gene.endPos / genomeLength) * width;
+        const geneWidth = Math.max(1, endX - startX);
+        const hitWidth = Math.max(geneWidth, 44);
+        const centerX = startX + geneWidth / 2;
+        const hitStart = centerX - hitWidth / 2;
+        const hitEnd = centerX + hitWidth / 2;
+
+        if (x < hitStart || x > hitEnd) continue;
+        const distance = Math.abs(x - centerX);
+        if (distance < bestDistance) {
+          bestDistance = distance;
+          bestGene = gene;
+        }
+      }
+    }
+
+    return { posBase, gene: bestGene, clientX, clientY };
   };
 
-  const [hoveredGene, setHoveredGene] = React.useState<{ name: string; product?: string; x: number; y: number } | null>(null);
+  const showTooltip = (gene: any, clientX: number, clientY: number) => {
+    setHoveredGene({
+      name: gene.name || gene.locusTag || 'Unknown',
+      product: gene.product,
+      x: clientX,
+      y: clientY,
+    });
+  };
+
+  const scheduleTooltipDismiss = (ms: number) => {
+    clearTooltipDismissTimer();
+    tooltipDismissTimerRef.current = window.setTimeout(() => setHoveredGene(null), ms);
+  };
+
+  // Handle click to navigate (mouse); touch taps handled separately.
+  const handleClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    if (!onGeneClick || !genomeLength) return;
+    if (performance.now() - lastTouchEndRef.current < 500) return;
+
+    const hit = getHitInfo(e.clientX, e.clientY);
+    if (!hit) return;
+
+    const targetBase = hit.gene ? hit.gene.startPos : hit.posBase;
+    onGeneClick(toScrollUnits(targetBase));
+  };
 
   // Handle mouse move for tooltips
   const handleMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
     if (!currentPhage || !genomeLength) return;
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-
-    const rect = canvas.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const width = rect.width;
-    
-    // Map X to genome position
-    const hoverPos = Math.floor((x / width) * genomeLength);
-    
-    // Find gene at this position
-    const gene = genes.find(g => hoverPos >= g.startPos && hoverPos < g.endPos);
-    
-    if (gene) {
-      setHoveredGene({
-        name: gene.name || gene.locusTag || 'Unknown',
-        product: gene.product,
-        x: e.clientX,
-        y: e.clientY - 10 // Shift up slightly
-      });
-    } else {
+    const hit = getHitInfo(e.clientX, e.clientY);
+    if (!hit || !hit.gene) {
       setHoveredGene(null);
+      return;
     }
+
+    showTooltip(hit.gene, hit.clientX, hit.clientY - 10);
   };
 
-  const handleMouseLeave = () => {
-    setHoveredGene(null);
-  };
+  const handleMouseLeave = () => setHoveredGene(null);
 
   // Touch handling for mobile
   const handleTouchStart = (e: React.TouchEvent<HTMLCanvasElement>) => {
-    e.preventDefault(); // Prevent scrolling while interacting with map
+    if (e.touches.length !== 1) return;
+    if (!currentPhage || !genomeLength) return;
+
     const touch = e.touches[0];
-    const rect = e.currentTarget.getBoundingClientRect();
-    const x = touch.clientX - rect.left;
-    const width = rect.width;
-    
-    if (onGeneClick && genomeLength) {
-      const clickRatio = x / width;
-      const targetPos = Math.floor(clickRatio * genomeLength);
-      onGeneClick(targetPos);
-    }
-    
-    // Also show tooltip
-    const hoverPos = Math.floor((x / width) * genomeLength);
-    const gene = genes.find(g => hoverPos >= g.startPos && hoverPos < g.endPos);
-    
-    if (gene) {
-      setHoveredGene({
-        name: gene.name || gene.locusTag || 'Unknown',
-        product: gene.product,
-        x: touch.clientX,
-        y: touch.clientY - 40
-      });
-    } else {
-      setHoveredGene(null);
+    const hit = getHitInfo(touch.clientX, touch.clientY);
+    if (!hit) return;
+
+    clearLongPressTimer();
+    clearTooltipDismissTimer();
+
+    touchSessionRef.current = {
+      startClientX: touch.clientX,
+      startClientY: touch.clientY,
+      moved: false,
+      longPressed: false,
+      posBase: hit.posBase,
+      gene: hit.gene,
+    };
+
+    const LONG_PRESS_MS = 300;
+    if (hit.gene) {
+      longPressTimerRef.current = window.setTimeout(() => {
+        const session = touchSessionRef.current;
+        if (!session || session.moved) return;
+        session.longPressed = true;
+        showTooltip(hit.gene, hit.clientX, hit.clientY - 40);
+      }, LONG_PRESS_MS);
     }
   };
 
   const handleTouchMove = (e: React.TouchEvent<HTMLCanvasElement>) => {
-    e.preventDefault();
+    if (e.touches.length !== 1) return;
+    const session = touchSessionRef.current;
+    if (!session) return;
+
     const touch = e.touches[0];
-    const rect = e.currentTarget.getBoundingClientRect();
-    const x = touch.clientX - rect.left;
-    const width = rect.width;
-    
-    const hoverPos = Math.floor((x / width) * genomeLength);
-    const gene = genes.find(g => hoverPos >= g.startPos && hoverPos < g.endPos);
-    
-    if (gene) {
-      setHoveredGene({
-        name: gene.name || gene.locusTag || 'Unknown',
-        product: gene.product,
-        x: touch.clientX,
-        y: touch.clientY - 40
-      });
+    const dx = touch.clientX - session.startClientX;
+    const dy = touch.clientY - session.startClientY;
+    const moved = Math.hypot(dx, dy);
+
+    const MOVE_CANCEL_PX = 10;
+    if (moved > MOVE_CANCEL_PX) {
+      session.moved = true;
+      clearLongPressTimer();
+      if (!session.longPressed) {
+        setHoveredGene(null);
+      }
+    }
+
+    if (session.longPressed && session.gene) {
+      showTooltip(session.gene, touch.clientX, touch.clientY - 40);
+    }
+  };
+
+  const handleTouchEnd = (e: React.TouchEvent<HTMLCanvasElement>) => {
+    lastTouchEndRef.current = performance.now();
+    clearLongPressTimer();
+
+    const session = touchSessionRef.current;
+    touchSessionRef.current = null;
+    if (!session) return;
+
+    if (session.longPressed) {
+      // Keep tooltip briefly after long-press so users can read it.
+      scheduleTooltipDismiss(2000);
+      return;
+    }
+
+    if (session.moved) {
+      setHoveredGene(null);
+      return;
+    }
+
+    // Tap: navigate; also show a brief tooltip flash for discovery.
+    if (!onGeneClick || !genomeLength) return;
+    if (e.changedTouches.length !== 1) return;
+
+    const touch = e.changedTouches[0];
+    const hit = getHitInfo(touch.clientX, touch.clientY);
+    if (!hit) return;
+
+    const targetBase = hit.gene ? hit.gene.startPos : hit.posBase;
+    onGeneClick(toScrollUnits(targetBase));
+
+    if (hit.gene) {
+      showTooltip(hit.gene, hit.clientX, hit.clientY - 40);
+      scheduleTooltipDismiss(900);
     } else {
       setHoveredGene(null);
     }
   };
 
-  const handleTouchEnd = () => {
+  const handleTouchCancel = () => {
+    clearLongPressTimer();
+    touchSessionRef.current = null;
     setHoveredGene(null);
   };
 
@@ -220,7 +350,9 @@ export function GeneMapCanvas({
   }, [currentPhage, genes, genomeLength, scrollPosition, viewMode, colors, height]);
 
   return (
-    <div className="gene-map-container" style={{ 
+    <div
+      className={`gene-map-container${className ? ` ${className}` : ''}`}
+      style={{
       position: 'relative', 
       height, 
       border: `1px solid ${colors.border}`,
@@ -230,19 +362,23 @@ export function GeneMapCanvas({
     }}>
       <canvas
         ref={canvasRef}
-        style={{ width: '100%', height: '100%', display: 'block', cursor: 'pointer', touchAction: 'none' }}
+        style={{ width: '100%', height: '100%', display: 'block', cursor: 'pointer', touchAction: 'pan-y' }}
         onClick={handleClick}
         onMouseMove={handleMouseMove}
         onMouseLeave={handleMouseLeave}
         onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
+        onTouchCancel={handleTouchCancel}
         title="Click to jump to position"
       />
       {hoveredGene && (
         <div style={{
           position: 'fixed',
-          left: hoveredGene.x,
+          left:
+            typeof window === 'undefined'
+              ? hoveredGene.x
+              : Math.min(Math.max(hoveredGene.x, 12), window.innerWidth - 12),
           top: hoveredGene.y,
           transform: 'translate(-50%, -100%)',
           backgroundColor: colors.backgroundElevated,
@@ -253,7 +389,7 @@ export function GeneMapCanvas({
           zIndex: 1000,
           boxShadow: '0 2px 8px rgba(0,0,0,0.2)',
           fontSize: '12px',
-          maxWidth: '200px',
+          maxWidth: 'min(240px, calc(100vw - 24px))',
         }}>
           <div style={{ fontWeight: 'bold', color: colors.text }}>{hoveredGene.name}</div>
           {hoveredGene.product && (

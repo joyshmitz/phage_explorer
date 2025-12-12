@@ -91,7 +91,7 @@ export default function App(): JSX.Element {
   const [sequencePreview, setSequencePreview] = useState<string>('');
   const [fullSequence, setFullSequence] = useState<string>('');
   const [mobileListOpen, setMobileListOpen] = useState(false);
-  const swipeStartRef = useRef<{ x: number; y: number } | null>(null);
+  const swipeStartRef = useRef<{ x: number; y: number; time: number } | null>(null);
   const enableBackgroundEffects = !reducedMotion;
   const getLayoutSnapshot = useCallback(() => {
     if (typeof window === 'undefined') {
@@ -251,11 +251,17 @@ export default function App(): JSX.Element {
     const container = document.getElementById('main-content');
     if (!container) return;
 
+    const SWIPE_DISTANCE_PX = 120;
+    const SWIPE_FAST_DISTANCE_PX = 80;
+    const SWIPE_VERTICAL_TOLERANCE_PX = 40;
+    const SWIPE_FAST_VELOCITY_PX_PER_MS = 0.5;
+    const SWIPE_HORIZONTAL_DOMINANCE_RATIO = 1.6;
+
     const shouldIgnoreTarget = (target: EventTarget | null) => {
       if (!(target instanceof HTMLElement)) return true;
       return Boolean(
         target.closest(
-          'input, textarea, select, button, a, .sequence-view, .three-container, .control-deck, .overlay, .glossary-shell'
+          'input, textarea, select, button, a, .phage-list, .sequence-view, .three-container, .control-deck, .overlay, .glossary-shell'
         )
       );
     };
@@ -264,7 +270,7 @@ export default function App(): JSX.Element {
       if (event.touches.length !== 1) return;
       if (shouldIgnoreTarget(event.target)) return;
       const t = event.touches[0];
-      swipeStartRef.current = { x: t.clientX, y: t.clientY };
+      swipeStartRef.current = { x: t.clientX, y: t.clientY, time: performance.now() };
     };
 
     const onTouchEnd = (event: TouchEvent) => {
@@ -274,12 +280,26 @@ export default function App(): JSX.Element {
       if (event.changedTouches.length !== 1) return;
 
       const t = event.changedTouches[0];
+      const elapsedMs = Math.max(1, performance.now() - start.time);
       const dx = t.clientX - start.x;
       const dy = t.clientY - start.y;
+      const absDx = Math.abs(dx);
+      const absDy = Math.abs(dy);
+
+      // Only consider swipes that are clearly horizontal (avoid triggering while vertically scrolling).
+      if (absDy > 0 && absDx / absDy < SWIPE_HORIZONTAL_DOMINANCE_RATIO) return;
+
+      const velocityX = absDx / elapsedMs; // px/ms
+      const isFastSwipe =
+        absDx >= SWIPE_FAST_DISTANCE_PX &&
+        velocityX >= SWIPE_FAST_VELOCITY_PX_PER_MS &&
+        absDy <= SWIPE_VERTICAL_TOLERANCE_PX;
 
       // Require a deliberate horizontal swipe.
-      if (Math.abs(dx) < 80) return;
-      if (Math.abs(dy) > 60) return;
+      if (!isFastSwipe) {
+        if (absDx < SWIPE_DISTANCE_PX) return;
+        if (absDy > SWIPE_VERTICAL_TOLERANCE_PX) return;
+      }
 
       if (dx < 0) {
         handleNextPhage();

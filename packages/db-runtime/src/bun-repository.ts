@@ -1,6 +1,6 @@
 import { Database } from 'bun:sqlite';
 import { drizzle } from 'drizzle-orm/bun-sqlite';
-import { eq, like, or, asc, desc, and, gte, lte } from 'drizzle-orm';
+import { eq, like, or, asc, desc, and, gte, lte, sql } from 'drizzle-orm';
 import {
   phages,
   sequences,
@@ -343,7 +343,9 @@ export class BunSqliteRepository implements PhageRepository {
   }
 
   async searchPhages(query: string): Promise<PhageSummary[]> {
-    const searchTerm = `%${query.toLowerCase()}%`;
+    // Escape wildcard characters
+    const escaped = query.replace(/[%_]/g, '\\$&');
+    const searchTerm = `%${escaped.toLowerCase()}%`;
 
     const result = await this.db
       .select({
@@ -361,11 +363,11 @@ export class BunSqliteRepository implements PhageRepository {
       .from(phages)
       .where(
         or(
-          like(phages.name, searchTerm),
-          like(phages.host, searchTerm),
-          like(phages.family, searchTerm),
-          like(phages.accession, searchTerm),
-          like(phages.slug, searchTerm)
+          sql`${phages.name} LIKE ${searchTerm} ESCAPE '\\'`,
+          sql`${phages.host} LIKE ${searchTerm} ESCAPE '\\'`,
+          sql`${phages.family} LIKE ${searchTerm} ESCAPE '\\'`,
+          sql`${phages.accession} LIKE ${searchTerm} ESCAPE '\\'`,
+          sql`${phages.slug} LIKE ${searchTerm} ESCAPE '\\'`
         )
       )
       .orderBy(asc(phages.name))

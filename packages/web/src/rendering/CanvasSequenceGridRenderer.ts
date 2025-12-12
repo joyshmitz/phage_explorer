@@ -7,7 +7,7 @@
  */
 
 import type { Theme, ViewMode, ReadingFrame } from '@phage-explorer/core';
-import type { GlyphAtlas } from './GlyphAtlas';
+import { GlyphAtlas } from './GlyphAtlas';
 import { VirtualScroller, type VisibleRange } from './VirtualScroller';
 import type { PostProcessPipeline } from './PostProcessPipeline';
 

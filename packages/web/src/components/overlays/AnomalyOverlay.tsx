@@ -19,8 +19,8 @@ import {
   DEFAULT_HEATMAP_SCALE,
   HeatmapCanvas,
   ScatterCanvas,
-  GenomeTrack,
 } from './primitives';
+import { GenomeTrack } from './primitives/GenomeTrack';
 import type { ScatterHover } from './primitives/types';
 import type {
   AnomalyWorkerAPI,
@@ -511,5 +511,4 @@ export function AnomalyOverlay({
 }
 
 export default AnomalyOverlay;
-
 
