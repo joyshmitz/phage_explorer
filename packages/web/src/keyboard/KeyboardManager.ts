@@ -15,6 +15,7 @@ import type {
 } from './types';
 
 const SEQUENCE_TIMEOUT = 1000; // 1 second to complete a sequence
+const ALL_MODES: KeyboardMode[] = ['NORMAL', 'SEARCH', 'COMMAND', 'VISUAL', 'INSERT'];
 
 /**
  * Check if an element is an input element
@@ -153,6 +154,11 @@ export class KeyboardManager {
   register(definition: HotkeyDefinition): () => void {
     const key = this.getHotkeyKey(definition.combo);
     const existing = this.hotkeys.get(key) ?? [];
+
+    if (import.meta.env.DEV) {
+      this.warnIfHotkeyConflicts(definition, existing);
+    }
+
     existing.push(definition);
     // Sort by priority (higher first)
     existing.sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0));
@@ -408,6 +414,157 @@ export class KeyboardManager {
   private isModeAllowed(def: HotkeyDefinition): boolean {
     if (!def.modes || def.modes.length === 0) return true;
     return def.modes.includes(this.state.mode);
+  }
+
+  private getAllowedModesForDefinition(def: HotkeyDefinition): KeyboardMode[] {
+    if (!def.modes || def.modes.length === 0) return ALL_MODES;
+    return def.modes;
+  }
+
+  private getModeOverlap(a: HotkeyDefinition, b: HotkeyDefinition): KeyboardMode[] {
+    const aModes = this.getAllowedModesForDefinition(a);
+    const bModes = this.getAllowedModesForDefinition(b);
+    return aModes.filter((mode) => bModes.includes(mode));
+  }
+
+  private comboRequiresCtrlAltMeta(combo: KeyCombo): boolean {
+    if ('sequence' in combo) return false;
+    const modifiers = combo.modifiers;
+    return Boolean(modifiers?.ctrl || modifiers?.alt || modifiers?.meta);
+  }
+
+  private getLikelyEventKeyForSingleKeyCombo(combo: KeyCombo): string | null {
+    if ('sequence' in combo) return null;
+    const shift = combo.modifiers?.shift ?? false;
+    const key = combo.key;
+
+    if (key.length === 1 && /[a-z]/i.test(key)) {
+      return shift ? key.toUpperCase() : key.toLowerCase();
+    }
+
+    return key;
+  }
+
+  private warnIfHotkeyConflicts(incoming: HotkeyDefinition, existing: HotkeyDefinition[]): void {
+    const incomingPriority = incoming.priority ?? 0;
+
+    for (const prev of existing) {
+      const overlap = this.getModeOverlap(incoming, prev);
+      if (overlap.length === 0) continue;
+
+      const prevPriority = prev.priority ?? 0;
+      if (prevPriority !== incomingPriority) continue;
+
+      console.warn(
+        `[keyboard] Hotkey conflict for "${incoming.description}" (priority=${incomingPriority}) vs "${prev.description}" in modes [${overlap.join(
+          ', '
+        )}]. Consider adjusting priorities or modes.`
+      );
+    }
+
+    if ('sequence' in incoming.combo) {
+      const incomingSequence = incoming.combo.sequence.join('');
+
+      const firstKey = incoming.combo.sequence[0];
+      if (!firstKey) return;
+      const possibleShadowed = this.findSingleKeyHotkeysForEventKey(firstKey);
+      for (const prev of possibleShadowed) {
+        const overlap = this.getModeOverlap(incoming, prev);
+        if (overlap.length === 0) continue;
+        console.warn(
+          `[keyboard] Hotkey "${prev.description}" may never trigger in modes [${overlap.join(
+            ', '
+          )}] because a sequence starting with "${firstKey}" is registered ("${incoming.description}").`
+        );
+      }
+
+      const prefixConflicts = this.findSequencePrefixConflicts(incoming);
+      for (const prev of prefixConflicts) {
+        const overlap = this.getModeOverlap(incoming, prev);
+        if (overlap.length === 0) continue;
+        if (!('sequence' in prev.combo)) continue;
+
+        const prevSequence = prev.combo.sequence.join('');
+        if (incomingSequence.startsWith(prevSequence)) {
+          console.warn(
+            `[keyboard] Sequence "${incoming.description}" ("${incomingSequence}") may never trigger in modes [${overlap.join(
+              ', '
+            )}] because "${prev.description}" ("${prevSequence}") is a prefix and will fire earlier.`
+          );
+        } else if (prevSequence.startsWith(incomingSequence)) {
+          console.warn(
+            `[keyboard] Sequence "${prev.description}" ("${prevSequence}") may never trigger in modes [${overlap.join(
+              ', '
+            )}] because "${incoming.description}" ("${incomingSequence}") is a prefix and will fire earlier.`
+          );
+        }
+      }
+
+      return;
+    }
+
+    if (this.comboRequiresCtrlAltMeta(incoming.combo)) {
+      return;
+    }
+
+    const eventKey = this.getLikelyEventKeyForSingleKeyCombo(incoming.combo);
+    if (!eventKey) return;
+
+    const starterSequences = this.findSequenceHotkeysStartingWithKey(eventKey);
+    for (const prev of starterSequences) {
+      const overlap = this.getModeOverlap(incoming, prev);
+      if (overlap.length === 0) continue;
+      console.warn(
+        `[keyboard] Hotkey "${incoming.description}" may never trigger in modes [${overlap.join(
+          ', '
+        )}] because a sequence starting with "${eventKey}" is registered ("${prev.description}").`
+      );
+    }
+  }
+
+  private findSequenceHotkeysStartingWithKey(key: string): HotkeyDefinition[] {
+    const matches: HotkeyDefinition[] = [];
+    for (const definitions of this.hotkeys.values()) {
+      for (const def of definitions) {
+        if (!('sequence' in def.combo)) continue;
+        if (def.combo.sequence[0] === key) matches.push(def);
+      }
+    }
+    return matches;
+  }
+
+  private findSequencePrefixConflicts(incoming: HotkeyDefinition): HotkeyDefinition[] {
+    if (!('sequence' in incoming.combo)) return [];
+    const incomingSequence = incoming.combo.sequence.join('');
+
+    const matches: HotkeyDefinition[] = [];
+    for (const definitions of this.hotkeys.values()) {
+      for (const def of definitions) {
+        if (!('sequence' in def.combo)) continue;
+        const otherSequence = def.combo.sequence.join('');
+        if (otherSequence === incomingSequence) continue;
+        if (otherSequence.startsWith(incomingSequence) || incomingSequence.startsWith(otherSequence)) {
+          matches.push(def);
+        }
+      }
+    }
+
+    return matches;
+  }
+
+  private findSingleKeyHotkeysForEventKey(key: string): HotkeyDefinition[] {
+    const matches: HotkeyDefinition[] = [];
+    for (const definitions of this.hotkeys.values()) {
+      for (const def of definitions) {
+        if ('sequence' in def.combo) continue;
+        if (this.comboRequiresCtrlAltMeta(def.combo)) continue;
+        const eventKey = this.getLikelyEventKeyForSingleKeyCombo(def.combo);
+        if (!eventKey) continue;
+        if (eventKey !== key) continue;
+        matches.push(def);
+      }
+    }
+    return matches;
   }
 
   /**
