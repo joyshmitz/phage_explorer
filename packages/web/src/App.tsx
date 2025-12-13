@@ -210,10 +210,12 @@ export default function App(): JSX.Element {
       setSrAlertMessage('');
       return;
     }
+    // When the DB fails before initialization, DataLoadingOverlay handles the announcement.
+    if (!repository) return;
     if (error === lastErrorRef.current) return;
     lastErrorRef.current = error;
     announceSr('alert', `Error: ${error}`);
-  }, [announceSr, error]);
+  }, [announceSr, error, repository]);
 
   useEffect(() => {
     const isReady = Boolean(repository);
@@ -609,11 +611,7 @@ export default function App(): JSX.Element {
                 <span>{progress.percent}%</span>
               </div>
             )}
-            {error && (
-              <div className="text-error" role="alert" aria-live="assertive" aria-atomic="true">
-                Error: {error}
-              </div>
-            )}
+            {error && <div className="text-error">Error: {error}</div>}
           </section>
         )}
 
