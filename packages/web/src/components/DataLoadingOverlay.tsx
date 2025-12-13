@@ -131,25 +131,16 @@ export function DataLoadingOverlay({
         {/* Progress bar when we have actual progress */}
         {displayProgress.percent > 0 && (
           <div
-            style={{
-              height: '4px',
-              backgroundColor: colors.border,
-              borderRadius: '2px',
-              marginBottom: '1rem',
-              overflow: 'hidden',
-            }}
+            className="progress-bar"
+            style={{ marginBottom: '1rem' }}
             role="progressbar"
             aria-valuenow={displayProgress.percent}
             aria-valuemin={0}
             aria-valuemax={100}
           >
             <div
-              style={{
-                height: '100%',
-                width: `${displayProgress.percent}%`,
-                backgroundColor: colors.primary,
-                transition: 'width 0.3s ease-out',
-              }}
+              className="progress"
+              style={{ width: `${displayProgress.percent}%` }}
             />
           </div>
         )}
