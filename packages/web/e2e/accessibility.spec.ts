@@ -41,6 +41,11 @@ function formatViolations(label: string, violations: AxeViolation[]): string {
   return lines.join('\n');
 }
 
+async function waitForAppReady(page: Page): Promise<void> {
+  // The keyboard manager registers hotkeys during React mount; avoid flakiness on slow CI.
+  await page.waitForSelector('button.btn', { state: 'attached', timeout: 10000 });
+}
+
 async function ensureAxeLoaded(page: Page): Promise<void> {
   const alreadyLoaded = await page.evaluate(() => {
     const axe = (window as unknown as { axe?: { run?: unknown } }).axe;
@@ -48,7 +53,13 @@ async function ensureAxeLoaded(page: Page): Promise<void> {
   }).catch(() => false);
 
   if (alreadyLoaded) return;
-  await page.addScriptTag({ url: AXE_SCRIPT_URL });
+  try {
+    await page.addScriptTag({ url: AXE_SCRIPT_URL });
+  } catch (err) {
+    throw new Error(
+      `Failed to inject axe-core from ${AXE_SCRIPT_URL}. Ensure network access is available when running this test.\n${String(err)}`
+    );
+  }
 }
 
 async function runA11yAudit(page: Page): Promise<AxeResults> {
@@ -69,12 +80,17 @@ async function expectNoA11yViolations(page: Page, label: string): Promise<void> 
 
 test('WCAG 2.1 A/AA: base + key overlays', async ({ page }) => {
   // `networkidle` can hang on Vite (HMR websocket).
-  await page.goto('/', { waitUntil: 'domcontentloaded' });
-  await page.waitForTimeout(500);
+  await page.goto('/', { waitUntil: 'domcontentloaded', timeout: 60000 });
+  await waitForAppReady(page);
 
   // If the Welcome modal auto-opens (fresh storage), audit it first.
   const welcome = page.locator('.overlay-welcome');
-  if ((await welcome.count()) > 0) {
+  const welcomeVisible = await welcome
+    .waitFor({ state: 'visible', timeout: 2500 })
+    .then(() => true)
+    .catch(() => false);
+
+  if (welcomeVisible) {
     await expectNoA11yViolations(page, 'Welcome modal');
     await page.keyboard.press('Escape');
     await welcome.waitFor({ state: 'detached', timeout: 5000 }).catch(() => null);
@@ -106,4 +122,6 @@ test('WCAG 2.1 A/AA: base + key overlays', async ({ page }) => {
   const search = page.locator('.overlay-search');
   await search.waitFor({ state: 'visible', timeout: 10000 });
   await expectNoA11yViolations(page, 'Search overlay');
+  await page.keyboard.press('Escape');
+  await search.waitFor({ state: 'detached', timeout: 5000 }).catch(() => null);
 });
