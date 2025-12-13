@@ -70,6 +70,41 @@
   min-height: 60px; /* Big targets */
   color: var(--color-text);
   touch-action: manipulation;
+  position: relative;
+  overflow: hidden;
+  user-select: none;
+  transition:
+    background var(--duration-fast) var(--ease-out),
+    border-color var(--duration-fast) var(--ease-out),
+    color var(--duration-fast) var(--ease-out),
+    transform var(--duration-fast) var(--ease-out);
+}
+
+.deck-btn::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(
+    circle at var(--ripple-x, 50%) var(--ripple-y, 50%),
+    rgba(255,255,255,0.25) 0%,
+    rgba(255,255,255,0) 60%
+  );
+  opacity: 0;
+  transform: scale(2.5);
+  transition:
+    transform var(--duration-normal) var(--ease-out),
+    opacity var(--duration-normal) var(--ease-out);
+  pointer-events: none;
+}
+
+.deck-btn:active {
+  transform: scale(0.97);
+}
+
+.deck-btn:active::after {
+  opacity: 1;
+  transform: scale(0.2);
+  transition: none;
 }
 
 .deck-btn.active {
@@ -102,6 +137,42 @@
   color: var(--color-text-muted);
   font-weight: 600;
   font-size: 14px;
+  position: relative;
+  overflow: hidden;
+  touch-action: manipulation;
+  user-select: none;
+  transition:
+    background var(--duration-fast) var(--ease-out),
+    border-top-color var(--duration-fast) var(--ease-out),
+    color var(--duration-fast) var(--ease-out),
+    transform var(--duration-fast) var(--ease-out);
+}
+
+.tab-btn::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(
+    circle at var(--ripple-x, 50%) var(--ripple-y, 50%),
+    rgba(255,255,255,0.22) 0%,
+    rgba(255,255,255,0) 60%
+  );
+  opacity: 0;
+  transform: scale(2.5);
+  transition:
+    transform var(--duration-normal) var(--ease-out),
+    opacity var(--duration-normal) var(--ease-out);
+  pointer-events: none;
+}
+
+.tab-btn:active {
+  transform: scale(0.98);
+}
+
+.tab-btn:active::after {
+  opacity: 1;
+  transform: scale(0.2);
+  transition: none;
 }
 
 .tab-btn.active {

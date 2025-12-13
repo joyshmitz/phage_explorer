@@ -253,6 +253,40 @@ export default function App(): JSX.Element {
     void loadPhage(repository, prevIndex);
   }, [currentPhageIndex, loadPhage, phages.length, repository]);
 
+  // Touch feedback: set ripple origin vars and trigger light haptics when supported.
+  useEffect(() => {
+    const onPointerDown = (event: PointerEvent) => {
+      if (event.pointerType !== 'touch' && event.pointerType !== 'pen') return;
+
+      const target = event.target;
+      if (!(target instanceof Element)) return;
+
+      const interactive = target.closest('.btn, .deck-btn, .tab-btn');
+      if (!(interactive instanceof HTMLElement)) return;
+      if (interactive.getAttribute('aria-disabled') === 'true') return;
+      if (interactive instanceof HTMLButtonElement && interactive.disabled) return;
+
+      const rect = interactive.getBoundingClientRect();
+      if (rect.width > 0 && rect.height > 0) {
+        const xPct = Math.round(((event.clientX - rect.left) / rect.width) * 100);
+        const yPct = Math.round(((event.clientY - rect.top) / rect.height) * 100);
+        interactive.style.setProperty('--ripple-x', `${Math.min(100, Math.max(0, xPct))}%`);
+        interactive.style.setProperty('--ripple-y', `${Math.min(100, Math.max(0, yPct))}%`);
+      } else {
+        interactive.style.setProperty('--ripple-x', '50%');
+        interactive.style.setProperty('--ripple-y', '50%');
+      }
+
+      const vibrate = (navigator as Navigator & { vibrate?: (pattern: number | number[]) => boolean }).vibrate;
+      if (typeof vibrate === 'function') {
+        vibrate.call(navigator, 10);
+      }
+    };
+
+    window.addEventListener('pointerdown', onPointerDown, { passive: true });
+    return () => window.removeEventListener('pointerdown', onPointerDown);
+  }, []);
+
   // Phone swipe gestures: left/right to change phage (avoids stealing gestures from sequence/3D).
   useEffect(() => {
     if (!isMobile) return;

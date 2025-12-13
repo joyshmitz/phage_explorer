@@ -820,6 +820,24 @@
   pointer-events: none;
 }
 
+/* Touch ripple overlay (origin set via --ripple-x/--ripple-y) */
+.btn::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(
+    circle at var(--ripple-x, 50%) var(--ripple-y, 50%),
+    rgba(255,255,255,0.25) 0%,
+    rgba(255,255,255,0) 60%
+  );
+  opacity: 0;
+  transform: scale(2.5);
+  transition:
+    transform var(--duration-normal) var(--ease-out),
+    opacity var(--duration-normal) var(--ease-out);
+  pointer-events: none;
+}
+
 .btn:hover {
   background: var(--color-background-hover);
   border-color: var(--color-border-light);
@@ -827,8 +845,14 @@
 }
 
 .btn:active {
-  transform: scale(0.98);
+  transform: scale(0.97);
   background: var(--color-background-active);
+}
+
+.btn:active::after {
+  opacity: 1;
+  transform: scale(0.2);
+  transition: none;
 }
 
 .btn:focus-visible {
