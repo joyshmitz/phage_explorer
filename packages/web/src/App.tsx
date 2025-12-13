@@ -74,6 +74,22 @@ export default function App(): JSX.Element {
   const [beginnerToast, setBeginnerToast] = useState<string | null>(null);
   const toastTimerRef = useRef<number | null>(null);
   const welcomeOpenedRef = useRef(false);
+  const [srStatusMessage, setSrStatusMessage] = useState('');
+  const [srAlertMessage, setSrAlertMessage] = useState('');
+  const lastAnnouncedPhageRef = useRef<string | null>(null);
+  const lastRepositoryReadyRef = useRef(false);
+  const lastLoadingPhageRef = useRef(false);
+  const lastErrorRef = useRef<string | null>(null);
+  const announceSr = useCallback((kind: 'status' | 'alert', message: string) => {
+    if (typeof window === 'undefined') return;
+    if (kind === 'alert') {
+      setSrAlertMessage('');
+      window.requestAnimationFrame(() => setSrAlertMessage(message));
+      return;
+    }
+    setSrStatusMessage('');
+    window.requestAnimationFrame(() => setSrStatusMessage(message));
+  }, []);
 
   const phages = usePhageStore((s) => s.phages);
   const currentPhageIndex = usePhageStore((s) => s.currentPhageIndex);
@@ -185,6 +201,49 @@ export default function App(): JSX.Element {
   useEffect(() => {
     storeSetTheme(theme.id);
   }, [storeSetTheme, theme.id]);
+
+  const currentPhageName = currentPhage?.name ?? null;
+
+  useEffect(() => {
+    if (!error) {
+      lastErrorRef.current = null;
+      setSrAlertMessage('');
+      return;
+    }
+    if (error === lastErrorRef.current) return;
+    lastErrorRef.current = error;
+    announceSr('alert', `Error: ${error}`);
+  }, [announceSr, error]);
+
+  useEffect(() => {
+    const isReady = Boolean(repository);
+    if (isReady && !lastRepositoryReadyRef.current) {
+      lastRepositoryReadyRef.current = true;
+      announceSr('status', isCached ? 'Database ready (cached).' : 'Database ready.');
+      return;
+    }
+    if (!isReady) {
+      lastRepositoryReadyRef.current = false;
+    }
+  }, [announceSr, isCached, repository]);
+
+  useEffect(() => {
+    if (isLoadingPhage) {
+      if (!lastLoadingPhageRef.current) {
+        lastLoadingPhageRef.current = true;
+        announceSr('status', 'Loading phage details...');
+      }
+      return;
+    }
+
+    if (lastLoadingPhageRef.current) {
+      lastLoadingPhageRef.current = false;
+      if (currentPhageName && currentPhageName !== lastAnnouncedPhageRef.current) {
+        lastAnnouncedPhageRef.current = currentPhageName;
+        announceSr('status', `Showing ${currentPhageName}.`);
+      }
+    }
+  }, [announceSr, currentPhageName, isLoadingPhage]);
 
   const loadPhage = useCallback(
     async (repo: PhageRepository, index: number) => {
@@ -458,6 +517,12 @@ export default function App(): JSX.Element {
 
   return (
     <>
+      <div className="sr-only" role="status" aria-live="polite" aria-atomic="true">
+        {srStatusMessage}
+      </div>
+      <div className="sr-only" role="alert" aria-live="assertive" aria-atomic="true">
+        {srAlertMessage}
+      </div>
       {loadingOverlayNeeded && (
         <DataLoadingOverlay
           progress={progress}
@@ -525,10 +590,18 @@ export default function App(): JSX.Element {
               {isCached && <span className="badge">Cached</span>}
             </div>
             {!repository && !error && (
-              <p className="text-dim">Loading database...</p>
+              <p className="text-dim" role="status" aria-live="polite" aria-atomic="true">
+                Loading database...
+              </p>
             )}
             {progress && (
-              <div className="status-line">
+              <div
+                className="status-line"
+                role="status"
+                aria-live="polite"
+                aria-atomic="true"
+                aria-label="Database loading progress"
+              >
                 <span>{progress.stage}</span>
                 <div className="progress-bar">
                   <div className="progress" style={{ width: `${progress.percent}%` }} />
@@ -536,7 +609,11 @@ export default function App(): JSX.Element {
                 <span>{progress.percent}%</span>
               </div>
             )}
-            {error && <div className="text-error">Error: {error}</div>}
+            {error && (
+              <div className="text-error" role="alert" aria-live="assertive" aria-atomic="true">
+                Error: {error}
+              </div>
+            )}
           </section>
         )}
 
