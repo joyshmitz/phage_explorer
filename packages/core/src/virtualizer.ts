@@ -172,11 +172,28 @@ export function buildGrid(
         const aaIndex = rowStart + col;
         if (aaIndex >= aaSequence.length) break;
 
-        // Calculate DNA position (approximate for click mapping)
-        // For forward: startIndex + offset + index*3
-        // For reverse: it's reversed.
-        // Let's just map linearly for now, it's enough for simple UI
-        const dnaPos = startIndex + aaIndex * 3; 
+        // Calculate DNA position
+        let dnaPos: number;
+        if (frame >= 0) {
+          // Forward: startIndex + offset + index*3
+          const forwardFrame = frame as 0 | 1 | 2;
+          const offset = ((forwardFrame - startIndex) % 3 + 3) % 3;
+          dnaPos = startIndex + offset + aaIndex * 3;
+        } else {
+          // Reverse: Left-aligned AA starts after the "remainder" gap at the start of Forward string
+          // (which corresponds to the end of the translated RC string)
+          const rcFrame = (Math.abs(frame) - 1) as 0 | 1 | 2;
+          const totalLen = config.totalLength ?? (startIndex + sequence.length);
+          const globalRcStart = totalLen - startIndex - sequence.length;
+          const offset = ((rcFrame - globalRcStart) % 3 + 3) % 3;
+          
+          // Gap is the unused bases at the END of RC (Start of Forward)
+          // 3N = length of translated part * 3
+          // usedLen = sequence.length - offset
+          // gap = usedLen % 3
+          const gap = (sequence.length - offset) % 3;
+          dnaPos = startIndex + gap + aaIndex * 3;
+        }
         
         cells.push({
           char: aaSequence[aaIndex],
