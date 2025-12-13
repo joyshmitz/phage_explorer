@@ -265,6 +265,8 @@ export default function App(): JSX.Element {
           setFullSequence(seq);
           setSequencePreview(seq.slice(0, SEQUENCE_PREVIEW_LENGTH));
         }
+        // Prefetch adjacent phages for instant navigation feel
+        void repo.prefetchAround(index, 2);
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Failed to load phage';
         setError(message);
