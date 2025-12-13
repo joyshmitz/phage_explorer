@@ -62,3 +62,9 @@ export * from './data/amino-acid-database';
 
 // Translation simulation (Ribosome Traffic)
 export * from './analysis/translation-simulation';
+
+// K-mer frequency analysis for genomic signatures
+export * from './analysis/kmer-frequencies';
+
+// Principal Component Analysis
+export * from './analysis/pca';

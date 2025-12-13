@@ -33,6 +33,8 @@ import { SyntenyOverlay } from './SyntenyOverlay';
 import { SettingsOverlay } from './SettingsOverlay';
 import { HelpOverlay } from './HelpOverlay';
 import { WelcomeModal } from './WelcomeModal';
+import { FeatureTour } from './FeatureTour';
+import { GenomicSignaturePCAOverlay } from './GenomicSignaturePCAOverlay';
 
 interface OverlayManagerProps {
   repository: PhageRepository | null;
@@ -65,6 +67,7 @@ export function OverlayManager({ repository, currentPhage }: OverlayManagerProps
       <StructureConstraintOverlay repository={repository} currentPhage={currentPhage} />
       <DotPlotOverlay repository={repository} currentPhage={currentPhage} />
       <SyntenyOverlay repository={repository} currentPhage={currentPhage} />
+      <GenomicSignaturePCAOverlay repository={repository} currentPhage={currentPhage} />
       <SettingsOverlay />
       <FeatureTour />
       <CommandPalette />

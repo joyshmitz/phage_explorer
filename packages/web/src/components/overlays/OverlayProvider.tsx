@@ -46,7 +46,8 @@ export type OverlayId =
   | 'stability'
   | 'welcome'
   | 'collaboration'
-  | 'tour';
+  | 'tour'
+  | 'genomicSignaturePCA';
 
 export interface OverlayConfig {
   id: OverlayId;
