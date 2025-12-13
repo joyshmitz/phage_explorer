@@ -111,6 +111,7 @@ export default function App(): JSX.Element {
   const [fullSequence, setFullSequence] = useState<string>('');
   const [mobileListOpen, setMobileListOpen] = useState(false);
   const swipeStartRef = useRef<{ x: number; y: number; time: number } | null>(null);
+  const activePhageItemRef = useRef<HTMLButtonElement>(null);
   const enableBackgroundEffects = !reducedMotion;
   const getLayoutSnapshot = useCallback(() => {
     if (typeof window === 'undefined') {
@@ -313,6 +314,11 @@ export default function App(): JSX.Element {
     const prevIndex = (currentPhageIndex - 1 + phages.length) % phages.length;
     void loadPhage(repository, prevIndex);
   }, [currentPhageIndex, loadPhage, phages.length, repository]);
+
+  // Scroll active phage list item into view when navigating with j/k
+  useEffect(() => {
+    activePhageItemRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  }, [currentPhageIndex]);
 
   // Touch feedback: set ripple origin vars and trigger light haptics when supported.
   useEffect(() => {
@@ -640,6 +646,7 @@ export default function App(): JSX.Element {
                   return (
                     <button
                       key={phage.id}
+                      ref={isActive ? activePhageItemRef : undefined}
                       className={`list-item ${isActive ? 'active' : ''}`}
                       onClick={() => handleSelectPhage(idx)}
                       type="button"
