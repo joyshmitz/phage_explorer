@@ -184,7 +184,7 @@ interface CommandPaletteProps {
 }
 
 export function CommandPalette({ commands: customCommands, context: propContext }: CommandPaletteProps): React.ReactElement | null {
-  const { theme } = useTheme();
+  const { theme, setTheme, availableThemes } = useTheme();
   const colors = theme.colors;
   const { isOpen, toggle, open, close } = useOverlay();
   const paletteOpen = isOpen('commandPalette');
@@ -232,10 +232,13 @@ export function CommandPalette({ commands: customCommands, context: propContext 
   // Default commands with experience levels and contexts
   const defaultCommands: Command[] = useMemo(() => [
     // Theme commands (available to all)
-    { id: 'theme:classic', label: 'Theme: Classic', category: 'Theme', shortcut: 't', action: () => {}, minLevel: 'novice' },
-    { id: 'theme:cyber', label: 'Theme: Cyberpunk', category: 'Theme', action: () => {}, minLevel: 'novice' },
-    { id: 'theme:matrix', label: 'Theme: Matrix', category: 'Theme', action: () => {}, minLevel: 'novice' },
-    { id: 'theme:ocean', label: 'Theme: Ocean', category: 'Theme', action: () => {}, minLevel: 'novice' },
+    ...availableThemes.map((next) => ({
+      id: `theme:${next.id}`,
+      label: next.id === theme.id ? `Theme: ${next.name} (current)` : `Theme: ${next.name}`,
+      category: 'Theme',
+      action: () => setTheme(next.id),
+      minLevel: 'novice' as const,
+    })),
     {
       id: 'nav:settings',
       label: 'Open Settings',
@@ -260,9 +263,9 @@ export function CommandPalette({ commands: customCommands, context: propContext 
     { id: 'analysis:repeat', label: 'Repeat Finder', category: 'Analysis', shortcut: 'r', action: () => { close(); open('repeats'); }, minLevel: 'intermediate', contexts: ['has-phage'] },
     { id: 'analysis:cgr', label: 'Chaos Game Representation', category: 'Analysis', shortcut: 'Alt+Shift+C', action: () => { close(); open('cgr'); }, minLevel: 'intermediate', contexts: ['has-phage'] },
     { id: 'analysis:hilbert', label: 'Hilbert Curve Visualization', category: 'Analysis', shortcut: 'H', action: () => { close(); open('hilbert'); }, minLevel: 'intermediate', contexts: ['has-phage'] },
-    { id: 'analysis:dotplot', label: 'Synteny Dotplot', category: 'Analysis', shortcut: '.', action: () => { close(); open('dotplot'); }, minLevel: 'intermediate', contexts: ['has-phage'] },
+    { id: 'analysis:dotplot', label: 'Synteny Dotplot', category: 'Analysis', shortcut: '.', action: () => { close(); open('dotPlot'); }, minLevel: 'intermediate', contexts: ['has-phage'] },
     { id: 'analysis:gel', label: 'Virtual Gel Electrophoresis', category: 'Analysis', shortcut: 'G', action: () => { close(); open('gel'); }, minLevel: 'intermediate', contexts: ['has-phage'] },
-    { id: 'analysis:constraints', label: 'Structure Constraints', category: 'Analysis', action: () => { close(); open('structureConstraints'); }, minLevel: 'power', contexts: ['has-phage'] },
+    { id: 'analysis:constraints', label: 'Structure Constraints', category: 'Analysis', action: () => { close(); open('structureConstraint'); }, minLevel: 'power', contexts: ['has-phage'] },
     { id: 'analysis:non-b', label: 'Non-B DNA Structures', category: 'Analysis', action: () => { close(); open('nonBDNA'); }, minLevel: 'power', contexts: ['has-phage'] },
     { id: 'analysis:crispr', label: 'CRISPR Arrays', category: 'Analysis', action: () => { close(); open('crispr'); }, minLevel: 'intermediate', contexts: ['has-phage'] },
 
@@ -273,8 +276,8 @@ export function CommandPalette({ commands: customCommands, context: propContext 
     { id: 'analysis:tropism', label: 'Tropism & Receptors', category: 'Advanced', shortcut: '0', action: () => { close(); open('tropism'); }, minLevel: 'power', contexts: ['has-phage'] },
     { id: 'analysis:bias', label: 'Codon Bias Decomposition', category: 'Advanced', shortcut: 'J', action: () => { close(); open('biasDecomposition'); }, minLevel: 'power', contexts: ['has-phage'] },
     { id: 'analysis:phase', label: 'Phase Portrait', category: 'Advanced', shortcut: 'P', action: () => { close(); open('phasePortrait'); }, minLevel: 'power', contexts: ['has-phage'] },
-    { id: 'analysis:packaging', label: 'Packaging Pressure', category: 'Advanced', action: () => { close(); open('packagingPressure'); }, minLevel: 'power', contexts: ['has-phage'] },
-    { id: 'analysis:stability', label: 'Virion Stability', category: 'Advanced', action: () => { close(); open('virionStability'); }, minLevel: 'power', contexts: ['has-phage'] },
+    { id: 'analysis:packaging', label: 'Packaging Pressure', category: 'Advanced', action: () => { close(); open('pressure'); }, minLevel: 'power', contexts: ['has-phage'] },
+    { id: 'analysis:stability', label: 'Virion Stability', category: 'Advanced', action: () => { close(); open('stability'); }, minLevel: 'power', contexts: ['has-phage'] },
 
     { id: 'reference:aa-key', label: 'Amino Acid Key', category: 'Reference', shortcut: 'k', action: () => { close(); open('aaKey'); }, minLevel: 'novice' },
     { id: 'reference:aa-legend', label: 'Amino Acid Legend (compact)', category: 'Reference', shortcut: 'l', action: () => { close(); open('aaLegend'); }, minLevel: 'novice' },
@@ -391,7 +394,7 @@ export function CommandPalette({ commands: customCommands, context: propContext 
       minLevel: 'power',
       contexts: ['has-phage']
     },
-  ], [close, open]);
+  ], [availableThemes, close, open, setTheme, theme.id]);
 
   const allCommands = customCommands ?? defaultCommands;
 

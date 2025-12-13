@@ -6,7 +6,7 @@
  * to learn about protein building blocks.
  */
 
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useCallback } from 'react';
 import {
   getAminoAcidInfo,
   getClassificationLabel,
@@ -22,6 +22,8 @@ export interface AminoAcidHUDProps {
   position: { x: number; y: number } | null;
   /** Whether the HUD is visible */
   visible: boolean;
+  /** Callback to close the HUD (for keyboard accessibility) */
+  onClose?: () => void;
 }
 
 /**
@@ -39,6 +41,7 @@ export function AminoAcidHUD({
   aminoAcid,
   position,
   visible,
+  onClose,
 }: AminoAcidHUDProps): React.ReactElement | null {
   const { theme } = useTheme();
   const colors = theme.colors;
@@ -46,6 +49,26 @@ export function AminoAcidHUD({
 
   // Get amino acid info
   const info = aminoAcid ? getAminoAcidInfo(aminoAcid) : null;
+
+  // Handle keyboard events for accessibility
+  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
+    if (e.key === 'Escape' && onClose) {
+      e.preventDefault();
+      e.stopPropagation();
+      onClose();
+    }
+  }, [onClose]);
+
+  // Auto-focus when visible for keyboard accessibility
+  useEffect(() => {
+    if (visible && hudRef.current) {
+      // Small delay to ensure DOM is ready
+      const timer = setTimeout(() => {
+        hudRef.current?.focus();
+      }, 50);
+      return () => clearTimeout(timer);
+    }
+  }, [visible]);
 
   // Adjust position to keep HUD on screen
   useEffect(() => {
@@ -81,8 +104,12 @@ export function AminoAcidHUD({
   return (
     <div
       ref={hudRef}
-      role="tooltip"
-      aria-label={`Information about ${info.name}`}
+      role="dialog"
+      aria-modal="false"
+      aria-label={`Amino acid information: ${info.name}`}
+      aria-describedby="amino-acid-hud-description"
+      tabIndex={0}
+      onKeyDown={handleKeyDown}
       style={{
         position: 'fixed',
         zIndex: 9999,
@@ -96,6 +123,7 @@ export function AminoAcidHUD({
         animation: 'hudFadeIn 0.15s ease-out',
         touchAction: 'none',
         userSelect: 'none',
+        outline: 'none',
       }}
     >
       {/* Header with symbol and name */}
@@ -321,6 +349,13 @@ export function AminoAcidHUD({
         </div>
       </div>
 
+      {/* Screen reader description */}
+      <div id="amino-acid-hud-description" style={{ position: 'absolute', left: '-9999px', height: '1px', overflow: 'hidden' }}>
+        Detailed information about the amino acid {info.name}.
+        {info.isEssential ? 'This is an essential amino acid that must be obtained from diet.' : ''}
+        Press Escape to close.
+      </div>
+
       {/* Footer hint */}
       <div
         style={{
@@ -331,7 +366,7 @@ export function AminoAcidHUD({
           textAlign: 'center',
         }}
       >
-        Release to dismiss
+        Release or press <kbd style={{ padding: '0.1rem 0.3rem', backgroundColor: colors.backgroundAlt, borderRadius: '3px', border: `1px solid ${colors.borderLight}` }}>Esc</kbd> to dismiss
       </div>
 
       {/* CSS animation */}
