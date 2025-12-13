@@ -5,6 +5,14 @@
 // Main orchestrator
 export { ComputeOrchestrator, getOrchestrator } from './ComputeOrchestrator';
 
+// Worker preloader - call preloadWorkers() on app mount for instant overlay feel
+export {
+  preloadWorkers,
+  getSearchWorker,
+  isPreloaded,
+  terminateWorkers,
+} from './WorkerPreloader';
+
 // Types
 export type {
   AnalysisType,

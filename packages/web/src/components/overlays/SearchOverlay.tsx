@@ -6,14 +6,15 @@ import { useTheme } from '../../hooks/useTheme';
 import { SearchResultsSkeleton } from '../ui/Skeleton';
 import type { PhageFull } from '@phage-explorer/core';
 import type { PhageRepository } from '../../db';
-import type {
-  SearchWorkerAPI,
-  SearchMode,
-  SearchOptions,
-  SearchHit,
-  SearchFeature,
-  SearchRequest,
-  SearchResponse,
+import {
+  getSearchWorker,
+  type SearchWorkerAPI,
+  type SearchMode,
+  type SearchOptions,
+  type SearchHit,
+  type SearchFeature,
+  type SearchRequest,
+  type SearchResponse,
 } from '../../workers';
 
 type StrandOption = SearchOptions['strand'];
@@ -58,9 +59,39 @@ export function SearchOverlay({ repository, currentPhage }: SearchOverlayProps):
   const workerInstanceRef = useRef<Worker | null>(null);
   const searchAbortRef = useRef<number | null>(null);
 
-  // Initialize worker once
+  // Track if we're using a preloaded worker (don't terminate on unmount)
+  const usingPreloadedRef = useRef(false);
+
+  // Initialize worker - use preloaded if available, otherwise create new
   useEffect(() => {
     let cancelled = false;
+
+    // Try to use preloaded worker first
+    const preloaded = getSearchWorker();
+    if (preloaded) {
+      usingPreloadedRef.current = true;
+      workerInstanceRef.current = preloaded.worker;
+      workerRef.current = preloaded.api;
+      if (preloaded.ready) {
+        setWorkerReady(true);
+      } else {
+        // Preloaded worker exists but isn't ready yet - wait for it
+        void (async () => {
+          try {
+            await preloaded.api.ping();
+            if (!cancelled) {
+              setWorkerReady(true);
+            }
+          } catch (e) {
+            console.error('Preloaded search worker failed:', e);
+          }
+        })();
+      }
+      return;
+    }
+
+    // No preloaded worker - create new one (fallback)
+    usingPreloadedRef.current = false;
     const worker = new Worker(new URL('../../workers/search.worker.ts', import.meta.url), { type: 'module' });
     workerInstanceRef.current = worker;
     const wrappedWorker = Comlink.wrap<SearchWorkerAPI>(worker);
@@ -81,7 +112,10 @@ export function SearchOverlay({ repository, currentPhage }: SearchOverlayProps):
 
     return () => {
       cancelled = true;
-      workerInstanceRef.current?.terminate();
+      // Only terminate if we created the worker (not preloaded)
+      if (!usingPreloadedRef.current && workerInstanceRef.current) {
+        workerInstanceRef.current.terminate();
+      }
       workerInstanceRef.current = null;
       workerRef.current = null;
       setWorkerReady(false);

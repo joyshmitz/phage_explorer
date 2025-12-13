@@ -26,6 +26,7 @@ import {
   usePhageStore,
   useWebPreferences,
 } from './store';
+import { preloadWorkers } from './workers';
 import { useBeginnerMode, useBeginnerModeInit, TourEngine } from './education';
 import { GeneMapCanvas } from './components/GeneMapCanvas';
 import { SequenceView } from './components/SequenceView';
@@ -273,6 +274,11 @@ export default function App(): JSX.Element {
     },
     [setCurrentPhage, setCurrentPhageIndex, setError, setLoadingPhage]
   );
+
+  // Preload workers on mount for instant overlay feel
+  useEffect(() => {
+    void preloadWorkers();
+  }, []);
 
   const hydratedRef = useRef(false);
   useEffect(() => {
