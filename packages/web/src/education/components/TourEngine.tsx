@@ -68,11 +68,16 @@ function getTour(tourId: TourId): Tour | null {
 
 function resolveTargetRect(step: TourStep): DOMRect | null {
   if (!step.target) return null;
-  const el = document.querySelector(step.target);
-  if (!el) return null;
-  // Scroll first so the measured rect reflects the on-screen position.
-  el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-  return el.getBoundingClientRect();
+  try {
+    const el = document.querySelector(step.target);
+    if (!el) return null;
+    // Scroll first so the measured rect reflects the on-screen position.
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    return el.getBoundingClientRect();
+  } catch (e) {
+    console.warn(`Invalid tour target selector: ${step.target}`, e);
+    return null;
+  }
 }
 
 export function TourEngine(): React.ReactElement | null {

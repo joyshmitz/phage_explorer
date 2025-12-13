@@ -107,7 +107,7 @@ const overlayContext: Record<string, ContextHelpEntry> = {
       'Pair with gene map to spot neighboring chaperones or baseplate proteins.',
     ],
   },
-  structureconstraints: {
+  structureconstraint: {
     heading: 'Structural Constraints',
     summary: 'Assesses coding sequences for structural red flags (frameshifts, impossible motifs).',
     glossary: ['cds', 'reading-frame', 'gene'],
@@ -137,7 +137,7 @@ const overlayContext: Record<string, ContextHelpEntry> = {
       'Zoom into dense blocks to trace tandem repeat lengths.',
     ],
   },
-  'non-b-dna': {
+  nonbdna: {
     heading: 'Non-B DNA',
     summary: 'Highlights motifs prone to alternative DNA structures (Z-DNA, triplex, cruciform).',
     glossary: ['double-helix', 'supercoiling', 'dna-sequence'],
@@ -147,7 +147,7 @@ const overlayContext: Record<string, ContextHelpEntry> = {
       'Packaging stress can favor non-B conformations in tightly packed genomes.',
     ],
   },
-  virionstability: {
+  stability: {
     heading: 'Virion Stability',
     summary: 'Estimates capsid/tail stability factors based on sequence-derived features.',
     glossary: ['capsid', 'phage-genome', 'dna-sequence'],
@@ -157,7 +157,7 @@ const overlayContext: Record<string, ContextHelpEntry> = {
       'Stability dips near termini can signal special packaging mechanisms.',
     ],
   },
-  packagingpressure: {
+  pressure: {
     heading: 'Packaging Pressure',
     summary: 'Models physical stress during genome packaging into the capsid.',
     glossary: ['capsid', 'phage-genome', 'gc-content'],
@@ -175,6 +175,76 @@ const overlayContext: Record<string, ContextHelpEntry> = {
     tips: [
       'Breaks in synteny often accompany HGT events or recombination.',
       'Shared synteny blocks across hosts can indicate broad host range.',
+    ],
+  },
+  gel: {
+    heading: 'Gel (In-Silico)',
+    summary: 'Simulates gel-style banding patterns from genome segments, useful for quick visual comparisons.',
+    glossary: ['dna-sequence', 'phage-genome', 'gene'],
+    modules: ['genomics-basics'],
+    tips: [
+      'Use it as a “fingerprint”: similar band patterns often reflect similar genome architectures.',
+      'Large band shifts can signal big insertions/deletions compared to related phages.',
+    ],
+  },
+  cgr: {
+    heading: 'Chaos Game Representation (CGR)',
+    summary: 'Maps k-mer composition into a 2D image-like fingerprint to reveal compositional structure.',
+    glossary: ['k-mer', 'dna-sequence', 'sequence-complexity'],
+    modules: ['genomics-basics'],
+    tips: [
+      'Look for texture changes between regions—those often correspond to modular genome segments.',
+      'Compare CGR against HGT/K-mer anomaly overlays to triangulate unusual islands.',
+    ],
+  },
+  hilbert: {
+    heading: 'Hilbert Curve',
+    summary: 'Projects the genome onto a space-filling curve so nearby pixels represent nearby bases.',
+    glossary: ['dna-sequence', 'gc-content', 'phage-genome'],
+    modules: ['genomics-basics'],
+    tips: [
+      'Large blocks of similar color suggest long, compositionally consistent regions.',
+      'Sharp boundaries can indicate domain swaps, repeats, or horizontally transferred islands.',
+    ],
+  },
+  phaseportrait: {
+    heading: 'Codon Phase Portrait',
+    summary: 'Visualizes codon-usage structure as a trajectory through a reduced state space.',
+    glossary: ['codon', 'codon-bias', 'genetic-code'],
+    modules: ['genetic-code', 'genomics-basics'],
+    tips: [
+      'Smooth trajectories often mean consistent coding style; sharp turns can flag unusual regions.',
+      'Compare against GC skew / anomaly overlays to see whether shifts align with composition changes.',
+    ],
+  },
+  biasdecomposition: {
+    heading: 'Codon Bias Decomposition',
+    summary: 'Breaks codon usage into interpretable components so you can spot style shifts across the genome.',
+    glossary: ['codon-bias', 'codon-usage-bias', 'codon'],
+    modules: ['genetic-code', 'genomics-basics'],
+    tips: [
+      'Local spikes can suggest recently acquired genes or different expression regimes.',
+      'Use together with gene annotations: structural vs replication genes often show different bias.',
+    ],
+  },
+  crispr: {
+    heading: 'CRISPR Spacers',
+    summary: 'Surfaces candidate CRISPR spacer matches to the phage genome as a clue to host exposure history.',
+    glossary: ['dna-sequence', 'phage-genome', 'gene'],
+    modules: ['phage-lifecycle', 'genomics-basics'],
+    tips: [
+      'Clusters of hits may reflect past infections in specific bacterial lineages.',
+      'Treat hits as hypotheses: validate with flanking context and gene neighborhood.',
+    ],
+  },
+  comparison: {
+    heading: 'Genome Comparison',
+    summary: 'Compares two phages across sequence, composition, codon usage, gene content, and diffs.',
+    glossary: ['synteny', 'dot-plot', 'gene'],
+    modules: ['genomics-basics'],
+    tips: [
+      'Start with the Summary tab, then drill into Genes or Diff to explain why scores differ.',
+      'Large gene-content differences often concentrate around host-range or replication modules.',
     ],
   },
 };
