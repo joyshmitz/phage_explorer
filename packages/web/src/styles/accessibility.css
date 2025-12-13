@@ -203,6 +203,13 @@ textarea:focus-visible {
     display: none !important;
   }
 
+  /* Disable touch ripple effects (avoid flashing motion) */
+  .btn::after,
+  .deck-btn::after,
+  .tab-btn::after {
+    display: none !important;
+  }
+
   /* Keep functional transitions very short */
   .btn,
   .list-item,

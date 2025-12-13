@@ -256,7 +256,7 @@ export default function App(): JSX.Element {
   // Touch feedback: set ripple origin vars and trigger light haptics when supported.
   useEffect(() => {
     const onPointerDown = (event: PointerEvent) => {
-      if (event.pointerType !== 'touch' && event.pointerType !== 'pen') return;
+      if (event.pointerType === 'mouse' && event.button !== 0) return;
 
       const target = event.target;
       if (!(target instanceof Element)) return;
@@ -277,9 +277,15 @@ export default function App(): JSX.Element {
         interactive.style.setProperty('--ripple-y', '50%');
       }
 
-      const vibrate = (navigator as Navigator & { vibrate?: (pattern: number | number[]) => boolean }).vibrate;
-      if (typeof vibrate === 'function') {
-        vibrate.call(navigator, 10);
+      if (event.pointerType === 'touch' || event.pointerType === 'pen') {
+        const vibrate = (navigator as Navigator & { vibrate?: (pattern: number | number[]) => boolean }).vibrate;
+        if (typeof vibrate === 'function') {
+          try {
+            vibrate.call(navigator, 10);
+          } catch {
+            // Ignore vibration errors (some browsers may block / throw).
+          }
+        }
       }
     };
 
