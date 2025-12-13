@@ -26,7 +26,7 @@ export function hilbertD2XY(n: number, d: number): { x: number; y: number } {
   let y = 0;
 
   for (let s = 1; s < (1 << n); s *= 2) {
-    rx = 1 & (t / 2);
+    rx = 1 & (t >>> 1);
     ry = 1 & (t ^ rx);
     const rotated = rotate(s, x, y, rx, ry);
     x = rotated.x;
