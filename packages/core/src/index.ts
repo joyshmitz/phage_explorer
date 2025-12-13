@@ -12,6 +12,7 @@ export * from './virtualizer';
 
 // Simulation framework
 export * from './simulation';
+export * from './simulation-implementations';
 
 // Phase portraits
 export * from './phase-portraits';

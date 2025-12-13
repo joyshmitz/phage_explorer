@@ -319,9 +319,7 @@ export function DotPlotOverlay({
         </div>
 
         {loading ? (
-          <div style={{ padding: '2rem', textAlign: 'center', color: colors.textMuted }}>
-            Computing dot plot...
-          </div>
+          <AnalysisPanelSkeleton />
         ) : error ? (
           <div
             style={{

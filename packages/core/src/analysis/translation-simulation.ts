@@ -83,7 +83,7 @@ export const ribosomeTrafficSimulation: Simulation<RibosomeTrafficState> = {
     } else {
       // Synthetic mRNA
       codonRates = Array.from({ length: 200 }, () => 0.1 + random() * 0.9);
-
+    }
 
     return {
       type: 'ribosome-traffic',

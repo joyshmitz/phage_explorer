@@ -396,9 +396,7 @@ export function NonBDNAOverlay({
         </div>
 
         {loading ? (
-          <div style={{ padding: '2rem', textAlign: 'center', color: colors.textMuted }}>
-            Loading sequence...
-          </div>
+          <AnalysisPanelSkeleton />
         ) : !sequence ? (
           <div style={{ padding: '2rem', textAlign: 'center', color: colors.textMuted }}>
             No sequence loaded

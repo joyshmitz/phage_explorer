@@ -13,6 +13,7 @@ import { useTheme } from '../../hooks/useTheme';
 import { useHotkey } from '../../hooks';
 import { Overlay } from './Overlay';
 import { useOverlay } from './OverlayProvider';
+import { AnalysisPanelSkeleton } from '../ui/Skeleton';
 
 interface CGROverlayProps {
   repository: PhageRepository | null;
@@ -205,9 +206,10 @@ export function CGROverlay({ repository, currentPhage }: CGROverlayProps): React
           horizontal transfer regions.
         </div>
 
-        {(loading || statusMessage) && (
+        {loading && <AnalysisPanelSkeleton />}
+        {!loading && statusMessage && (
           <div style={{ color: colors.textDim }}>
-            {statusMessage ?? 'Loading genome sequence…'}
+            {statusMessage}
           </div>
         )}
         {error && (

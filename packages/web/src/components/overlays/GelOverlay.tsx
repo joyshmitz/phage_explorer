@@ -12,6 +12,7 @@ import { useTheme } from '../../hooks/useTheme';
 import { useHotkey } from '../../hooks';
 import { Overlay } from './Overlay';
 import { useOverlay } from './OverlayProvider';
+import { AnalysisPanelSkeleton } from '../ui/Skeleton';
 import { GelCanvas } from './primitives/GelCanvas';
 import type { GelLane, GelBand, GelInteraction } from './primitives/types';
 
@@ -309,9 +310,7 @@ export function GelOverlay({
         </div>
 
         {loading ? (
-          <div style={{ padding: '2rem', textAlign: 'center', color: colors.textMuted }}>
-            Loading sequence...
-          </div>
+          <AnalysisPanelSkeleton />
         ) : !sequence ? (
           <div style={{ padding: '2rem', textAlign: 'center', color: colors.textMuted }}>
             No sequence loaded

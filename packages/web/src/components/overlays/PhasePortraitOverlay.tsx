@@ -13,6 +13,7 @@ import { useTheme } from '../../hooks/useTheme';
 import { useHotkey } from '../../hooks';
 import { Overlay } from './Overlay';
 import { useOverlay } from './OverlayProvider';
+import { AnalysisPanelSkeleton } from '../ui/Skeleton';
 import { ScatterCanvas } from './primitives/ScatterCanvas';
 import { computePhasePortrait, translateSequence } from '@phage-explorer/core';
 import type { DominantProperty, PortraitPoint } from '@phage-explorer/core';
@@ -209,9 +210,7 @@ export function PhasePortraitOverlay({ repository, currentPhage }: PhasePortrait
         </div>
 
         {loading ? (
-          <div style={{ padding: '2rem', textAlign: 'center', color: colors.textMuted }}>
-            Loading sequence...
-          </div>
+          <AnalysisPanelSkeleton />
         ) : !analysis ? (
           <div style={{ padding: '2rem', textAlign: 'center', color: colors.textMuted }}>
             {!sequence ? 'No sequence loaded' : 'Sequence too short for analysis'}

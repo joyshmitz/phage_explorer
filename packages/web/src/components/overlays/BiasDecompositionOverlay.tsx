@@ -243,9 +243,7 @@ export function BiasDecompositionOverlay({
         </div>
 
         {loading ? (
-          <div style={{ padding: '2rem', textAlign: 'center', color: colors.textMuted }}>
-            Loading sequence...
-          </div>
+          <AnalysisPanelSkeleton />
         ) : !analysis ? (
           <div style={{ padding: '2rem', textAlign: 'center', color: colors.textMuted }}>
             {!sequence ? 'No sequence loaded' : 'Sequence too short for analysis'}

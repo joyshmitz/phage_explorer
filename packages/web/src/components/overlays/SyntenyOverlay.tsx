@@ -15,6 +15,7 @@ import { useTheme } from '../../hooks/useTheme';
 import { useHotkey } from '../../hooks';
 import { Overlay } from './Overlay';
 import { useOverlay } from './OverlayProvider';
+import { AnalysisPanelSkeleton } from '../ui/Skeleton';
 import { GenomeTrack } from './primitives/GenomeTrack';
 import { HeatmapCanvas } from '../primitives/HeatmapCanvas';
 import type { GenomeTrackSegment, GenomeTrackInteraction, HeatmapHover, ColorScale } from '../primitives/types';
@@ -345,9 +346,7 @@ export function SyntenyOverlay({
         </div>
 
         {loading ? (
-          <div style={{ padding: '2rem', textAlign: 'center', color: colors.textMuted }}>
-            Computing synteny analysis...
-          </div>
+          <AnalysisPanelSkeleton />
         ) : error ? (
           <div style={{ padding: '1rem', color: '#ef4444', backgroundColor: colors.backgroundAlt, borderRadius: '4px' }}>
             {error}

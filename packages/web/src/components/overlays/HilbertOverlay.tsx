@@ -15,6 +15,7 @@ import { useTheme } from '../../hooks/useTheme';
 import { useHotkey } from '../../hooks';
 import { Overlay } from './Overlay';
 import { useOverlay } from './OverlayProvider';
+import { AnalysisPanelSkeleton } from '../ui/Skeleton';
 import type { HilbertWorkerAPI, HilbertWorkerResult } from '../../workers/hilbert.worker';
 import type { HudTheme } from '@phage-explorer/core/src/themes';
 
@@ -314,9 +315,10 @@ const [colorMode, setColorMode] = useState<ColorMode>('nucleotide');
           Blocks and color shifts surface compositional domains, repeats, and abrupt transitions.
         </div>
 
-        {(loading || statusMessage) && (
+        {loading && <AnalysisPanelSkeleton />}
+        {!loading && statusMessage && (
           <div style={{ color: colors.textDim }}>
-            {statusMessage ?? 'Loading genome sequence…'}
+            {statusMessage}
           </div>
         )}
         {error && (
