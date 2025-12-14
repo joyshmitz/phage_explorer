@@ -2,6 +2,7 @@ import type { ModuleId } from '../types';
 import { WhatIsPhageModule } from './WhatIsPhage';
 import { DNABasicsModule } from './DNABasics';
 import { PhageLifecycleModule } from './PhageLifecycle';
+import { GeneticCodeModule } from './GeneticCode';
 
 export type ModuleComponent = () => JSX.Element;
 
@@ -35,8 +36,16 @@ export const FOUNDATION_MODULES: ModuleMeta[] = [
     estimatedMinutes: 12,
     component: PhageLifecycleModule,
   },
+  {
+    id: 'genetic-code',
+    title: 'The Genetic Code',
+    description: 'Codons, amino acids, degeneracy, start/stop signals, reading frames, codon bias.',
+    estimatedMinutes: 12,
+    component: GeneticCodeModule,
+  },
 ];
 
 export { WhatIsPhageModule } from './WhatIsPhage';
 export { DNABasicsModule } from './DNABasics';
 export { PhageLifecycleModule } from './PhageLifecycle';
+export { GeneticCodeModule } from './GeneticCode';
