@@ -112,19 +112,24 @@ export function AMGPathwayOverlay({
     return counts;
   }, [amgs]);
 
-  // Create genome track segments
+  // Create genome track segments (only include those with valid gene positions)
   const amgSegments = useMemo((): GenomeTrackSegment[] => {
-    return filteredAmgs.map((amg) => {
-      const gene = currentPhage?.genes?.find((g) => g.id === amg.geneId);
-      return {
-        start: gene?.startPos ?? 0,
-        end: gene?.endPos ?? 0,
-        label: amg.keggOrtholog ?? amg.amgType,
-        color: getAmgColor(amg.amgType),
-        height: 16,
-        data: amg,
-      };
-    });
+    return filteredAmgs
+      .map((amg) => {
+        if (!amg.geneId) return null;
+        const gene = currentPhage?.genes?.find((g) => g.id === amg.geneId);
+        if (!gene) return null;
+
+        return {
+          start: gene.startPos,
+          end: gene.endPos,
+          label: amg.keggOrtholog ?? amg.amgType,
+          color: getAmgColor(amg.amgType),
+          height: 16,
+          data: amg,
+        };
+      })
+      .filter((segment): segment is GenomeTrackSegment => segment !== null);
   }, [filteredAmgs, currentPhage]);
 
   // Handle AMG selection

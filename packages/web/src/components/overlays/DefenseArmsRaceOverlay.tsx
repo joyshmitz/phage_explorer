@@ -85,9 +85,9 @@ export function DefenseArmsRaceOverlay({
   const [selectedSystem, setSelectedSystem] = useState<DefenseSystem | null>(null);
   const [filterType, setFilterType] = useState<string>('all');
 
-  // Hotkey (Alt+R for aRms race)
+  // Hotkey (Alt+E for dEfense - Alt+R used by StructureConstraintOverlay)
   useHotkey(
-    { key: 'r', modifiers: { alt: true } },
+    { key: 'e', modifiers: { alt: true } },
     'Defense Arms Race',
     () => toggle('defenseArmsRace'),
     { modes: ['NORMAL'], category: 'Analysis' }
@@ -124,19 +124,24 @@ export function DefenseArmsRaceOverlay({
     return counts;
   }, [defenseSystems]);
 
-  // Create genome track segments
+  // Create genome track segments (only include those with valid gene positions)
   const defenseSegments = useMemo((): GenomeTrackSegment[] => {
-    return filteredSystems.map((sys) => {
-      const gene = currentPhage?.genes?.find((g) => g.id === sys.geneId);
-      return {
-        start: gene?.startPos ?? 0,
-        end: gene?.endPos ?? 0,
-        label: sys.systemType,
-        color: getDefenseColor(sys.systemType),
-        height: 16,
-        data: sys,
-      };
-    });
+    return filteredSystems
+      .map((sys) => {
+        if (!sys.geneId) return null;
+        const gene = currentPhage?.genes?.find((g) => g.id === sys.geneId);
+        if (!gene) return null;
+
+        return {
+          start: gene.startPos,
+          end: gene.endPos,
+          label: sys.systemType,
+          color: getDefenseColor(sys.systemType),
+          height: 16,
+          data: sys,
+        };
+      })
+      .filter((segment): segment is GenomeTrackSegment => segment !== null);
   }, [filteredSystems, currentPhage]);
 
   // Handle system selection
@@ -158,8 +163,8 @@ export function DefenseArmsRaceOverlay({
     <Overlay
       id="defenseArmsRace"
       title="DEFENSE ARMS RACE"
-      icon="R"
-      hotkey="Alt+R"
+      icon="E"
+      hotkey="Alt+E"
       size="lg"
     >
       <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>

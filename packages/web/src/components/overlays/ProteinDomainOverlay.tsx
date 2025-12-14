@@ -128,22 +128,24 @@ export function ProteinDomainOverlay({
       .sort((a, b) => a.gene.startPos - b.gene.startPos);
   }, [currentPhage, filteredDomains]);
 
-  // Create genome track segments for domains
+  // Create genome track segments for domains (only include those with valid gene positions)
   const domainSegments = useMemo((): GenomeTrackSegment[] => {
-    return filteredDomains.map((domain) => {
-      const gene = currentPhage?.genes?.find((g) => g.id === domain.geneId);
-      const start = gene?.startPos ?? 0;
-      const end = gene?.endPos ?? 0;
+    return filteredDomains
+      .map((domain) => {
+        if (!domain.geneId) return null;
+        const gene = currentPhage?.genes?.find((g) => g.id === domain.geneId);
+        if (!gene) return null;
 
-      return {
-        start,
-        end,
-        label: domain.domainName ?? domain.domainId,
-        color: getDomainColor(domain.domainType),
-        height: 16,
-        data: domain,
-      };
-    });
+        return {
+          start: gene.startPos,
+          end: gene.endPos,
+          label: domain.domainName ?? domain.domainId,
+          color: getDomainColor(domain.domainType),
+          height: 16,
+          data: domain,
+        };
+      })
+      .filter((segment): segment is GenomeTrackSegment => segment !== null);
   }, [filteredDomains, currentPhage]);
 
   // Handle gene click for detail view
