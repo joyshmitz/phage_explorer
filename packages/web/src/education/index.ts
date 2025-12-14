@@ -19,6 +19,7 @@ export * from './components/CodonWheelVisualizer';
 export * from './components/ContextHelpPanel';
 export * from './components/TranslationVisualizer';
 export * from './components/InfectionCycleVisualizer';
+export * from './components/DNAHelixVisualizer';
 export * from './components/TourEngine';
 
 // Module exports
