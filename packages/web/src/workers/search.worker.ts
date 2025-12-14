@@ -334,7 +334,7 @@ const workerAPI: SearchWorkerAPI = {
       // Log error for debugging and return empty results instead of crashing worker
       console.error('Search worker error:', error);
       return {
-        mode: 'text',
+        mode: request.mode,
         query: request.query,
         hits: [],
       };
