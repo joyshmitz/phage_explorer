@@ -1,5 +1,6 @@
 import type { ModuleId } from '../types';
 import { WhatIsPhageModule } from './WhatIsPhage';
+import { DNABasicsModule } from './DNABasics';
 import { PhageLifecycleModule } from './PhageLifecycle';
 
 export type ModuleComponent = () => JSX.Element;
@@ -21,6 +22,13 @@ export const FOUNDATION_MODULES: ModuleMeta[] = [
     component: WhatIsPhageModule,
   },
   {
+    id: 'dna-basics',
+    title: 'DNA Basics for Engineers',
+    description: '4-base alphabet, double helix structure, base pairing rules, 5\' to 3\' directionality.',
+    estimatedMinutes: 10,
+    component: DNABasicsModule,
+  },
+  {
     id: 'phage-lifecycle',
     title: 'Phage Lifecycle',
     description: 'Lytic and lysogenic cycles, temperate vs virulent phages, Lambda decision circuit.',
@@ -30,4 +38,5 @@ export const FOUNDATION_MODULES: ModuleMeta[] = [
 ];
 
 export { WhatIsPhageModule } from './WhatIsPhage';
+export { DNABasicsModule } from './DNABasics';
 export { PhageLifecycleModule } from './PhageLifecycle';
