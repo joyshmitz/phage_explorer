@@ -4,7 +4,7 @@ import { Overlay } from './Overlay';
 import { Badge } from '../ui/Badge';
 import { useTheme } from '../../hooks/useTheme';
 import type { PhageRepository } from '../../db';
-import type { GenomeComparisonResult } from '@phage-explorer/comparison';
+import type { GenomeComparisonResult, StructuralVariantCall, StructuralVariantType } from '@phage-explorer/comparison';
 import { formatSimilarity } from '@phage-explorer/comparison';
 import { usePhageStore } from '@phage-explorer/state';
 import DiffHighlighter, { type DiffStats as DiffStatsType } from '../DiffHighlighter';
@@ -13,6 +13,40 @@ const formatPercent = (value: number | null | undefined, digits = 2): string => 
   if (value === null || value === undefined || Number.isNaN(value)) return '—';
   return `${value.toFixed(digits)}%`;
 };
+
+function formatBpRange(start: number, end: number): string {
+  const lo = Math.min(start, end);
+  const hi = Math.max(start, end);
+  return `${lo.toLocaleString()}–${hi.toLocaleString()}`;
+}
+
+function formatConfidence(confidence: number): string {
+  if (!Number.isFinite(confidence)) return '—';
+  return `${Math.round(confidence * 100)}%`;
+}
+
+function svBadgeVariant(type: StructuralVariantType): 'info' | 'warning' | 'error' | 'success' {
+  switch (type) {
+    case 'deletion':
+      return 'error';
+    case 'insertion':
+      return 'info';
+    case 'inversion':
+      return 'warning';
+    case 'duplication':
+      return 'warning';
+    case 'translocation':
+      return 'warning';
+  }
+}
+
+function sortSvCalls(a: StructuralVariantCall, b: StructuralVariantCall): number {
+  const conf = (b.confidence ?? 0) - (a.confidence ?? 0);
+  if (conf !== 0) return conf;
+  const sizeA = Math.max(a.sizeA ?? 0, a.sizeB ?? 0);
+  const sizeB = Math.max(b.sizeA ?? 0, b.sizeB ?? 0);
+  return sizeB - sizeA;
+}
 
 interface ComparisonOverlayProps {
   repository: PhageRepository | null;
@@ -484,6 +518,58 @@ export const ComparisonOverlay: React.FC<ComparisonOverlayProps> = ({ repository
                   <div className="metric-value">{structural.anchorsUsed}</div>
                 </div>
               </div>
+              {structural.calls.length > 0 ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginTop: '0.75rem' }}>
+                  {[...structural.calls].sort(sortSvCalls).map((call) => (
+                    <details key={call.id} className="panel panel-compact">
+                      <summary
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          gap: '0.75rem',
+                          cursor: 'pointer',
+                          listStyle: 'none',
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', minWidth: 0 }}>
+                          <Badge variant={svBadgeVariant(call.type)}>{call.type}</Badge>
+                          <span className="text-dim" style={{ fontVariantNumeric: 'tabular-nums' }}>
+                            conf {formatConfidence(call.confidence)}
+                          </span>
+                          <span className="text-dim" style={{ fontVariantNumeric: 'tabular-nums' }}>
+                            A {formatBpRange(call.startA, call.endA)}
+                          </span>
+                          <span className="text-dim" style={{ fontVariantNumeric: 'tabular-nums' }}>
+                            B {formatBpRange(call.startB, call.endB)}
+                          </span>
+                        </div>
+                        <span className="text-dim" style={{ fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>
+                          {call.sizeA.toLocaleString()} / {call.sizeB.toLocaleString()} bp
+                        </span>
+                      </summary>
+
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginTop: '0.5rem' }}>
+                        <div className="text-dim">
+                          <strong>Evidence:</strong> {call.evidence?.length ? call.evidence.join(' · ') : '—'}
+                        </div>
+                        <div className="text-dim">
+                          <strong>Affected genes (A):</strong>{' '}
+                          {call.affectedGenesA?.length ? call.affectedGenesA.join(', ') : '—'}
+                        </div>
+                        <div className="text-dim">
+                          <strong>Affected genes (B):</strong>{' '}
+                          {call.affectedGenesB?.length ? call.affectedGenesB.join(', ') : '—'}
+                        </div>
+                      </div>
+                    </details>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-dim" style={{ marginTop: '0.75rem' }}>
+                  No structural variant calls detected with the current thresholds.
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -568,4 +654,3 @@ export const ComparisonOverlay: React.FC<ComparisonOverlayProps> = ({ repository
 };
 
 export default ComparisonOverlay;
-

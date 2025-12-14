@@ -4,7 +4,6 @@ import type {
   StructuralVariantReport,
   StructuralVariantType,
 } from './types';
-import { alignSynteny } from './synteny';
 
 interface StructuralVariantOptions {
   minGapBp?: number;
@@ -20,6 +19,16 @@ const DEFAULT_OPTIONS: Required<StructuralVariantOptions> = {
   inversionMinFlip: 3, // minimum gene index delta to flag inversion
 };
 
+type BlockOrientation = 'forward' | 'reverse';
+type SyntenyBlock = {
+  startIdxA: number;
+  endIdxA: number;
+  startIdxB: number;
+  endIdxB: number;
+  score: number; // 0..1 similarity
+  orientation: BlockOrientation;
+};
+
 type Anchor = {
   startIdxA: number;
   endIdxA: number;
@@ -28,13 +37,15 @@ type Anchor = {
 };
 
 function clamp01(value: number): number {
-  if (Number.isNaN(value)) return 0;
+  if (!Number.isFinite(value)) return 0;
   return Math.max(0, Math.min(1, value));
 }
 
 function geneRange(genes: GeneInfo[], startIdx: number, endIdx: number): [number, number] {
-  const start = genes[startIdx]?.startPos ?? 0;
-  const end = genes[endIdx]?.endPos ?? start;
+  const loIdx = Math.min(startIdx, endIdx);
+  const hiIdx = Math.max(startIdx, endIdx);
+  const start = genes[loIdx]?.startPos ?? 0;
+  const end = genes[hiIdx]?.endPos ?? start;
   return [Math.min(start, end), Math.max(start, end)];
 }
 
@@ -43,8 +54,10 @@ function collectGenes(
   start: number,
   end: number
 ): string[] {
+  const lo = Math.min(start, end);
+  const hi = Math.max(start, end);
   return genes
-    .filter(g => g.startPos >= start && g.endPos <= end)
+    .filter((g) => g.startPos <= hi && g.endPos >= lo)
     .map(g => g.name || g.product || g.locusTag || `gene-${g.id ?? 'unknown'}`)
     .slice(0, 8);
 }
@@ -78,6 +91,141 @@ function makeCall(
   };
 }
 
+interface GeneTokens {
+  name: string;
+  terms: string[];
+}
+
+function preprocessGene(g: GeneInfo): GeneTokens {
+  const n = (g.product || g.name || '').toLowerCase();
+  const terms = n.split(/[\s-]+/).filter(t => t.length > 3);
+  return { name: n, terms };
+}
+
+function geneDistanceOptimized(t1: GeneTokens, t2: GeneTokens): number {
+  if (!t1.name || !t2.name) return 1.0;
+  if (t1.name === t2.name) return 0.0;
+  if (t1.name.includes(t2.name) || t2.name.includes(t1.name)) return 0.2;
+
+  const [small, large] = t1.terms.length < t2.terms.length ? [t1.terms, t2.terms] : [t2.terms, t1.terms];
+  for (const term of small) {
+    if (large.includes(term)) return 0.5;
+  }
+  return 1.0;
+}
+
+type Match = { idxA: number; idxB: number; score: number };
+
+function buildSyntenyBlocks(
+  genesA: GeneInfo[],
+  genesB: GeneInfo[],
+  opts: { minScore: number; maxStepA: number; maxStepB: number; minBlockMatches: number }
+): SyntenyBlock[] {
+  const tokensA = genesA.map(preprocessGene);
+  const tokensB = genesB.map(preprocessGene);
+
+  const candidates: Match[] = [];
+  for (let idxA = 0; idxA < tokensA.length; idxA++) {
+    const tA = tokensA[idxA];
+    if (!tA.name) continue;
+    for (let idxB = 0; idxB < tokensB.length; idxB++) {
+      const dist = geneDistanceOptimized(tA, tokensB[idxB]);
+      const score = 1 - dist;
+      if (score >= opts.minScore) {
+        candidates.push({ idxA, idxB, score });
+      }
+    }
+  }
+
+  candidates.sort((a, b) => b.score - a.score);
+  const usedA = new Set<number>();
+  const usedB = new Set<number>();
+  const matches: Match[] = [];
+
+  for (const candidate of candidates) {
+    if (usedA.has(candidate.idxA) || usedB.has(candidate.idxB)) continue;
+    usedA.add(candidate.idxA);
+    usedB.add(candidate.idxB);
+    matches.push(candidate);
+  }
+
+  matches.sort((a, b) => a.idxA - b.idxA);
+
+  const blocks: SyntenyBlock[] = [];
+  let current: {
+    startIdxA: number;
+    endIdxA: number;
+    startIdxB: number;
+    endIdxB: number;
+    scoreSum: number;
+    count: number;
+    orientation: BlockOrientation | null;
+  } | null = null;
+
+  const flush = () => {
+    if (!current) return;
+    if (current.count >= opts.minBlockMatches && current.orientation) {
+      blocks.push({
+        startIdxA: current.startIdxA,
+        endIdxA: current.endIdxA,
+        startIdxB: current.startIdxB,
+        endIdxB: current.endIdxB,
+        score: clamp01(current.scoreSum / current.count),
+        orientation: current.orientation,
+      });
+    }
+    current = null;
+  };
+
+  for (const match of matches) {
+    if (!current) {
+      current = {
+        startIdxA: match.idxA,
+        endIdxA: match.idxA,
+        startIdxB: match.idxB,
+        endIdxB: match.idxB,
+        scoreSum: match.score,
+        count: 1,
+        orientation: null,
+      };
+      continue;
+    }
+
+    const deltaA = match.idxA - current.endIdxA;
+    const deltaB = match.idxB - current.endIdxB;
+    if (deltaA <= 0) continue;
+
+    const stepAOk = deltaA <= opts.maxStepA;
+    const stepBOk = Math.abs(deltaB) <= opts.maxStepB && deltaB !== 0;
+    const dir: BlockOrientation = deltaB > 0 ? 'forward' : 'reverse';
+    const expected = current.orientation ?? dir;
+
+    if (stepAOk && stepBOk && expected === dir) {
+      current.endIdxA = match.idxA;
+      current.endIdxB = match.idxB;
+      current.scoreSum += match.score;
+      current.count += 1;
+      current.orientation = expected;
+      continue;
+    }
+
+    flush();
+    current = {
+      startIdxA: match.idxA,
+      endIdxA: match.idxA,
+      startIdxB: match.idxB,
+      endIdxB: match.idxB,
+      scoreSum: match.score,
+      count: 1,
+      orientation: null,
+    };
+  }
+
+  flush();
+
+  return blocks.sort((a, b) => a.startIdxA - b.startIdxA);
+}
+
 export function analyzeStructuralVariants(
   sequenceA: string,
   sequenceB: string,
@@ -85,6 +233,9 @@ export function analyzeStructuralVariants(
   genesB: GeneInfo[] = [],
   options: StructuralVariantOptions = {}
 ): StructuralVariantReport {
+  void sequenceA;
+  void sequenceB;
+
   const cfg = { ...DEFAULT_OPTIONS, ...options };
 
   if (genesA.length < 2 || genesB.length < 2) {
@@ -95,10 +246,14 @@ export function analyzeStructuralVariants(
     };
   }
 
-  const synteny = alignSynteny(genesA, genesB);
-  const blocks = [...synteny.blocks].sort((a, b) => a.startIdxA - b.startIdxA);
+  const blocks = buildSyntenyBlocks(genesA, genesB, {
+    minScore: 0.2, // dist < 0.8 in legacy synteny
+    maxStepA: 2,
+    maxStepB: 3,
+    minBlockMatches: 2,
+  });
 
-  if (blocks.length < 2) {
+  if (blocks.length === 0) {
     return {
       calls: [],
       counts: { deletion: 0, insertion: 0, inversion: 0, duplication: 0, translocation: 0 },
@@ -108,9 +263,44 @@ export function analyzeStructuralVariants(
 
   const calls: StructuralVariantCall[] = [];
 
+  // Inversions: detect reverse-oriented synteny blocks
+  for (const block of blocks) {
+    if (block.orientation !== 'reverse') continue;
+    const flipA = Math.abs(block.endIdxA - block.startIdxA);
+    const flipB = Math.abs(block.endIdxB - block.startIdxB);
+    if (Math.min(flipA, flipB) < cfg.inversionMinFlip) continue;
+    const [startA, endA] = geneRange(genesA, block.startIdxA, block.endIdxA);
+    const [startB, endB] = geneRange(genesB, block.startIdxB, block.endIdxB);
+    const sizeA = Math.max(0, endA - startA);
+    const sizeB = Math.max(0, endB - startB);
+    const sizeSimilarity = 1 - Math.abs(sizeA - sizeB) / Math.max(sizeA, sizeB, 1);
+    const confidence = clamp01(0.3 + 0.35 * block.score + 0.35 * sizeSimilarity);
+    calls.push(
+      makeCall(
+        'inversion',
+        {
+          startIdxA: block.startIdxA,
+          endIdxA: block.endIdxA,
+          startIdxB: block.startIdxB,
+          endIdxB: block.endIdxB,
+        },
+        genesA,
+        genesB,
+        { startA, endA, startB, endB },
+        sizeA,
+        sizeB,
+        confidence,
+        ['reverse-oriented gene block', `score=${block.score.toFixed(2)}`]
+      )
+    );
+  }
+
   for (let i = 0; i < blocks.length - 1; i++) {
     const current = blocks[i];
     const next = blocks[i + 1];
+
+    // Gap-based calls assume monotonic mapping; skip reverse blocks for now.
+    if (current.orientation !== 'forward' || next.orientation !== 'forward') continue;
 
     const [currStartA, currEndA] = geneRange(genesA, current.startIdxA, current.endIdxA);
     const [currStartB, currEndB] = geneRange(genesB, current.startIdxB, current.endIdxB);
@@ -127,34 +317,6 @@ export function analyzeStructuralVariants(
       startIdxB: current.endIdxB,
       endIdxB: next.startIdxB,
     };
-
-    // Inversion: order flips between anchors (compare gene indices, not genomic positions)
-    if (next.startIdxB < current.startIdxB - cfg.inversionMinFlip) {
-      const spanA = [currEndA, nextStartA] as [number, number];
-      const spanB = [nextStartB, currEndB] as [number, number];
-      const sizeA = Math.abs(spanA[1] - spanA[0]);
-      const sizeB = Math.abs(spanB[1] - spanB[0]);
-      const confidence = clamp01(0.6 + 0.4 * (1 - Math.abs(sizeA - sizeB) / Math.max(sizeA, sizeB, 1)));
-      calls.push(
-        makeCall(
-          'inversion',
-          anchor,
-          genesA,
-          genesB,
-          {
-            startA: Math.min(...spanA),
-            endA: Math.max(...spanA),
-            startB: Math.min(...spanB),
-            endB: Math.max(...spanB),
-          },
-          sizeA,
-          sizeB,
-          confidence,
-          ['anchor order flip']
-        )
-      );
-      continue;
-    }
 
     // Large asymmetric gaps => insertion/deletion
     if (gapA > cfg.minGapBp || gapB > cfg.minGapBp) {
@@ -270,4 +432,3 @@ export function analyzeStructuralVariants(
     anchorsUsed: blocks.length,
   };
 }
-
