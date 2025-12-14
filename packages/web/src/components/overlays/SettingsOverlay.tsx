@@ -15,6 +15,10 @@ export function SettingsOverlay(): React.ReactElement | null {
   const setHighContrast = useWebPreferences((s) => s.setHighContrast);
   const backgroundEffects = useWebPreferences((s) => s.backgroundEffects);
   const setBackgroundEffects = useWebPreferences((s) => s.setBackgroundEffects);
+  const scanlines = useWebPreferences((s) => s.scanlines);
+  const setScanlines = useWebPreferences((s) => s.setScanlines);
+  const glow = useWebPreferences((s) => s.glow);
+  const setGlow = useWebPreferences((s) => s.setGlow);
 
   const {
     isEnabled: beginnerModeEnabled,
@@ -88,7 +92,7 @@ export function SettingsOverlay(): React.ReactElement | null {
               <div className="settings-row-label">Background effects</div>
               <div className="settings-row-desc">
                 Matrix rain and CRT overlay.
-                {reducedMotion ? ' Disabled by your Reduced Motion preference.' : ''}
+                {reducedMotion ? ' Suppressed by your Reduced Motion preference.' : ''}
               </div>
             </div>
             <button
@@ -97,9 +101,43 @@ export function SettingsOverlay(): React.ReactElement | null {
               onClick={() => setBackgroundEffects(!backgroundEffects)}
               aria-pressed={backgroundEffects}
               aria-label={backgroundEffects ? 'Disable background effects' : 'Enable background effects'}
-              disabled={reducedMotion}
             >
               {backgroundEffects ? 'On' : 'Off'}
+            </button>
+          </div>
+
+          <div className="settings-row">
+            <div className="settings-row-text">
+              <div className="settings-row-label">Scanlines</div>
+              <div className="settings-row-desc">
+                Subtle scanline overlay.
+                {reducedMotion ? ' Suppressed by your Reduced Motion preference.' : ''}
+              </div>
+            </div>
+            <button
+              type="button"
+              className="btn"
+              onClick={() => setScanlines(!scanlines)}
+              aria-pressed={scanlines}
+              aria-label={scanlines ? 'Disable scanlines' : 'Enable scanlines'}
+            >
+              {scanlines ? 'On' : 'Off'}
+            </button>
+          </div>
+
+          <div className="settings-row">
+            <div className="settings-row-text">
+              <div className="settings-row-label">Glow</div>
+              <div className="settings-row-desc">Adds a subtle glow to diff highlights.</div>
+            </div>
+            <button
+              type="button"
+              className="btn"
+              onClick={() => setGlow(!glow)}
+              aria-pressed={glow}
+              aria-label={glow ? 'Disable glow effects' : 'Enable glow effects'}
+            >
+              {glow ? 'On' : 'Off'}
             </button>
           </div>
         </section>

@@ -809,6 +809,20 @@ export class CanvasSequenceGridRenderer {
       case 3: fillStyle = '#ef4444'; break;
       default: fillStyle = this.theme.colors.diffHighlight ?? '#facc15';
     }
+
+    if (this.glow && !this.reducedMotion && this.cellWidth >= 10 && this.cellHeight >= 10) {
+      const blur = Math.max(2, Math.min(10, Math.round(this.cellHeight * 0.35)));
+      ctx.save();
+      ctx.shadowColor = fillStyle;
+      ctx.shadowBlur = blur;
+      ctx.shadowOffsetX = 0;
+      ctx.shadowOffsetY = 0;
+      ctx.globalAlpha = 0.35;
+      ctx.fillStyle = fillStyle;
+      ctx.fillRect(x, y, width, height);
+      ctx.restore();
+    }
+
     ctx.fillStyle = fillStyle;
     ctx.fillRect(x, y, width, height);
   }

@@ -37,7 +37,7 @@ export const MatrixRain: React.FC<MatrixRainProps> = ({
   const { theme } = useTheme();
   const reducedMotion = useReducedMotion();
   const tuiMode = useWebPreferences(s => s.tuiMode);
-  
+
   // In a real app, these could be in store or passed as props
   // For now, we default to 'dna' and moderate settings
   const density = 1.0; // 0.5 - 2.0
@@ -92,6 +92,7 @@ export const MatrixRain: React.FC<MatrixRainProps> = ({
         ctx.fillRect(0, 0, w, h);
 
         ctx.font = `${fontSize}px monospace`;
+        const baseAlpha = clamp01(opacity);
         
         for (let i = 0; i < drops.length; i++) {
           // Skip some columns based on density
@@ -104,7 +105,7 @@ export const MatrixRain: React.FC<MatrixRainProps> = ({
           ctx.fillStyle = isHead ? colors.highlight : colors.primary;
           
           // Vary opacity
-          ctx.globalAlpha = isHead ? opacity * 1.5 : opacity;
+          ctx.globalAlpha = isHead ? Math.min(1, baseAlpha * 1.5) : baseAlpha;
 
           const x = i * fontSize;
           const y = drops[i] * fontSize;
@@ -147,13 +148,6 @@ export const MatrixRain: React.FC<MatrixRainProps> = ({
     <canvas
       ref={canvasRef}
       className={`matrix-rain ${className}`}
-      style={{
-        opacity,
-        position: 'fixed',
-        inset: 0,
-        zIndex: 0,
-        pointerEvents: 'none',
-      }}
       aria-hidden="true"
       role="presentation"
     />
@@ -166,6 +160,11 @@ function hexToRgb(hex: string): string {
   return result
     ? `${parseInt(result[1], 16)}, ${parseInt(result[2], 16)}, ${parseInt(result[3], 16)}`
     : '0, 0, 0';
+}
+
+function clamp01(value: number): number {
+  if (!Number.isFinite(value)) return 0;
+  return Math.min(1, Math.max(0, value));
 }
 
 export default MatrixRain;

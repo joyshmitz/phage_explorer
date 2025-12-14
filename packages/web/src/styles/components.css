@@ -1016,6 +1016,14 @@
   margin-top: 2px;
 }
 
+.command-palette-category-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 0;
+  color: var(--color-primary);
+}
+
 @media (max-width: 640px) {
   .view-mode-toggle {
     gap: var(--space-1);
