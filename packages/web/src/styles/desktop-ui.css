@@ -587,40 +587,35 @@
    ============================================================================= */
 
 .dashboard-layout {
+  /* Default: no grid, just pass through to children */
+  display: contents;
+}
+
+/* Only apply grid layout when sidebar is present */
+.dashboard-layout--with-sidebar {
   display: grid;
-  grid-template-columns: 1fr;
+  grid-template-columns: 1fr auto;
   gap: var(--space-4);
-  height: 100%;
+  align-items: start;
 }
 
-/* Large desktop: two columns (list + detail) */
-@media (min-width: 1024px) {
-  .dashboard-layout {
-    grid-template-columns: minmax(300px, 380px) 1fr;
-    gap: var(--space-5);
-  }
-}
-
-/* Wide desktop: add analysis sidebar */
+/* Wide desktop: add analysis sidebar with more spacing */
 @media (min-width: 1200px) {
   .dashboard-layout--with-sidebar {
-    grid-template-columns: minmax(280px, 340px) 1fr auto;
     gap: var(--space-5);
   }
 }
 
-/* Ultrawide: generous proportions */
+/* Ultrawide: generous spacing */
 @media (min-width: 1920px) {
   .dashboard-layout--with-sidebar {
-    grid-template-columns: minmax(320px, 400px) 1fr auto;
     gap: var(--space-6);
   }
 }
 
-/* 4K: maximize all columns */
+/* 4K: maximum spacing */
 @media (min-width: 2560px) {
   .dashboard-layout--with-sidebar {
-    grid-template-columns: minmax(380px, 480px) 1fr auto;
     gap: var(--space-8);
   }
 }
