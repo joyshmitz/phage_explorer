@@ -354,9 +354,18 @@ export function Overlay({
             )}
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-            <span style={{ color: 'var(--color-text-muted)', fontSize: '0.85rem' }}>
-              ESC{hotkey ? ` or ${hotkey}` : ''} to close
-            </span>
+            {/* Only show keyboard hints on non-touch devices */}
+            {!isPhone && (
+              <span style={{ color: 'var(--color-text-muted)', fontSize: '0.85rem' }}>
+                ESC{hotkey ? ` or ${hotkey}` : ''} to close
+              </span>
+            )}
+            {/* Mobile users get contextual hint */}
+            {isPhone && (
+              <span style={{ color: 'var(--color-text-muted)', fontSize: '0.85rem' }}>
+                {closeOnBackdrop ? 'Tap outside to close' : 'Tap × to close'}
+              </span>
+            )}
             <button
               onClick={handleClose}
               style={{
@@ -364,9 +373,23 @@ export function Overlay({
                 border: 'none',
                 color: 'var(--color-text-dim)',
                 cursor: 'pointer',
-                fontSize: '1.2rem',
-                padding: '0.25rem',
-                lineHeight: 1,
+                fontSize: '1.5rem',
+                // Min 44x44 touch target for accessibility (WCAG 2.5.5)
+                minWidth: '44px',
+                minHeight: '44px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                borderRadius: '8px',
+                transition: 'background var(--duration-fast) var(--ease-out), color var(--duration-fast) var(--ease-out)',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = 'var(--color-background-hover)';
+                e.currentTarget.style.color = 'var(--color-text)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = 'none';
+                e.currentTarget.style.color = 'var(--color-text-dim)';
               }}
               aria-label="Close overlay"
             >

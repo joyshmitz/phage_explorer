@@ -88,7 +88,9 @@ interface OverlayContextValue {
 
 const OverlayContext = createContext<OverlayContextValue | null>(null);
 
-const BASE_Z_INDEX = 100;
+// Base z-index must be higher than control deck (z-index: 300)
+// Uses --z-modal (500) from CSS variables as base
+const BASE_Z_INDEX = 500;
 const MAX_STACK_SIZE = 3;
 
 const DEFAULT_CONFIG: OverlayConfig = {
