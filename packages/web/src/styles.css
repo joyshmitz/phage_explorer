@@ -13,6 +13,7 @@
 @import './styles/mobile-landscape.css';
 @import './styles/control-deck.css';
 @import './styles/fab.css';
+@import './styles/desktop-ui.css';
 
 /* =============================================================================
    APP SHELL - Full viewport layout with refined spacing
@@ -176,8 +177,32 @@
   flex-direction: column;
   gap: var(--space-5);
   width: 100%;
-  max-width: 1280px;
+  max-width: 1400px;
   margin: 0 auto;
+}
+
+/* Large desktop (1600px+): expand to use more horizontal space */
+@media (min-width: 1600px) {
+  .app-body {
+    max-width: 1600px;
+    padding: var(--space-6) var(--space-8);
+  }
+}
+
+/* Ultrawide (1920px+): fill most of the screen */
+@media (min-width: 1920px) {
+  .app-body {
+    max-width: calc(100% - 6rem);
+    padding: var(--space-6) var(--space-10);
+  }
+}
+
+/* 4K / Ultrawide (2560px+): maximize screen utilization */
+@media (min-width: 2560px) {
+  .app-body {
+    max-width: calc(100% - 8rem);
+    padding: var(--space-8) var(--space-12);
+  }
 }
 
 /* Mobile content adjustments */
@@ -1409,7 +1434,7 @@
 }
 
 /* =============================================================================
-   DETAIL VIEWERS LAYOUT
+   DETAIL VIEWERS LAYOUT - Adaptive grid for sequence and 3D views
    ============================================================================= */
 
 .detail-viewers {
@@ -1419,9 +1444,35 @@
   margin-top: var(--space-4);
 }
 
+/* Desktop (1024px+): side-by-side layout */
 @media (min-width: 1024px) {
   .detail-viewers {
     grid-template-columns: 1fr 1fr;
+    gap: var(--space-6);
+  }
+}
+
+/* Large desktop (1440px+): more gap, better proportions */
+@media (min-width: 1440px) {
+  .detail-viewers {
+    grid-template-columns: 1.2fr 1fr; /* Sequence view gets slightly more space */
+    gap: var(--space-8);
+  }
+}
+
+/* Ultrawide (1920px+): balanced proportions with generous spacing */
+@media (min-width: 1920px) {
+  .detail-viewers {
+    grid-template-columns: 1.1fr 1fr;
+    gap: var(--space-10);
+  }
+}
+
+/* 4K (2560px+): maximize both panels */
+@media (min-width: 2560px) {
+  .detail-viewers {
+    grid-template-columns: 1fr 1fr;
+    gap: var(--space-12);
   }
 }
 
@@ -1435,4 +1486,23 @@
 /* Ensure 3D view has a minimum height on mobile */
 .three-container {
   min-height: 300px;
+}
+
+/* Large desktop: ensure viewer panels grow vertically */
+@media (min-width: 1440px) {
+  .viewer-panel {
+    min-height: 600px;
+  }
+}
+
+@media (min-width: 1920px) {
+  .viewer-panel {
+    min-height: 700px;
+  }
+}
+
+@media (min-width: 2560px) {
+  .viewer-panel {
+    min-height: 800px;
+  }
 }
