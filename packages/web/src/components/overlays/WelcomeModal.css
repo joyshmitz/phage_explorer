@@ -1,0 +1,299 @@
+/**
+ * WelcomeModal Styles
+ *
+ * First-run experience onboarding modal with experience level selection.
+ */
+
+.welcome-modal {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  min-height: 300px;
+}
+
+/* Intro step */
+.welcome-intro {
+  text-align: center;
+  padding: var(--space-4) 0;
+}
+
+.welcome-intro__title {
+  color: var(--color-text);
+  margin-bottom: var(--space-4);
+  font-size: var(--text-xl);
+  font-weight: var(--font-bold);
+}
+
+.welcome-intro__description {
+  color: var(--color-text-dim);
+  line-height: 1.6;
+  max-width: 500px;
+  margin: 0 auto;
+}
+
+.welcome-features {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-4);
+  margin-top: var(--space-4);
+}
+
+@media (max-width: 640px) {
+  .welcome-features {
+    grid-template-columns: 1fr;
+  }
+}
+
+.welcome-feature {
+  background: var(--color-background-alt);
+  padding: var(--space-4);
+  border-radius: var(--radius-lg);
+}
+
+.welcome-feature__header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-weight: var(--font-bold);
+  margin-bottom: var(--space-2);
+}
+
+.welcome-feature__icon {
+  display: inline-flex;
+  align-items: center;
+  line-height: 0;
+}
+
+.welcome-feature__header--primary {
+  color: var(--color-primary);
+}
+
+.welcome-feature__header--secondary {
+  color: var(--color-secondary);
+}
+
+.welcome-feature__text {
+  font-size: var(--text-sm);
+  color: var(--color-text-muted);
+  margin: 0;
+}
+
+/* Experience level step */
+.welcome-level {
+  text-align: center;
+}
+
+.welcome-level__title {
+  color: var(--color-text);
+  margin-bottom: var(--space-5);
+  font-size: var(--text-lg);
+  font-weight: var(--font-bold);
+}
+
+.welcome-level__grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--space-4);
+}
+
+@media (max-width: 768px) {
+  .welcome-level__grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.welcome-level__hint {
+  text-align: center;
+  font-size: var(--text-sm);
+  color: var(--color-text-muted);
+  margin-top: var(--space-4);
+}
+
+/* Level card button */
+.welcome-level-card {
+  text-align: left;
+  border: 2px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-4);
+  cursor: pointer;
+  background: transparent;
+  transition: all var(--duration-fast) var(--ease-out);
+  width: 100%;
+}
+
+.welcome-level-card:hover {
+  border-color: var(--color-border-light);
+  background: var(--color-background-hover);
+}
+
+.welcome-level-card:focus-visible {
+  outline: none;
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 2px var(--color-background), 0 0 0 4px var(--color-primary);
+}
+
+.welcome-level-card[aria-pressed="true"] {
+  border-color: var(--color-accent);
+  background: rgba(var(--color-accent-rgb, 34, 211, 238), 0.1);
+}
+
+.welcome-level-card__header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+}
+
+.welcome-level-card__icon {
+  display: inline-flex;
+  align-items: center;
+  line-height: 0;
+  color: var(--color-text-muted);
+  transition: color var(--duration-fast) var(--ease-out);
+}
+
+.welcome-level-card[aria-pressed="true"] .welcome-level-card__icon {
+  color: var(--color-accent);
+}
+
+.welcome-level-card__title {
+  margin: 0;
+  font-size: var(--text-base);
+  font-weight: var(--font-bold);
+  color: var(--color-primary);
+  transition: color var(--duration-fast) var(--ease-out);
+}
+
+.welcome-level-card[aria-pressed="true"] .welcome-level-card__title {
+  color: var(--color-accent);
+}
+
+.welcome-level-card__desc {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--color-text-dim);
+}
+
+/* Primer step */
+.welcome-primer {
+  text-align: center;
+}
+
+.welcome-primer__title {
+  color: var(--color-text);
+  margin-bottom: var(--space-2);
+  font-size: var(--text-lg);
+  font-weight: var(--font-bold);
+}
+
+/* Footer controls */
+.welcome-footer {
+  margin-top: auto;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--color-border-light);
+}
+
+.welcome-footer__skip {
+  background: none;
+  border: none;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  font-size: var(--text-sm);
+  padding: var(--space-2);
+}
+
+.welcome-footer__skip:hover {
+  color: var(--color-text);
+}
+
+.welcome-footer__skip:focus-visible {
+  outline: none;
+  color: var(--color-primary);
+  text-decoration: underline;
+}
+
+.welcome-footer__actions {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.welcome-btn--secondary {
+  padding: var(--space-2) var(--space-4);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--color-border);
+  background: transparent;
+  color: var(--color-text);
+  cursor: pointer;
+  font-weight: var(--font-medium);
+  transition: all var(--duration-fast) var(--ease-out);
+}
+
+.welcome-btn--secondary:hover {
+  border-color: var(--color-border-light);
+  background: var(--color-background-hover);
+}
+
+.welcome-btn--secondary:focus-visible {
+  outline: none;
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 2px var(--color-background), 0 0 0 4px var(--color-primary);
+}
+
+.welcome-btn--tour {
+  padding: var(--space-2) var(--space-5);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--color-accent);
+  background: transparent;
+  color: var(--color-accent);
+  cursor: pointer;
+  font-weight: var(--font-bold);
+  transition: all var(--duration-fast) var(--ease-out);
+}
+
+.welcome-btn--tour:hover {
+  background: rgba(var(--color-accent-rgb, 34, 211, 238), 0.1);
+}
+
+.welcome-btn--tour:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--color-background), 0 0 0 4px var(--color-accent);
+}
+
+.welcome-btn--primary {
+  padding: var(--space-2) var(--space-5);
+  border-radius: var(--radius-lg);
+  border: none;
+  background: var(--color-primary);
+  color: var(--color-background);
+  font-weight: var(--font-bold);
+  cursor: pointer;
+  transition: all var(--duration-fast) var(--ease-out);
+}
+
+.welcome-btn--primary:hover {
+  background: var(--color-primary-hover);
+}
+
+.welcome-btn--primary:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--color-background), 0 0 0 4px var(--color-primary);
+}
+
+/* Animation */
+.animate-fade-in {
+  animation: welcomeFadeIn var(--duration-normal) var(--ease-out);
+}
+
+@keyframes welcomeFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
