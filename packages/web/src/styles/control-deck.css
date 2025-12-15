@@ -1,248 +1,152 @@
-/* Mobile Control Deck Styles */
-:root {
-  --control-deck-tabs-height: 50px;
-  --control-deck-reserved-height: 140px;
-}
-
-@media (max-width: 640px) and (orientation: landscape) {
-  :root {
-    --control-deck-tabs-height: 44px;
-    --control-deck-reserved-height: var(--control-deck-tabs-height);
-  }
-}
+/* =============================================================================
+   MOBILE BOTTOM TAB BAR
+   Clean iOS/Android-style bottom navigation
+   ============================================================================= */
 
 .control-deck {
   display: none; /* Hidden on desktop */
-  position: fixed;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  background: var(--color-background-elevated);
-  border-top: 1px solid var(--color-border);
-  z-index: var(--z-fixed); /* 300 - below modals (500+) */
-  padding-bottom: env(safe-area-inset-bottom);
-  box-shadow: 0 -4px 20px rgba(0,0,0,0.3);
 }
 
 @media (max-width: 640px) {
   .control-deck {
     display: flex;
-    flex-direction: column;
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: calc(56px + env(safe-area-inset-bottom, 0px));
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+    background: var(--color-background-elevated);
+    border-top: 1px solid var(--color-border);
+    z-index: var(--z-fixed);
+    justify-content: space-around;
+    align-items: stretch;
   }
 
-  /* Hide standard footer on mobile when control deck is active.
-     Using higher specificity to override other .app-footer rules */
+  /* Hide footer when control deck is active */
   .app-shell > .app-footer,
   footer.app-footer {
     display: none !important;
   }
-
-  /* Prevent content from being covered by the fixed deck */
-  .app-body {
-    padding-bottom: calc(var(--control-deck-reserved-height) + env(safe-area-inset-bottom));
-  }
 }
 
-.deck-content {
-  padding: 12px;
-  background: var(--color-background);
-  border-bottom: 1px solid var(--color-border-subtle);
-  min-height: 80px;
-  display: flex;
-  align-items: center;
-}
+/* =============================================================================
+   TAB BUTTONS
+   ============================================================================= */
 
-.deck-row {
-  display: flex;
-  gap: 12px;
-  width: 100%;
-  justify-content: space-around;
-}
-
-.deck-btn {
+.tab-btn {
+  flex: 1;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  background: var(--color-surface-1);
-  border: 1px solid var(--color-border-subtle);
-  border-radius: 8px;
-  padding: 8px;
-  flex: 1;
-  min-height: 60px; /* Big targets */
-  color: var(--color-text);
-  touch-action: manipulation;
-  position: relative;
-  overflow: hidden;
-  user-select: none;
-	  transition:
-	    background var(--duration-fast) var(--ease-out),
-	    border-color var(--duration-fast) var(--ease-out),
-	    color var(--duration-fast) var(--ease-out),
-	    transform var(--duration-fast) var(--ease-out);
-	}
-
-.deck-btn:focus-visible {
-  outline: 2px solid var(--color-border-focus);
-  outline-offset: 2px;
-  border-color: var(--color-border-focus);
-}
-
-.deck-btn::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: radial-gradient(
-    circle at var(--ripple-x, 50%) var(--ripple-y, 50%),
-    rgba(255,255,255,0.25) 0%,
-    rgba(255,255,255,0) 60%
-  );
-  opacity: 0;
-  transform: scale(2.5);
-  transition:
-    transform var(--duration-normal) var(--ease-out),
-    opacity var(--duration-normal) var(--ease-out);
-  pointer-events: none;
-}
-
-.deck-btn:active {
-  transform: scale(0.97);
-}
-
-.deck-btn:active::after {
-  opacity: 1;
-  transform: scale(0.2);
-  transition: none;
-}
-
-.deck-btn.active {
-  background: var(--color-primary);
-  color: var(--color-background);
-  border-color: var(--color-primary);
-}
-
-.deck-btn .icon {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  height: 24px;
-  margin-bottom: 4px;
-  line-height: 0;
-}
-
-.deck-btn .icon svg {
-  display: block;
-}
-
-.deck-btn .label {
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-}
-
-.deck-tabs {
-  display: flex;
-  height: var(--control-deck-tabs-height);
-}
-
-.tab-btn {
-  flex: 1;
+  gap: 2px;
   background: transparent;
   border: none;
-  border-top: 2px solid transparent;
   color: var(--color-text-muted);
-  font-weight: 600;
-  font-size: 14px;
-  position: relative;
-  overflow: hidden;
+  font-size: 10px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  padding: 8px 4px;
+  min-width: 0;
+  cursor: pointer;
   touch-action: manipulation;
-  user-select: none;
-	  transition:
-	    background var(--duration-fast) var(--ease-out),
-	    border-top-color var(--duration-fast) var(--ease-out),
-	    color var(--duration-fast) var(--ease-out),
-	    transform var(--duration-fast) var(--ease-out);
-	}
+  -webkit-tap-highlight-color: transparent;
+  transition: color var(--duration-fast) var(--ease-out);
+}
 
 .tab-btn:focus-visible {
   outline: 2px solid var(--color-border-focus);
   outline-offset: -2px;
 }
 
-.tab-btn::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: radial-gradient(
-    circle at var(--ripple-x, 50%) var(--ripple-y, 50%),
-    rgba(255,255,255,0.22) 0%,
-    rgba(255,255,255,0) 60%
-  );
-  opacity: 0;
-  transform: scale(2.5);
-  transition:
-    transform var(--duration-normal) var(--ease-out),
-    opacity var(--duration-normal) var(--ease-out);
-  pointer-events: none;
-}
-
 .tab-btn:active {
-  transform: scale(0.98);
-}
-
-.tab-btn:active::after {
-  opacity: 1;
-  transform: scale(0.2);
-  transition: none;
+  background: var(--color-background-active);
 }
 
 .tab-btn.active {
   color: var(--color-primary);
-  border-top-color: var(--color-primary);
-  background: var(--color-surface-0);
 }
 
-.tab-btn-toggle-icon {
-  display: inline-flex;
+.tab-btn .tab-icon {
+  display: flex;
   align-items: center;
   justify-content: center;
-  width: 100%;
-  height: 100%;
+  height: 24px;
+  width: 24px;
 }
 
+.tab-btn .tab-icon svg {
+  width: 20px;
+  height: 20px;
+}
+
+.tab-btn .tab-label {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+/* Active indicator dot */
+.tab-btn.active .tab-icon::after {
+  content: '';
+  position: absolute;
+  bottom: -4px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--color-primary);
+}
+
+.tab-btn .tab-icon {
+  position: relative;
+}
+
+/* =============================================================================
+   STATE BADGES
+   Small indicator for toggleable states (3D on, diff on, etc.)
+   ============================================================================= */
+
+.tab-btn .state-badge {
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--color-primary);
+  border: 2px solid var(--color-background-elevated);
+}
+
+/* =============================================================================
+   LANDSCAPE ADJUSTMENTS
+   ============================================================================= */
+
 @media (max-width: 640px) and (orientation: landscape) {
-  .control-deck.is-landscape {
-    max-height: 50dvh;
-    overflow: hidden;
+  .control-deck {
+    height: calc(48px + env(safe-area-inset-bottom, 0px));
   }
 
-  .deck-content {
-    padding: 8px;
-    min-height: 0;
-    overflow-y: auto;
+  .tab-btn {
+    padding: 6px 4px;
+    gap: 1px;
   }
 
-  .deck-row {
-    gap: 8px;
-  }
-
-  .deck-btn {
-    min-height: 44px;
-    padding: 6px 8px;
-  }
-
-  .deck-btn .icon {
+  .tab-btn .tab-icon {
     height: 20px;
-    margin-bottom: 2px;
+    width: 20px;
   }
 
-  .deck-btn .label {
-    font-size: 10px;
+  .tab-btn .tab-icon svg {
+    width: 18px;
+    height: 18px;
   }
 
-  .tab-btn.tab-btn-toggle {
-    max-width: 44px;
-    flex: 0 0 44px;
-    padding: 0;
+  .tab-btn .tab-label {
+    font-size: 9px;
   }
 }

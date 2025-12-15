@@ -1,359 +1,549 @@
+/**
+ * Mobile Overrides - Clean Mobile-First Design
+ *
+ * Design Principles:
+ * 1. Mobile-first: Base styles for phones, enhance for larger screens
+ * 2. Single-column layout: Everything stacks vertically on mobile
+ * 3. Bottom navigation: Controls at thumb-reach
+ * 4. 48px+ touch targets: WCAG 2.5.5 compliant
+ * 5. Full-screen views: Maximize content, minimize chrome
+ * 6. Safe area support: Handle notches and home indicators
+ *
+ * Breakpoints:
+ * - 480px: Small phones
+ * - 640px: Large phones / small tablets (PHONE breakpoint)
+ * - 900px: Tablets (NARROW breakpoint)
+ */
 
-/* Mobile + small tablet overrides focused on touchability and stacking */
+/* =============================================================================
+   CSS CUSTOM PROPERTIES FOR MOBILE
+   ============================================================================= */
+
+:root {
+  --mobile-header-height: 56px;
+  --mobile-tab-bar-height: 56px;
+  --mobile-safe-bottom: env(safe-area-inset-bottom, 0px);
+  --mobile-safe-top: env(safe-area-inset-top, 0px);
+  --mobile-safe-left: env(safe-area-inset-left, 0px);
+  --mobile-safe-right: env(safe-area-inset-right, 0px);
+}
+
+/* =============================================================================
+   TABLET BREAKPOINT (max-width: 900px)
+   ============================================================================= */
+
 @media (max-width: 900px) {
+  /* Adjust typography for better mobile readability */
   :root {
     --text-xs: 12px;
     --text-sm: 14px;
     --text-base: 16px;
   }
 
-  /* Layout: force single-column master/detail with compact header/footer */
+  /* App Shell - Single column */
   .app-shell {
-    grid-template-rows: auto 1fr auto;
+    grid-template-rows: var(--mobile-header-height) 1fr auto;
   }
 
-  .app-body {
-    padding: 12px;
-    overflow-x: hidden;
-  }
-
-  .panel.two-column {
-    grid-template-columns: 1fr;
-    gap: 12px;
-  }
-
-  .column--list {
-    order: 1;
-  }
-
-  .column--detail {
-    order: 2;
-  }
-
-  /* Constrain list height so detail stays visible */
-  .column--list .list {
-    max-height: 42vh;
-    min-height: 180px;
-  }
-
-  /* Header: wrap quick actions and keep readable spacing */
+  /* Header - Compact */
   .app-header {
-    padding: 10px 14px;
-    gap: 8px;
-    flex-wrap: wrap;
+    padding: 0 var(--space-3);
+    min-height: var(--mobile-header-height);
+    gap: var(--space-2);
+  }
+
+  .header-left {
+    gap: var(--space-2);
   }
 
   .header-right {
-    flex-wrap: wrap;
-    gap: 8px;
-    width: 100%;
-    justify-content: flex-start;
+    gap: var(--space-2);
   }
 
-  /* Touch targets */
-  button,
-  .btn,
-  [role="button"] {
-    min-height: 44px;
-    min-width: 44px;
-    padding: 9px 14px;
-    font-size: 14px;
-  }
-
-  /* Badges stay legible but not oversized */
-  .badge {
-    font-size: 11px;
-    padding: 4px 8px;
-    min-height: 20px;
-  }
-
-  /* Sequence + controls stack vertically with breathing room */
-  .detail-viewers {
-    grid-template-columns: 1fr;
-    gap: 10px;
-  }
-
-  .sequence-view {
-    min-height: 280px;
-  }
-
-  .sequence-view .toolbar button {
-    padding: 8px 12px;
-    margin: 2px;
-  }
-
-  /* 3D view stays visible but not full-height */
-  .three-container {
-    width: 100%;
-    min-height: 240px;
-    height: min(360px, 60vh);
-  }
-
-  /* Footer keyboard hints are noise on mobile */
-  .app-footer .footer-hints {
+  /* Hide subtitle on tablets */
+  .app-subtitle {
     display: none;
   }
 
-  /* Prevent horizontal scrollbars from nested panels */
-  .panel {
-    overflow-x: hidden;
-  }
-}
-
-/* Phone-only drawer behavior */
-@media (max-width: 640px) {
-  .column--list.mobile-drawer {
-    position: fixed;
-    inset: 0;
-    z-index: var(--z-modal);
-    background: var(--color-background);
-    padding: 12px;
-    padding-top: calc(12px + env(safe-area-inset-top));
-    padding-bottom: calc(12px + env(safe-area-inset-bottom));
-    overflow: hidden;
+  /* Main content - Less padding */
+  .app-body {
+    padding: var(--space-3);
+    gap: var(--space-3);
   }
 
-  .column--list.mobile-drawer .list {
-    max-height: none;
-    min-height: 0;
-  }
-}
-
-/* Ultra-small devices */
-@media (max-width: 540px) {
-  .app-header {
-    padding: 8px 10px;
-  }
-
+  /* Two column layout becomes single column */
   .panel.two-column {
-    gap: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
   }
 
-  .column--list .list {
-    max-height: 38vh;
+  /* Detail viewers stack */
+  .detail-viewers {
+    grid-template-columns: 1fr;
+    gap: var(--space-3);
+  }
+
+  /* 3D container - Responsive height */
+  .three-container {
+    min-height: 280px;
+    height: clamp(280px, 50vh, 400px);
+  }
+
+  /* Hide desktop-only elements */
+  .analysis-sidebar,
+  .action-toolbar {
+    display: none;
+  }
+
+  /* Show FAB on tablets */
+  .fab {
+    display: flex;
   }
 }
 
 /* =============================================================================
-   WCAG 2.5.5 Touch Target Compliance (44x44px minimum)
-   Applies to touch devices (phones, tablets) for accessibility
+   PHONE BREAKPOINT (max-width: 640px)
    ============================================================================= */
+
+@media (max-width: 640px) {
+  /* App shell - Account for bottom tab bar */
+  .app-body {
+    padding: var(--space-2);
+    padding-bottom: calc(var(--mobile-tab-bar-height) + var(--mobile-safe-bottom) + var(--space-4));
+  }
+
+  /* Header - Ultra compact */
+  .app-header {
+    padding: 0 var(--space-2);
+    padding-top: var(--mobile-safe-top);
+    min-height: calc(var(--mobile-header-height) + var(--mobile-safe-top));
+  }
+
+  .app-title {
+    font-size: var(--text-base);
+    max-width: 160px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* Hide badges in header on phones */
+  .app-header .badge {
+    display: none;
+  }
+
+  /* Footer - Hidden on phones (replaced by tab bar) */
+  .app-footer {
+    display: none;
+  }
+
+  /* Phage list - Takes full viewport when open */
+  .column--list.mobile-drawer {
+    position: fixed;
+    inset: 0;
+    top: calc(var(--mobile-header-height) + var(--mobile-safe-top));
+    z-index: var(--z-overlay);
+    background: var(--color-background);
+    padding: var(--space-3);
+    padding-bottom: calc(var(--mobile-tab-bar-height) + var(--mobile-safe-bottom) + var(--space-3));
+    display: flex;
+    flex-direction: column;
+    animation: slideInFromLeft 0.2s var(--ease-out);
+  }
+
+  @keyframes slideInFromLeft {
+    from {
+      transform: translateX(-100%);
+      opacity: 0;
+    }
+    to {
+      transform: translateX(0);
+      opacity: 1;
+    }
+  }
+
+  /* List in drawer - Full height */
+  .column--list.mobile-drawer .list {
+    flex: 1;
+    max-height: none;
+    min-height: 0;
+    overflow-y: auto;
+  }
+
+  /* When drawer is NOT open, show constrained list */
+  .column--list:not(.mobile-drawer) .list {
+    max-height: 35vh;
+    min-height: 150px;
+  }
+
+  /* Panels - Full width, minimal padding */
+  .panel {
+    padding: var(--space-2);
+    border-radius: var(--radius-lg);
+  }
+
+  .panel-header {
+    padding: var(--space-2) var(--space-3);
+  }
+
+  .panel-body {
+    padding: var(--space-2);
+  }
+
+  /* Detail card - Compact */
+  .detail-card {
+    padding: var(--space-2);
+  }
+
+  /* 3D container - Phone optimized */
+  .three-container {
+    min-height: 240px;
+    height: clamp(240px, 45vh, 320px);
+    border-radius: var(--radius-lg);
+  }
+
+  /* Sequence view - Compact controls */
+  .sequence-view {
+    min-height: 200px;
+  }
+
+  /* View mode toggle - Smaller on mobile */
+  .view-mode-toggle {
+    padding: 3px;
+  }
+
+  .view-mode-segment {
+    padding: 8px 12px;
+    min-height: 40px;
+    font-size: var(--text-sm);
+  }
+
+  .view-mode-icon {
+    display: none;
+  }
+
+  /* Quick stats - Horizontal scroll */
+  .quick-stats {
+    padding: var(--space-2);
+    gap: var(--space-2);
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .quick-stats--mobile {
+    margin: 0 calc(-1 * var(--space-2));
+    padding-left: var(--space-2);
+    padding-right: var(--space-2);
+    border-radius: 0;
+    border-left: none;
+    border-right: none;
+  }
+
+  .quick-stat {
+    min-width: 60px;
+    flex-shrink: 0;
+  }
+
+  .quick-stat__label {
+    font-size: 10px;
+  }
+
+  .quick-stat__value {
+    font-size: var(--text-sm);
+  }
+
+  /* Buttons - Touch friendly */
+  .btn {
+    min-height: 44px;
+    padding: var(--space-2) var(--space-3);
+    font-size: var(--text-sm);
+  }
+
+  .btn-sm {
+    min-height: 36px;
+    padding: var(--space-1) var(--space-2);
+    font-size: var(--text-xs);
+  }
+
+  /* List items - Larger touch targets */
+  .list-item {
+    min-height: 56px;
+    padding: var(--space-3);
+  }
+
+  /* Badges - Compact */
+  .badge {
+    font-size: 10px;
+    padding: 2px 6px;
+  }
+
+  /* Hide FAB on phones - Control deck replaces it */
+  .fab {
+    display: none;
+  }
+
+  /* Empty state - Compact */
+  .empty-state {
+    padding: var(--space-6) var(--space-4);
+  }
+
+  .empty-state__icon {
+    font-size: 2.5rem;
+  }
+
+  .empty-state__title {
+    font-size: var(--text-lg);
+  }
+
+  .empty-state__description {
+    font-size: var(--text-sm);
+  }
+
+  /* Glossary shell - Full screen on phones */
+  .glossary-shell {
+    top: 0;
+    bottom: 0;
+    width: 100%;
+    max-width: 100%;
+    border-left: none;
+    border-radius: 0;
+  }
+}
+
+/* =============================================================================
+   SMALL PHONE BREAKPOINT (max-width: 480px)
+   ============================================================================= */
+
+@media (max-width: 480px) {
+  .app-title {
+    font-size: var(--text-sm);
+    max-width: 120px;
+  }
+
+  .header-right .btn {
+    padding: var(--space-1);
+    min-width: 36px;
+    font-size: 10px;
+  }
+
+  /* Even more compact spacing */
+  .app-body {
+    padding: var(--space-1);
+  }
+
+  .panel {
+    border-radius: var(--radius-md);
+  }
+
+  /* Stack buttons vertically if needed */
+  .header-right {
+    gap: var(--space-1);
+  }
+}
+
+/* =============================================================================
+   TOUCH DEVICE OPTIMIZATIONS
+   ============================================================================= */
+
 @media (hover: none) and (pointer: coarse) {
-  /* Base button touch targets */
+  /* Ensure all interactive elements have 44px+ touch targets */
   button,
   .btn,
   [role="button"],
   [role="tab"],
-  [role="menuitem"],
   [role="option"],
-  a[href] {
+  a[href]:not(.badge) {
     min-height: 44px;
     min-width: 44px;
   }
 
-  /* Icon buttons - expand hit area without changing visual size */
-  .btn-icon,
-  .btn.icon-only,
-  button[aria-label]:not(.btn-lg) {
-    min-height: 44px;
-    min-width: 44px;
-    padding: 10px;
+  /* List items - Larger touch targets */
+  .list-item,
+  [role="option"] {
+    min-height: 52px;
+    padding: var(--space-3);
   }
 
-  /* Small buttons - keep visual appearance but expand hit area */
-  .btn-sm {
-    min-height: 44px;
-    min-width: 44px;
-    padding: 8px 14px;
+  /* Inputs - Comfortable touch height */
+  input[type="text"],
+  input[type="search"],
+  input[type="number"],
+  select,
+  textarea {
+    min-height: 48px;
+    padding: var(--space-3);
+    font-size: 16px; /* Prevents iOS zoom on focus */
   }
 
-  /* Compact toolbar buttons - expand hit area for touch */
-  .btn.compact,
-  .toolbar .btn,
-  .segmented-control button {
-    min-height: 44px;
-    min-width: 44px;
-    padding: 8px;
-  }
-
-  /* List items as touch targets */
-  .list-item {
-    min-height: 56px;
-    padding: 12px 16px;
-  }
-
-  /* Badge buttons (when clickable) */
-  .badge[role="button"],
-  .badge.clickable,
-  button.badge {
-    min-height: 44px;
-    min-width: 44px;
-    padding: 10px 14px;
-  }
-
-  /* Overlay close buttons */
-  .overlay-close,
-  .modal-close,
-  [aria-label="Close"],
-  [aria-label="close"] {
-    min-height: 44px;
-    min-width: 44px;
-  }
-
-  /* Checkbox and radio targets
-     Note: Native inputs are "replaced elements" - ::before/::after pseudo-elements don't work.
-     Instead, we make the checkbox larger AND ensure the wrapping label is 44px+ tall.
-     Clicking anywhere on the label activates the checkbox, providing the large touch target. */
+  /* Checkboxes and radios */
   input[type="checkbox"],
   input[type="radio"] {
     width: 24px;
     height: 24px;
-    /* Make cursor explicit for touch affordance */
-    cursor: pointer;
-    /* Accent color for better visibility */
-    accent-color: var(--color-primary);
   }
 
-  /* Labels wrapping checkboxes provide the touch target (clicking label activates checkbox) */
+  /* Labels wrapping inputs provide touch target */
   label:has(input[type="checkbox"]),
   label:has(input[type="radio"]) {
     min-height: 44px;
     display: flex;
     align-items: center;
-    gap: var(--space-2, 8px);
-    cursor: pointer;
-    /* Padding expands clickable area */
+    gap: var(--space-2);
     padding: var(--space-2) 0;
-  }
-
-  /* Select dropdowns */
-  select {
-    min-height: 44px;
-    padding: 10px 12px;
-  }
-
-  /* Text inputs - comfortable touch height */
-  input[type="text"],
-  input[type="search"],
-  input[type="number"],
-  input[type="email"],
-  input[type="url"],
-  textarea {
-    min-height: 44px;
-    padding: 10px 12px;
-  }
-
-  /* Tab buttons */
-  [role="tab"] {
-    min-height: 44px;
-    padding: 10px 16px;
   }
 
   /* View mode segments */
   .view-mode-segment {
     min-height: 44px;
-    padding: 10px 14px;
   }
 
-  /* Ensure adequate spacing between adjacent touch targets */
-  .badge-row {
-    gap: 8px;
+  /* Remove hover effects - they don't make sense on touch */
+  .btn:hover,
+  .list-item:hover {
+    transform: none;
   }
 
-  .toolbar {
-    gap: 8px;
+  /* Active states instead of hover */
+  .btn:active {
+    transform: scale(0.97);
+    background: var(--color-background-active);
   }
 
-  .btn + .btn,
-  button + button {
-    margin-left: 4px;
+  .list-item:active {
+    background: var(--color-background-active);
+  }
+
+  /* Scrollbars - Hidden on touch devices */
+  ::-webkit-scrollbar {
+    display: none;
+  }
+
+  * {
+    scrollbar-width: none;
   }
 }
 
 /* =============================================================================
-   MOBILE-ONLY UTILITY
-   Elements that should only be visible on mobile devices
+   LANDSCAPE PHONE OPTIMIZATIONS
    ============================================================================= */
 
+@media (orientation: landscape) and (max-height: 500px) {
+  /* Compact header in landscape */
+  .app-header {
+    min-height: 44px;
+    padding: 0 var(--space-2);
+  }
+
+  .app-title {
+    font-size: var(--text-sm);
+  }
+
+  /* Hide non-essential header elements */
+  .app-subtitle,
+  .header-left .badge,
+  .beginner-indicator {
+    display: none;
+  }
+
+  /* App body - Side-by-side layout possible */
+  .app-body {
+    padding: var(--space-2);
+    padding-bottom: calc(48px + var(--mobile-safe-bottom) + var(--space-2));
+  }
+
+  /* Two column can show side by side in landscape */
+  .panel.two-column {
+    display: grid;
+    grid-template-columns: minmax(200px, 1fr) 2fr;
+    gap: var(--space-2);
+    height: calc(100vh - 44px - 48px - var(--mobile-safe-bottom) - var(--space-4));
+  }
+
+  .column--list {
+    max-height: none;
+    overflow-y: auto;
+  }
+
+  .column--detail {
+    overflow-y: auto;
+  }
+
+  /* Detail viewers stack vertically but compact */
+  .detail-viewers {
+    gap: var(--space-2);
+  }
+
+  /* 3D container - Shorter in landscape */
+  .three-container {
+    min-height: 150px;
+    height: clamp(150px, 35vh, 200px);
+  }
+
+  /* Control deck - Tabs only in landscape */
+  .control-deck .deck-content {
+    display: none;
+  }
+
+  .control-deck.is-expanded .deck-content {
+    display: flex;
+    position: absolute;
+    bottom: 100%;
+    left: 0;
+    right: 0;
+    background: var(--color-background-elevated);
+    border-top: 1px solid var(--color-border);
+    border-bottom: none;
+  }
+}
+
+/* =============================================================================
+   UTILITY CLASSES FOR MOBILE
+   ============================================================================= */
+
+/* Show only on mobile */
 .mobile-only {
   display: none;
 }
 
-@media (max-width: 768px) {
+@media (max-width: 640px) {
   .mobile-only {
     display: flex;
-    align-items: center;
   }
 }
 
-/* =============================================================================
-   PHAGE LIST MOBILE FIXES
-   ============================================================================= */
+/* Hide on mobile */
+.desktop-only {
+  display: flex;
+}
+
 @media (max-width: 640px) {
-  /* List items need larger touch targets */
-  .phage-list [role="option"] {
-    min-height: 48px;
-    padding: 12px 12px !important;
-  }
-
-  /* Hide keyboard navigation hint on mobile - useless for touch */
-  .phage-list kbd {
-    display: none;
-  }
-
-  /* Hide the entire keyboard hint row on mobile */
-  .phage-list > div:last-child:has(kbd) {
+  .desktop-only {
     display: none;
   }
 }
 
 /* =============================================================================
-   COMMAND PALETTE MOBILE FIXES
+   DATA FRESHNESS INDICATOR POSITIONING
    ============================================================================= */
-@media (max-width: 640px) {
-  /* Experience level buttons need larger touch targets */
-  .overlay-commandPalette [role="group"] button[aria-pressed] {
-    min-height: 44px;
-    padding: 10px 14px;
-  }
 
-  /* Hide verbose description on mobile to save space */
-  .overlay-commandPalette [role="group"] > span:last-child {
-    display: none;
-  }
-
-  /* Command list items need proper touch targets */
-  .overlay-commandPalette [role="listbox"] [role="option"] {
-    min-height: 48px;
-    padding: 12px;
-  }
-}
-
-/* Data freshness indicator styling */
 .data-freshness-indicator {
   position: fixed;
-  bottom: calc(var(--space-2) + 60px);
-  right: var(--space-2);
-  z-index: 50;
-  opacity: 0.8;
-  transition: opacity var(--transition-fast);
+  bottom: var(--space-3);
+  right: var(--space-3);
+  z-index: var(--z-fixed);
 }
 
-.data-freshness-indicator:hover {
-  opacity: 1;
-}
-
-/* On mobile, move indicator above FAB and control deck */
 @media (max-width: 900px) {
   .data-freshness-indicator {
-    bottom: calc(80px + env(safe-area-inset-bottom));
-    right: calc(16px + env(safe-area-inset-right));
+    bottom: calc(var(--space-3) + 60px);
+    right: var(--space-3);
   }
 }
 
-/* On phones with control deck, position above it */
 @media (max-width: 640px) {
   .data-freshness-indicator {
-    bottom: calc(var(--control-deck-reserved-height, 140px) + 16px + env(safe-area-inset-bottom));
+    bottom: calc(var(--mobile-tab-bar-height) + var(--mobile-safe-bottom) + var(--space-3));
+    right: var(--space-2);
   }
 }
