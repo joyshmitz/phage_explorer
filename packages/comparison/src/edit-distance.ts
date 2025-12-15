@@ -13,14 +13,20 @@
  */
 
 import type { EditDistanceMetrics } from './types';
+import { levenshtein_distance as wasmLevenshtein } from '@phage/wasm-compute';
 
-// WASM module not available - use JS-only implementation
-// When WASM is built, this can be re-enabled:
-// import { levenshtein_distance as wasmLevenshtein } from '@phage/wasm-compute';
-const _wasmReady = false; // eslint-disable-line @typescript-eslint/no-unused-vars
+// Check if WASM is available and working
+let wasmAvailable = false;
+try {
+  // Test the WASM function with a trivial case
+  wasmAvailable = typeof wasmLevenshtein === 'function' && wasmLevenshtein('a', 'b') === 1;
+} catch {
+  wasmAvailable = false;
+}
 
 /**
  * Compute Levenshtein distance using dynamic programming.
+ * Uses WASM implementation when available (5-20x faster).
  * Space-optimized: O(min(m,n)) instead of O(m*n).
  *
  * For sequences > maxLength, returns approximate result.
@@ -30,9 +36,12 @@ export function levenshteinDistance(
   b: string,
   maxLength: number = 10000
 ): { distance: number; isApproximate: boolean } {
-  // Note: Rust/WASM implementation would be used here if available
-  // See packages/wasm-compute for building WASM module
+  // Use WASM for exact computation when available
+  if (wasmAvailable && a.length <= maxLength && b.length <= maxLength) {
+    return { distance: wasmLevenshtein(a, b), isApproximate: false };
+  }
 
+  // Fall back to JS implementation for very long sequences or when WASM unavailable
   return levenshteinDistanceJS(a, b, maxLength);
 }
 
