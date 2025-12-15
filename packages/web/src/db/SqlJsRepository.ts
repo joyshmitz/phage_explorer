@@ -17,6 +17,7 @@ import type {
   CodonAdaptation,
 } from './types';
 import { CHUNK_SIZE, CACHE_TTL } from './types';
+import { LRUCache } from './lru-cache';
 
 /**
  * Safely parse JSON with fallback default value
@@ -48,6 +49,15 @@ interface PreparedStatements {
   getModelFrames: Statement;
   searchPhages: Statement;
   getPreference: Statement;
+  getFullGenomeLength: Statement;
+  // Optional statements - may not exist if tables are missing
+  getProteinDomains?: Statement;
+  getAmgAnnotations?: Statement;
+  getDefenseSystems?: Statement;
+  getHostTrnaPoolsByName?: Statement;
+  getHostTrnaPoolsAll?: Statement;
+  getCodonAdaptationByHost?: Statement;
+  getCodonAdaptationAll?: Statement;
 }
 
 /**
@@ -56,7 +66,8 @@ interface PreparedStatements {
 export class SqlJsRepository implements PhageRepository {
   private db: Database;
   private statements: PreparedStatements | null = null;
-  private cache: Map<string, CacheEntry<unknown>> = new Map();
+  // LRU cache with bounded size to prevent unbounded memory growth
+  private cache = new LRUCache<string, CacheEntry<unknown>>(100);
   private phageList: PhageSummary[] | null = null;
   private biasCache: Map<number, number[]> = new Map();
   private codonCache: Map<number, number[]> = new Map();
@@ -137,7 +148,85 @@ export class SqlJsRepository implements PhageRepository {
       getPreference: this.db.prepare(`
         SELECT value FROM preferences WHERE key = ? LIMIT 1
       `),
+
+      getFullGenomeLength: this.db.prepare(`
+        SELECT genome_length FROM phages WHERE id = ? LIMIT 1
+      `),
     };
+
+    // Prepare optional statements for tables that may not exist
+    // These return undefined if the table doesn't exist
+    this.statements.getProteinDomains = this.safelyPrepare(`
+      SELECT id, phage_id as phageId, gene_id as geneId, locus_tag as locusTag,
+             domain_id as domainId, domain_name as domainName, domain_type as domainType,
+             start, end, score, e_value as eValue, description
+      FROM protein_domains
+      WHERE phage_id = ?
+      ORDER BY start ASC
+    `);
+
+    this.statements.getAmgAnnotations = this.safelyPrepare(`
+      SELECT id, phage_id as phageId, gene_id as geneId, locus_tag as locusTag,
+             amg_type as amgType, kegg_ortholog as keggOrtholog, kegg_reaction as keggReaction,
+             kegg_pathway as keggPathway, pathway_name as pathwayName, confidence, evidence
+      FROM amg_annotations
+      WHERE phage_id = ?
+      ORDER BY id ASC
+    `);
+
+    this.statements.getDefenseSystems = this.safelyPrepare(`
+      SELECT id, phage_id as phageId, gene_id as geneId, locus_tag as locusTag,
+             system_type as systemType, system_family as systemFamily,
+             target_system as targetSystem, mechanism, confidence, source
+      FROM defense_systems
+      WHERE phage_id = ?
+      ORDER BY id ASC
+    `);
+
+    this.statements.getHostTrnaPoolsByName = this.safelyPrepare(`
+      SELECT id, host_name as hostName, host_tax_id as hostTaxId, anticodon,
+             amino_acid as aminoAcid, codon, copy_number as copyNumber,
+             relative_abundance as relativeAbundance
+      FROM host_trna_pools
+      WHERE host_name = ?
+      ORDER BY anticodon ASC
+    `);
+
+    this.statements.getHostTrnaPoolsAll = this.safelyPrepare(`
+      SELECT id, host_name as hostName, host_tax_id as hostTaxId, anticodon,
+             amino_acid as aminoAcid, codon, copy_number as copyNumber,
+             relative_abundance as relativeAbundance
+      FROM host_trna_pools
+      ORDER BY host_name, anticodon ASC
+    `);
+
+    this.statements.getCodonAdaptationByHost = this.safelyPrepare(`
+      SELECT id, phage_id as phageId, host_name as hostName, gene_id as geneId,
+             locus_tag as locusTag, cai, tai, cpb, enc_prime as encPrime
+      FROM codon_adaptation
+      WHERE phage_id = ? AND host_name = ?
+      ORDER BY gene_id ASC
+    `);
+
+    this.statements.getCodonAdaptationAll = this.safelyPrepare(`
+      SELECT id, phage_id as phageId, host_name as hostName, gene_id as geneId,
+             locus_tag as locusTag, cai, tai, cpb, enc_prime as encPrime
+      FROM codon_adaptation
+      WHERE phage_id = ?
+      ORDER BY host_name, gene_id ASC
+    `);
+  }
+
+  /**
+   * Safely prepare a statement, returning undefined if the table doesn't exist
+   */
+  private safelyPrepare(sql: string): Statement | undefined {
+    try {
+      return this.db.prepare(sql);
+    } catch {
+      // Table likely doesn't exist
+      return undefined;
+    }
   }
 
   /**
@@ -269,10 +358,8 @@ export class SqlJsRepository implements PhageRepository {
       return '';
     }
 
-    let fullSeq = '';
-    for (const chunk of results) {
-      fullSeq += chunk.sequence;
-    }
+    // Using join() for O(n) instead of O(n²) concatenation
+    const fullSeq = results.map(chunk => chunk.sequence).join('');
 
     const windowStart = start - startChunk * CHUNK_SIZE;
     const windowEnd = windowStart + (end - start);
@@ -281,9 +368,13 @@ export class SqlJsRepository implements PhageRepository {
   }
 
   async getFullGenomeLength(phageId: number): Promise<number> {
-    const stmt = this.db.prepare('SELECT genome_length FROM phages WHERE id = ? LIMIT 1');
-    const results = this.execStatement<{ genome_length: number }>(stmt, [phageId]);
-    stmt.free();
+    if (!this.statements) {
+      throw new Error('Database not initialized');
+    }
+    const results = this.execStatement<{ genome_length: number }>(
+      this.statements.getFullGenomeLength,
+      [phageId]
+    );
     return results[0]?.genome_length ?? 0;
   }
 
@@ -355,13 +446,32 @@ export class SqlJsRepository implements PhageRepository {
 
   async prefetchAround(index: number, radius: number): Promise<void> {
     const list = await this.listPhages();
-    const start = Math.max(0, index - radius);
-    const end = Math.min(list.length - 1, index + radius);
+    if (list.length === 0) return;
 
-    for (let i = start; i <= end; i++) {
-      if (i !== index) {
-        void this.getPhageById(list[i].id);
+    // Build priority rings: immediately adjacent first, then expanding outward
+    // This ensures faster perceived navigation (adjacent phages ready first)
+    const priorityRings: number[][] = [];
+
+    for (let distance = 1; distance <= radius; distance++) {
+      const ring: number[] = [];
+      const prev = index - distance;
+      const next = index + distance;
+
+      // Add previous and next at this distance (if valid)
+      if (prev >= 0) ring.push(prev);
+      if (next < list.length) ring.push(next);
+
+      if (ring.length > 0) {
+        priorityRings.push(ring);
       }
+    }
+
+    // Process each ring in order - await each ring before starting the next
+    // This ensures adjacent phages are loaded before more distant ones
+    for (const ring of priorityRings) {
+      await Promise.all(
+        ring.map(i => this.getPhageById(list[i].id))
+      );
     }
   }
 
@@ -426,23 +536,17 @@ export class SqlJsRepository implements PhageRepository {
       return cached.data;
     }
 
-    try {
-      const stmt = this.db.prepare(`
-        SELECT id, phage_id as phageId, gene_id as geneId, locus_tag as locusTag,
-               domain_id as domainId, domain_name as domainName, domain_type as domainType,
-               start, end, score, e_value as eValue, description
-        FROM protein_domains
-        WHERE phage_id = ?
-        ORDER BY start ASC
-      `);
-      const results = this.execStatement<ProteinDomain>(stmt, [phageId]);
-      stmt.free();
-      this.cache.set(cacheKey, { data: results, timestamp: Date.now() });
-      return results;
-    } catch {
-      // Table may not exist yet
+    // Use pre-prepared statement if available (table exists)
+    if (!this.statements?.getProteinDomains) {
       return [];
     }
+
+    const results = this.execStatement<ProteinDomain>(
+      this.statements.getProteinDomains,
+      [phageId]
+    );
+    this.cache.set(cacheKey, { data: results, timestamp: Date.now() });
+    return results;
   }
 
   /**
@@ -455,22 +559,17 @@ export class SqlJsRepository implements PhageRepository {
       return cached.data;
     }
 
-    try {
-      const stmt = this.db.prepare(`
-        SELECT id, phage_id as phageId, gene_id as geneId, locus_tag as locusTag,
-               amg_type as amgType, kegg_ortholog as keggOrtholog, kegg_reaction as keggReaction,
-               kegg_pathway as keggPathway, pathway_name as pathwayName, confidence, evidence
-        FROM amg_annotations
-        WHERE phage_id = ?
-        ORDER BY id ASC
-      `);
-      const results = this.execStatement<AmgAnnotation>(stmt, [phageId]);
-      stmt.free();
-      this.cache.set(cacheKey, { data: results, timestamp: Date.now() });
-      return results;
-    } catch {
+    // Use pre-prepared statement if available (table exists)
+    if (!this.statements?.getAmgAnnotations) {
       return [];
     }
+
+    const results = this.execStatement<AmgAnnotation>(
+      this.statements.getAmgAnnotations,
+      [phageId]
+    );
+    this.cache.set(cacheKey, { data: results, timestamp: Date.now() });
+    return results;
   }
 
   /**
@@ -483,22 +582,17 @@ export class SqlJsRepository implements PhageRepository {
       return cached.data;
     }
 
-    try {
-      const stmt = this.db.prepare(`
-        SELECT id, phage_id as phageId, gene_id as geneId, locus_tag as locusTag,
-               system_type as systemType, system_family as systemFamily,
-               target_system as targetSystem, mechanism, confidence, source
-        FROM defense_systems
-        WHERE phage_id = ?
-        ORDER BY id ASC
-      `);
-      const results = this.execStatement<DefenseSystem>(stmt, [phageId]);
-      stmt.free();
-      this.cache.set(cacheKey, { data: results, timestamp: Date.now() });
-      return results;
-    } catch {
+    // Use pre-prepared statement if available (table exists)
+    if (!this.statements?.getDefenseSystems) {
       return [];
     }
+
+    const results = this.execStatement<DefenseSystem>(
+      this.statements.getDefenseSystems,
+      [phageId]
+    );
+    this.cache.set(cacheKey, { data: results, timestamp: Date.now() });
+    return results;
   }
 
   /**
@@ -511,37 +605,28 @@ export class SqlJsRepository implements PhageRepository {
       return cached.data;
     }
 
-    try {
-      let stmt: Statement;
-      let results: HostTrnaPool[];
-
-      if (hostName) {
-        stmt = this.db.prepare(`
-          SELECT id, host_name as hostName, host_tax_id as hostTaxId, anticodon,
-                 amino_acid as aminoAcid, codon, copy_number as copyNumber,
-                 relative_abundance as relativeAbundance
-          FROM host_trna_pools
-          WHERE host_name = ?
-          ORDER BY anticodon ASC
-        `);
-        results = this.execStatement<HostTrnaPool>(stmt, [hostName]);
-      } else {
-        stmt = this.db.prepare(`
-          SELECT id, host_name as hostName, host_tax_id as hostTaxId, anticodon,
-                 amino_acid as aminoAcid, codon, copy_number as copyNumber,
-                 relative_abundance as relativeAbundance
-          FROM host_trna_pools
-          ORDER BY host_name, anticodon ASC
-        `);
-        results = this.execStatement<HostTrnaPool>(stmt, []);
+    // Use pre-prepared statements if available (table exists)
+    let results: HostTrnaPool[];
+    if (hostName) {
+      if (!this.statements?.getHostTrnaPoolsByName) {
+        return [];
       }
-
-      stmt.free();
-      this.cache.set(cacheKey, { data: results, timestamp: Date.now() });
-      return results;
-    } catch {
-      return [];
+      results = this.execStatement<HostTrnaPool>(
+        this.statements.getHostTrnaPoolsByName,
+        [hostName]
+      );
+    } else {
+      if (!this.statements?.getHostTrnaPoolsAll) {
+        return [];
+      }
+      results = this.execStatement<HostTrnaPool>(
+        this.statements.getHostTrnaPoolsAll,
+        []
+      );
     }
+
+    this.cache.set(cacheKey, { data: results, timestamp: Date.now() });
+    return results;
   }
 
   /**
@@ -554,42 +639,34 @@ export class SqlJsRepository implements PhageRepository {
       return cached.data;
     }
 
-    try {
-      let stmt: Statement;
-      let results: CodonAdaptation[];
-
-      if (hostName) {
-        stmt = this.db.prepare(`
-          SELECT id, phage_id as phageId, host_name as hostName, gene_id as geneId,
-                 locus_tag as locusTag, cai, tai, cpb, enc_prime as encPrime
-          FROM codon_adaptation
-          WHERE phage_id = ? AND host_name = ?
-          ORDER BY gene_id ASC
-        `);
-        results = this.execStatement<CodonAdaptation>(stmt, [phageId, hostName]);
-      } else {
-        stmt = this.db.prepare(`
-          SELECT id, phage_id as phageId, host_name as hostName, gene_id as geneId,
-                 locus_tag as locusTag, cai, tai, cpb, enc_prime as encPrime
-          FROM codon_adaptation
-          WHERE phage_id = ?
-          ORDER BY host_name, gene_id ASC
-        `);
-        results = this.execStatement<CodonAdaptation>(stmt, [phageId]);
+    // Use pre-prepared statements if available (table exists)
+    let results: CodonAdaptation[];
+    if (hostName) {
+      if (!this.statements?.getCodonAdaptationByHost) {
+        return [];
       }
-
-      stmt.free();
-      this.cache.set(cacheKey, { data: results, timestamp: Date.now() });
-      return results;
-    } catch {
-      return [];
+      results = this.execStatement<CodonAdaptation>(
+        this.statements.getCodonAdaptationByHost,
+        [phageId, hostName]
+      );
+    } else {
+      if (!this.statements?.getCodonAdaptationAll) {
+        return [];
+      }
+      results = this.execStatement<CodonAdaptation>(
+        this.statements.getCodonAdaptationAll,
+        [phageId]
+      );
     }
+
+    this.cache.set(cacheKey, { data: results, timestamp: Date.now() });
+    return results;
   }
 
   async close(): Promise<void> {
-    // Free prepared statements
+    // Free prepared statements (some may be undefined for missing tables)
     if (this.statements) {
-      Object.values(this.statements).forEach((stmt) => stmt.free());
+      Object.values(this.statements).forEach((stmt) => stmt?.free());
       this.statements = null;
     }
 

@@ -13,6 +13,7 @@ import {
 import type { PhageSummary, PhageFull, GeneInfo, CodonUsageData } from '@phage-explorer/core';
 import type { PhageRepository, CacheEntry, TropismPrediction } from './types';
 import { CHUNK_SIZE } from './types';
+import { LRUCache } from './lru-cache';
 import { readFileSync, writeFileSync, existsSync } from 'fs';
 
 /**
@@ -33,7 +34,8 @@ export class BunSqliteRepository implements PhageRepository {
   private sqlite: Database;
   private db: ReturnType<typeof drizzle>;
   private readonly: boolean;
-  private cache: Map<string, CacheEntry<unknown>> = new Map();
+  // LRU cache with bounded size to prevent unbounded memory growth
+  private cache = new LRUCache<string, CacheEntry<unknown>>(100);
   private phageList: PhageSummary[] | null = null;
   private cachePath: string;
   private biasCache: Map<number, number[]> = new Map();
@@ -208,11 +210,8 @@ export class BunSqliteRepository implements PhageRepository {
       return '';
     }
 
-    // Concatenate chunks
-    let fullSeq = '';
-    for (const chunk of result) {
-      fullSeq += chunk.sequence;
-    }
+    // Concatenate chunks - using join() for O(n) instead of O(n²) concatenation
+    const fullSeq = result.map(chunk => chunk.sequence).join('');
 
     // Extract the requested window
     const windowStart = start - startChunk * CHUNK_SIZE;
@@ -330,15 +329,32 @@ export class BunSqliteRepository implements PhageRepository {
 
   async prefetchAround(index: number, radius: number): Promise<void> {
     const list = await this.listPhages();
-    const start = Math.max(0, index - radius);
-    const end = Math.min(list.length - 1, index + radius);
+    if (list.length === 0) return;
 
-    // Prefetch phage data in background
-    for (let i = start; i <= end; i++) {
-      if (i !== index) {
-        // Don't await - run in background
-        void this.getPhageById(list[i].id);
+    // Build priority rings: immediately adjacent first, then expanding outward
+    // This ensures faster perceived navigation (adjacent phages ready first)
+    const priorityRings: number[][] = [];
+
+    for (let distance = 1; distance <= radius; distance++) {
+      const ring: number[] = [];
+      const prev = index - distance;
+      const next = index + distance;
+
+      // Add previous and next at this distance (if valid)
+      if (prev >= 0) ring.push(prev);
+      if (next < list.length) ring.push(next);
+
+      if (ring.length > 0) {
+        priorityRings.push(ring);
       }
+    }
+
+    // Process each ring in order - await each ring before starting the next
+    // This ensures adjacent phages are loaded before more distant ones
+    for (const ring of priorityRings) {
+      await Promise.all(
+        ring.map(i => this.getPhageById(list[i].id))
+      );
     }
   }
 
