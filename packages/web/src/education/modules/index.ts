@@ -1,3 +1,4 @@
+import type React from 'react';
 import type { ModuleId } from '../types';
 import { WhatIsPhageModule } from './WhatIsPhage';
 import { DNABasicsModule } from './DNABasics';
@@ -5,7 +6,7 @@ import { PhageLifecycleModule } from './PhageLifecycle';
 import { GeneticCodeModule } from './GeneticCode';
 import { CentralDogmaModule } from './CentralDogma';
 
-export type ModuleComponent = () => JSX.Element;
+export type ModuleComponent = () => React.ReactElement;
 
 export interface ModuleMeta {
   id: ModuleId;

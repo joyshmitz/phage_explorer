@@ -41,7 +41,7 @@ function arcPath(cx: number, cy: number, r1: number, r2: number, start: number, 
   ].join(' ');
 }
 
-function Ring({ radiusInner, radiusOuter, onSelect, selected }: RingSpec): JSX.Element {
+function Ring({ radiusInner, radiusOuter, onSelect, selected }: RingSpec): React.ReactElement {
   const cx = 200;
   const cy = 200;
   const sweep = (2 * Math.PI) / BASES.length;
@@ -80,7 +80,7 @@ function Ring({ radiusInner, radiusOuter, onSelect, selected }: RingSpec): JSX.E
   );
 }
 
-export function CodonWheelVisualizer(): JSX.Element {
+export function CodonWheelVisualizer(): React.ReactElement {
   const [first, setFirst] = useState<Base>('A');
   const [second, setSecond] = useState<Base>('A');
   const [third, setThird] = useState<Base>('A');

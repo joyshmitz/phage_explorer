@@ -63,7 +63,7 @@ function buildDegeneracyGroups(): DegeneracyGroup[] {
     .sort((a, b) => b.count - a.count);
 }
 
-function DegeneracyChart(): JSX.Element {
+function DegeneracyChart(): React.ReactElement {
   const groups = useMemo(() => buildDegeneracyGroups(), []);
   const maxCount = Math.max(...groups.map((g) => g.count));
 
@@ -144,7 +144,7 @@ interface ReadingFrameDemoProps {
   sequence: string;
 }
 
-function ReadingFrameDemo({ sequence }: ReadingFrameDemoProps): JSX.Element {
+function ReadingFrameDemo({ sequence }: ReadingFrameDemoProps): React.ReactElement {
   const [frame, setFrame] = useState<0 | 1 | 2>(0);
 
   const translated = useMemo(() => {
@@ -276,7 +276,7 @@ function ReadingFrameDemo({ sequence }: ReadingFrameDemoProps): JSX.Element {
   );
 }
 
-function CodonTableMini(): JSX.Element {
+function CodonTableMini(): React.ReactElement {
   const [hoveredAA, setHoveredAA] = useState<string | null>(null);
 
   const allCodons = useMemo(() => {
@@ -410,7 +410,7 @@ interface CodonBiasExampleProps {
   accent: string;
 }
 
-function CodonBiasExample({ organism, leucineCodons, accent }: CodonBiasExampleProps): JSX.Element {
+function CodonBiasExample({ organism, leucineCodons, accent }: CodonBiasExampleProps): React.ReactElement {
   return (
     <div
       style={{
@@ -453,7 +453,7 @@ function CodonBiasExample({ organism, leucineCodons, accent }: CodonBiasExampleP
   );
 }
 
-function CodonBiasSection(): JSX.Element {
+function CodonBiasSection(): React.ReactElement {
   // Simplified example data for E. coli vs phage T7
   const ecoliLeucine = [
     { codon: 'CTG', percent: 52 },
@@ -497,7 +497,7 @@ function KeyConceptCard({
   value: string;
   description: string;
   color: string;
-}): JSX.Element {
+}): React.ReactElement {
   return (
     <div
       className="panel panel-compact"
@@ -515,7 +515,7 @@ function KeyConceptCard({
   );
 }
 
-export function GeneticCodeModule(): JSX.Element {
+export function GeneticCodeModule(): React.ReactElement {
   const { completeModule, hasCompletedModule } = useBeginnerMode();
   const done = hasCompletedModule(MODULE_ID);
   const [activeTab, setActiveTab] = useState<'wheel' | 'table' | 'frames' | 'bias'>('wheel');

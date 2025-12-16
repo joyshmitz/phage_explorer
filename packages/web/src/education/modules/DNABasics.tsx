@@ -135,7 +135,7 @@ function BaseCard({
   base: BaseInfo;
   isSelected: boolean;
   onClick: () => void;
-}): JSX.Element {
+}): React.ReactElement {
   return (
     <button
       type="button"
@@ -187,7 +187,7 @@ function BaseCard({
   );
 }
 
-function DirectionalityDiagram(): JSX.Element {
+function DirectionalityDiagram(): React.ReactElement {
   return (
     <div
       aria-label="DNA strand directionality diagram"
@@ -254,7 +254,7 @@ function DirectionalityDiagram(): JSX.Element {
   );
 }
 
-function BinaryComparisonWidget(): JSX.Element {
+function BinaryComparisonWidget(): React.ReactElement {
   const [inputSeq, setInputSeq] = useState('ATGC');
   const cleanSeq = inputSeq.toUpperCase().replace(/[^ATGC]/g, '').slice(0, 20);
 
@@ -349,7 +349,7 @@ function BinaryComparisonWidget(): JSX.Element {
   );
 }
 
-export function DNABasicsModule(): JSX.Element {
+export function DNABasicsModule(): React.ReactElement {
   const { completeModule, hasCompletedModule } = useBeginnerMode();
   const done = hasCompletedModule(MODULE_ID);
   const [selectedBase, setSelectedBase] = useState<string | null>(null);

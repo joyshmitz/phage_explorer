@@ -9,6 +9,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { AMINO_ACIDS, CODON_TABLE, type AminoAcidInfo } from '@phage-explorer/core';
 import { useTheme } from '../../hooks/useTheme';
+import type { AminoAcid } from '../../theme/types';
 
 type TranslationStep = {
   codon: string;
@@ -89,7 +90,7 @@ export function TranslationVisualizer({
   if (!current) return null;
 
   const ribosomeProgress = Math.min(1, index / Math.max(1, steps.length - 1));
-  const aminoPalette = info ? theme.aminoAcids[current.amino] : theme.colors;
+  const aminoPalette = theme.aminoAcids[current.amino as AminoAcid] ?? { fg: theme.colors.text, bg: theme.colors.backgroundAlt };
   const isStart = current.codon === 'ATG';
   const isStop = current.amino === '*';
 
@@ -119,7 +120,7 @@ export function TranslationVisualizer({
         <div className="translation-viz__timeline" aria-label="mRNA codons">
           {steps.map((step, i) => {
             const status = i < index ? 'done' : i === index ? 'active' : 'todo';
-            const palette = aminoInfo(step.amino) ? theme.aminoAcids[step.amino] : undefined;
+            const palette = aminoInfo(step.amino) ? theme.aminoAcids[step.amino as AminoAcid] : undefined;
             return (
               <div
                 key={`${step.codon}-${i}`}
@@ -148,8 +149,8 @@ export function TranslationVisualizer({
                 className="translation-viz__ribosome-body"
                 style={{
                   left: `${ribosomeProgress * 100}%`,
-                  background: aminoPalette.bg ?? theme.colors.primary,
-                  color: aminoPalette.fg ?? theme.colors.text,
+                  background: aminoPalette.bg,
+                  color: aminoPalette.fg,
                 }}
               >
                 Ribosome
@@ -187,7 +188,7 @@ export function TranslationVisualizer({
             <div className="translation-viz__chain-track">
               {produced.length === 0 && <span className="text-dim">No amino acids yet</span>}
               {produced.map((aa, idx) => {
-                const palette = theme.aminoAcids[aa];
+                const palette = theme.aminoAcids[aa as AminoAcid];
                 const info = aminoInfo(aa);
                 return (
                   <span

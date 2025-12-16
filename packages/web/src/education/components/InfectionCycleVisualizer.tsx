@@ -8,6 +8,7 @@
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTheme } from '../../hooks/useTheme';
+import type { ThemePalette } from '../../theme/types';
 
 type LifecycleStage = {
   id: string;
@@ -366,7 +367,7 @@ function StageDiagram({
 }: {
   stage: LifecycleStage | undefined;
   pathway: Pathway;
-  colors: Record<string, string>;
+  colors: ThemePalette;
 }): React.ReactElement {
   if (!stage) {
     return <div style={{ color: colors.textMuted }}>Select a stage</div>;
@@ -629,7 +630,7 @@ function StageKeyPoints({
   colors,
 }: {
   stage: LifecycleStage | undefined;
-  colors: Record<string, string>;
+  colors: ThemePalette;
 }): React.ReactElement | null {
   if (!stage) return null;
 

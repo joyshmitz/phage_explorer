@@ -16,7 +16,7 @@ export function ContextHelpPanel({
   description = 'Key concepts related to your current view.',
   topics = [],
   relatedIds = [],
-}: ContextHelpPanelProps): JSX.Element {
+}: ContextHelpPanelProps): React.ReactElement {
   const { getTerm, relatedTerms, linkText } = useGlossary();
   const [collapsed, setCollapsed] = useState(false);
 

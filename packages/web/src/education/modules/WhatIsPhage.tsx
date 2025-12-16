@@ -54,7 +54,7 @@ const TIMELINE: TimelineEntry[] = [
   },
 ];
 
-function FigureLegend({ label }: { label: string }): JSX.Element {
+function FigureLegend({ label }: { label: string }): React.ReactElement {
   return (
     <div
       style={{
@@ -74,7 +74,7 @@ function FigureLegend({ label }: { label: string }): JSX.Element {
   );
 }
 
-function StructureDiagram(): JSX.Element {
+function StructureDiagram(): React.ReactElement {
   return (
     <div
       aria-label="Stylized phage structure diagram"
@@ -119,7 +119,7 @@ function StructureDiagram(): JSX.Element {
   );
 }
 
-function SizeScale(): JSX.Element {
+function SizeScale(): React.ReactElement {
   const items = [
     { label: 'Phage', value: '≈ 50–200 nm', color: '#22c55e' },
     { label: 'Bacterium', value: '≈ 1–5 µm', color: '#3b82f6' },
@@ -173,7 +173,7 @@ function SizeScale(): JSX.Element {
   );
 }
 
-function EmGallery(): JSX.Element {
+function EmGallery(): React.ReactElement {
   const cards = useMemo(
     () => [
       { title: 'T4 head + tail fibers', accent: '#8b5cf6' },
@@ -230,7 +230,7 @@ function EmGallery(): JSX.Element {
   );
 }
 
-export function WhatIsPhageModule(): JSX.Element {
+export function WhatIsPhageModule(): React.ReactElement {
   const { completeModule, hasCompletedModule } = useBeginnerMode();
   const done = hasCompletedModule(MODULE_ID);
 

@@ -145,7 +145,7 @@ const LAMBDA_DECISION_FACTORS: DecisionFactor[] = [
   },
 ];
 
-function CycleStepCard({ step, index }: { step: CycleStep; index: number }): JSX.Element {
+function CycleStepCard({ step, index }: { step: CycleStep; index: number }): React.ReactElement {
   return (
     <div
       style={{
@@ -190,7 +190,7 @@ function CycleStepCard({ step, index }: { step: CycleStep; index: number }): JSX
   );
 }
 
-function LambdaDecisionDiagram(): JSX.Element {
+function LambdaDecisionDiagram(): React.ReactElement {
   return (
     <div
       aria-label="Lambda phage decision circuit diagram"
@@ -275,7 +275,7 @@ function LambdaDecisionDiagram(): JSX.Element {
   );
 }
 
-function ComparisonTable(): JSX.Element {
+function ComparisonTable(): React.ReactElement {
   return (
     <div
       style={{
@@ -357,7 +357,7 @@ function ComparisonTable(): JSX.Element {
   );
 }
 
-export function PhageLifecycleModule(): JSX.Element {
+export function PhageLifecycleModule(): React.ReactElement {
   const { completeModule, hasCompletedModule } = useBeginnerMode();
   const done = hasCompletedModule(MODULE_ID);
   const [activeTab, setActiveTab] = useState<'lytic' | 'lysogenic' | 'comparison'>('lytic');

@@ -73,7 +73,7 @@ const PROCESSES: ProcessStep[] = [
   },
 ];
 
-function FlowDiagram({ activeStep }: { activeStep: string | null }): JSX.Element {
+function FlowDiagram({ activeStep }: { activeStep: string | null }): React.ReactElement {
   return (
     <div
       style={{
@@ -134,7 +134,7 @@ function FlowDiagram({ activeStep }: { activeStep: string | null }): JSX.Element
   );
 }
 
-function ProcessCard({ process, isActive, onClick }: { process: ProcessStep; isActive: boolean; onClick: () => void }): JSX.Element {
+function ProcessCard({ process, isActive, onClick }: { process: ProcessStep; isActive: boolean; onClick: () => void }): React.ReactElement {
   return (
     <button
       type="button"
@@ -187,7 +187,7 @@ function ProcessCard({ process, isActive, onClick }: { process: ProcessStep; isA
   );
 }
 
-function TranscriptionDetail(): JSX.Element {
+function TranscriptionDetail(): React.ReactElement {
   const steps = [
     { phase: 'Initiation', description: 'RNA polymerase binds to the promoter sequence and unwinds the DNA double helix.' },
     { phase: 'Elongation', description: 'RNA polymerase moves along the template strand, synthesizing mRNA 5\' to 3\'.' },
@@ -251,7 +251,7 @@ function TranscriptionDetail(): JSX.Element {
   );
 }
 
-function TranslationDetail(): JSX.Element {
+function TranslationDetail(): React.ReactElement {
   const steps = [
     { phase: 'Initiation', description: 'Ribosome assembles at the start codon (AUG), with initiator tRNA carrying Methionine.' },
     { phase: 'Elongation', description: 'tRNAs deliver amino acids; ribosome catalyzes peptide bond formation.' },
@@ -314,7 +314,7 @@ function TranslationDetail(): JSX.Element {
   );
 }
 
-function SequencePredictionSection(): JSX.Element {
+function SequencePredictionSection(): React.ReactElement {
   const examples = [
     {
       name: 'Enzyme active site',
@@ -367,7 +367,7 @@ function SequencePredictionSection(): JSX.Element {
   );
 }
 
-function PhageContextSection(): JSX.Element {
+function PhageContextSection(): React.ReactElement {
   return (
     <div
       style={{
@@ -399,7 +399,7 @@ function PhageContextSection(): JSX.Element {
   );
 }
 
-export function CentralDogmaModule(): JSX.Element {
+export function CentralDogmaModule(): React.ReactElement {
   const { completeModule, hasCompletedModule } = useBeginnerMode();
   const done = hasCompletedModule(MODULE_ID);
   const [activeProcess, setActiveProcess] = useState<'transcription' | 'translation'>('transcription');
