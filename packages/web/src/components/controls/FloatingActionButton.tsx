@@ -22,7 +22,7 @@ export function FloatingActionButton({
   isOpen,
   onToggle,
   onLongPress,
-}: FloatingActionButtonProps): JSX.Element {
+}: FloatingActionButtonProps): React.ReactElement {
   const portalRootRef = useRef<HTMLElement | null>(null);
   const longPressTimer = useRef<number | null>(null);
   const reducedMotion = useReducedMotion();

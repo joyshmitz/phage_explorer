@@ -10,7 +10,7 @@
  * - TOOLS: Settings, help, search, command palette
  */
 
-import React, { useCallback } from 'react';
+import React, { useCallback, useState } from 'react';
 import { usePhageStore } from '@phage-explorer/state';
 import { BottomSheet } from '../mobile/BottomSheet';
 import { useOverlay, type OverlayId } from '../overlays/OverlayProvider';
@@ -63,7 +63,7 @@ interface ActionCategory {
 // Component
 // =============================================================================
 
-export function ActionDrawer({ isOpen, onClose }: ActionDrawerProps): JSX.Element {
+export function ActionDrawer({ isOpen, onClose }: ActionDrawerProps): React.ReactElement {
   const { open: openOverlay } = useOverlay();
 
   // Store state
@@ -71,8 +71,8 @@ export function ActionDrawer({ isOpen, onClose }: ActionDrawerProps): JSX.Elemen
   const toggleViewMode = usePhageStore((s) => s.toggleViewMode);
   const show3DModel = usePhageStore((s) => s.show3DModel);
   const toggle3DModel = usePhageStore((s) => s.toggle3DModel);
-  const zoomLevel = usePhageStore((s) => s.zoomLevel);
-  const setZoomLevel = usePhageStore((s) => s.setZoomLevel);
+  // TODO: Add zoomLevel to global store when needed
+  const [zoomLevel, setZoomLevel] = useState(1);
 
   // Handlers with haptic feedback
   const handleAction = useCallback(

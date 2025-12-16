@@ -14,7 +14,7 @@ import type {
   KeyboardEventListener,
   ExperienceLevel,
 } from './types';
-import { meetsExperienceLevel } from './types';
+import { meetsExperienceLevel, isSequenceCombo } from './types';
 
 const SEQUENCE_TIMEOUT = 1000; // 1 second to complete a sequence
 const ALL_MODES: KeyboardMode[] = ['NORMAL', 'SEARCH', 'COMMAND', 'VISUAL', 'INSERT'];
@@ -295,7 +295,7 @@ export class KeyboardManager {
     // Look for matching sequence
     for (const [, definitions] of this.hotkeys) {
       for (const def of definitions) {
-        if (!def.combo.sequence) continue;
+        if (!isSequenceCombo(def.combo)) continue;
         if (!this.isModeAllowed(def)) continue;
 
         const targetSequence = def.combo.sequence.join('');
@@ -369,7 +369,7 @@ export class KeyboardManager {
     if (!definitions) return false;
 
     for (const def of definitions) {
-      if (def.combo.sequence) continue; // Skip sequences
+      if (isSequenceCombo(def.combo)) continue; // Skip sequences
       if (!this.isModeAllowed(def)) continue;
       if (!modifiersMatch(modifiers, def.combo.modifiers)) continue;
 
@@ -415,7 +415,7 @@ export class KeyboardManager {
     // Check if any sequence starts with this key
     for (const [, definitions] of this.hotkeys) {
       for (const def of definitions) {
-        if (!def.combo.sequence) continue;
+        if (!isSequenceCombo(def.combo)) continue;
         if (!this.isModeAllowed(def)) continue;
         if (def.combo.sequence[0] === key) {
           // This key could start a sequence
@@ -627,7 +627,7 @@ export class KeyboardManager {
    * Get the lookup key for a hotkey definition
    */
   private getHotkeyKey(combo: KeyCombo): string {
-    if (combo.sequence) {
+    if (isSequenceCombo(combo)) {
       return `seq:${combo.sequence.join('')}`;
     }
     const parts: string[] = [];

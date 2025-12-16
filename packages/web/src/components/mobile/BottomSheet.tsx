@@ -86,7 +86,7 @@ export function BottomSheet({
   minHeight = 30,
   maxHeight = 90,
   onSnapPointChange,
-}: BottomSheetProps): JSX.Element | null {
+}: BottomSheetProps): React.ReactElement | null {
   const containerRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const reducedMotion = useReducedMotion();

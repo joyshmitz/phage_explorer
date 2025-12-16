@@ -9,10 +9,7 @@ import { useRef, useEffect, useCallback, useState, useMemo } from 'react';
 import type React from 'react';
 import type { Theme, ViewMode, ReadingFrame } from '@phage-explorer/core';
 import { translateSequence, reverseComplement } from '@phage-explorer/core';
-import { CanvasSequenceGridRenderer, type VisibleRange, type ZoomLevel, type ZoomPreset } from '../rendering';
-
-/** Post-processing pipeline type (placeholder for future WebGL effects) */
-type PostProcessPipeline = unknown;
+import { CanvasSequenceGridRenderer, type VisibleRange, type ZoomLevel, type ZoomPreset, type PostProcessPipeline } from '../rendering';
 
 export interface UseSequenceGridOptions {
   theme: Theme;

@@ -28,7 +28,7 @@ export function DiffHighlighter({
   diffPositions = [],
   stats,
   height = 320,
-}: DiffHighlighterProps): JSX.Element {
+}: DiffHighlighterProps): React.ReactElement {
   const controlsRef = useRef<{ jumpToDiff: (direction: 'next' | 'prev') => number | null } | null>(null);
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
 
@@ -100,7 +100,7 @@ export function DiffHighlighter({
   );
 }
 
-function Badge({ label, value, color }: { label: string; value: number; color: string }): JSX.Element {
+function Badge({ label, value, color }: { label: string; value: number; color: string }): React.ReactElement {
   return (
     <span
       style={{

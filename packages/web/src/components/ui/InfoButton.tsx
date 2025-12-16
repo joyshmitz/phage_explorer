@@ -19,7 +19,7 @@ export function InfoButton({
   size = 'md',
   disabled,
   className = '',
-}: InfoButtonProps): JSX.Element {
+}: InfoButtonProps): React.ReactElement {
   const button = (
     <button
       type="button"

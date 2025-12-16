@@ -138,14 +138,14 @@ function disposeGroup(group: Group | null): void {
   if (!group) return;
   group.traverse(obj => {
     if ('geometry' in obj && obj.geometry) {
-      obj.geometry.dispose();
+      (obj.geometry as { dispose?: () => void }).dispose?.();
     }
     if ('material' in obj) {
-      const material = (obj as any).material;
+      const material = (obj as { material?: unknown }).material;
       if (Array.isArray(material)) {
-        material.forEach(m => m?.dispose?.());
+        material.forEach(m => (m as { dispose?: () => void })?.dispose?.());
       } else {
-        material?.dispose?.();
+        (material as { dispose?: () => void })?.dispose?.();
       }
     }
   });
@@ -162,7 +162,7 @@ function suggestInitialRenderMode(options: {
   return 'ball';
 }
 
-function Model3DViewBase({ phage }: Model3DViewProps): JSX.Element {
+function Model3DViewBase({ phage }: Model3DViewProps): React.ReactElement {
   const coarsePointer = useMemo(() => isCoarsePointerDevice(), []);
   const webglSupport = useMemo(() => detectWebGLSupport(), []);
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -801,13 +801,14 @@ function Model3DViewBase({ phage }: Model3DViewProps): JSX.Element {
           break;
         case '+':
         case '=':
-          controlsRef.current.dollyIn?.(1.1);
+          // dollyIn/dollyOut are internal OrbitControls methods, not in public typings
+          (controlsRef.current as OrbitControls & { dollyIn?: (scale: number) => void }).dollyIn?.(1.1);
           controlsRef.current.update();
           event.preventDefault();
           break;
         case '-':
         case '_':
-          controlsRef.current.dollyOut?.(1.1);
+          (controlsRef.current as OrbitControls & { dollyOut?: (scale: number) => void }).dollyOut?.(1.1);
           controlsRef.current.update();
           event.preventDefault();
           break;

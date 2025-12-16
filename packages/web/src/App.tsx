@@ -63,7 +63,7 @@ const LazyModel3DView = lazy(async () => {
   return { default: mod.Model3DView };
 });
 
-export default function App(): JSX.Element {
+export default function App(): React.ReactElement {
   const { theme, nextTheme } = useTheme();
   const reducedMotion = useReducedMotion();
   const highContrast = useWebPreferences((s) => s.highContrast);
@@ -425,7 +425,7 @@ export default function App(): JSX.Element {
         const vibrate = (navigator as Navigator & { vibrate?: (pattern: number | number[]) => boolean }).vibrate;
         if (typeof vibrate === 'function') {
           try {
-            vibrate.call(navigator, 10);
+            vibrate.call(navigator, [10]);
           } catch {
             // Ignore vibration errors (some browsers may block / throw).
           }

@@ -28,7 +28,7 @@ interface ControlDeckProps {
  *
  * Each tap performs an action immediately (no nested tabs).
  */
-export function ControlDeck({ onPrevPhage, onNextPhage }: ControlDeckProps): JSX.Element {
+export function ControlDeck({ onPrevPhage, onNextPhage }: ControlDeckProps): React.ReactElement {
   const viewMode = usePhageStore(s => s.viewMode);
   const toggleViewMode = usePhageStore(s => s.toggleViewMode);
   const show3DModel = usePhageStore(s => s.show3DModel);

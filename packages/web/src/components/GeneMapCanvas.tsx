@@ -165,7 +165,7 @@ function GeneMapCanvasBase({
   const showTooltip = (gene: GeneInfo, clientX: number, clientY: number) => {
     setHoveredGene({
       name: gene.name || gene.locusTag || 'Unknown',
-      product: gene.product,
+      product: gene.product ?? undefined,
       x: clientX,
       y: clientY,
     });
@@ -228,10 +228,10 @@ function GeneMapCanvasBase({
     if (hit.gene) {
       longPressTimerRef.current = window.setTimeout(() => {
         const session = touchSessionRef.current;
-        if (!session || session.moved) return;
+        if (!session || session.moved || !hit.gene) return;
         session.longPressed = true;
         showTooltip(hit.gene, hit.clientX, hit.clientY - 40);
-        onGeneSelect?.(hit.gene ?? null);
+        onGeneSelect?.(hit.gene);
       }, LONG_PRESS_MS);
     }
   };
@@ -495,7 +495,7 @@ function GeneMapCanvasBase({
                 : Math.min(Math.max(hoveredGene.x, 12), window.innerWidth - 12),
             top: hoveredGene.y,
             transform: 'translate(-50%, -100%)',
-            backgroundColor: colors.backgroundElevated,
+            backgroundColor: colors.backgroundAlt,
             border: `1px solid ${colors.border}`,
             borderRadius: '4px',
             padding: '4px 8px',

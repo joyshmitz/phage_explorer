@@ -14,6 +14,6 @@ export function useCollaboration() {
     joinSession: store.joinSession,
     leaveSession: store.leaveSession,
     updatePresence: store.updatePresence,
-    sendMessage: store.sendMessage,
+    // sendMessage: TODO - implement when collaboration messaging is needed
   };
 }
