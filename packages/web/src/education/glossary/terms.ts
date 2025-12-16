@@ -683,38 +683,38 @@ const PHAGE_TERMS: GlossaryTerm[] = [
   {
     id: 'temperate-phage',
     term: 'Temperate phage',
-    shortDef: 'Phage capable of lysogeny or lytic growth.',
+    shortDef: 'Phage capable of choosing between lysogeny or lytic growth.',
     longDef:
-      'Can integrate into host genome as a prophage or enter lytic replication depending on regulatory circuits and host conditions.',
+      'A phage with the genetic circuitry to "decide" its infection strategy. Under favorable conditions (healthy host, low competition), it may go lytic for immediate reproduction. Under stress or high multiplicity of infection, it may integrate as a prophage and wait for better times. Lambda (λ) is the classic example, with its cI/Cro bistable switch. The term "temperate" emphasizes this flexibility—the phage moderates its behavior based on circumstances.',
     category: 'Phage',
-    related: ['lysogeny', 'prophage', 'lytic-cycle'],
+    related: ['lysogeny', 'prophage', 'lytic-cycle', 'virulent-phage'],
   },
   {
     id: 'virulent-phage',
     term: 'Virulent phage',
-    shortDef: 'Phage that follows obligate lytic lifecycle.',
+    shortDef: 'Phage that always follows the lytic lifecycle.',
     longDef:
-      'Immediately replicates and lyses the host after infection; lacks the genetic circuitry for stable lysogeny.',
+      'A phage locked into the "smash-and-grab" strategy with no option for lysogeny. It lacks the integrase, repressor genes, or regulatory switches needed for stable dormancy. Every successful infection ends in host death and virion release. T4 and T7 are classic examples. The term "virulent" can be confusing—it does not mean more dangerous to humans, just that the phage is obligately lytic toward its bacterial host.',
     category: 'Phage',
-    related: ['lytic-cycle'],
+    related: ['lytic-cycle', 'temperate-phage'],
   },
   {
     id: 'lysogeny',
     term: 'Lysogeny',
     shortDef: 'Dormant integration of a temperate phage into the host genome.',
     longDef:
-      'Phage DNA persists as a prophage, replicated with the host until induction triggers the lytic program.',
+      'Think of it as the "sleeper agent" strategy: the phage integrates its DNA as a prophage and hitchhikes on the host\'s replication machinery for generations. The host survives and the phage genome is inherited by daughter cells—a long-term investment that trades immediate offspring for persistence and future opportunities. Under stress (UV, antibiotics, nutrient starvation), the prophage can "wake up" via induction and switch to lytic replication.',
     category: 'Phage',
-    related: ['temperate-phage', 'prophage'],
+    related: ['temperate-phage', 'prophage', 'lytic-cycle', 'chronic-infection'],
   },
   {
     id: 'lytic-cycle',
     term: 'Lytic cycle',
     shortDef: 'Phage lifecycle that ends with host lysis and virion release.',
     longDef:
-      'Genome replication, assembly of virions, and production of lysis enzymes culminate in cell rupture and progeny release.',
+      'Think of it as the "smash-and-grab" strategy: the phage hijacks the host\'s machinery to replicate as fast as possible, assembles 50-200 new virions, then bursts the cell open to release them. This is a high-risk, high-reward approach—maximum immediate offspring, but the host is destroyed and the neighborhood becomes crowded with competitors. The entire cycle takes only 30-60 minutes in fast-growing bacteria.',
     category: 'Phage',
-    related: ['virulent-phage', 'holin', 'endolysin'],
+    related: ['virulent-phage', 'holin', 'endolysin', 'lysogeny'],
   },
   {
     id: 'prophage',
@@ -724,6 +724,24 @@ const PHAGE_TERMS: GlossaryTerm[] = [
       'Silent within the host chromosome or as a plasmid-like element; can confer immunity to superinfection and new traits to the host.',
     category: 'Phage',
     related: ['lysogeny', 'temperate-phage'],
+  },
+  {
+    id: 'chronic-infection',
+    term: 'Chronic infection',
+    shortDef: 'Phage replicates and releases particles without killing the host cell.',
+    longDef:
+      'Also called "extrusive" or "productive" infection. The phage continuously assembles new virions that bud or extrude through the cell membrane without lysing it. The host remains alive (though often growth-impaired) and keeps producing phage indefinitely. Common in filamentous phages like M13, fd, and f1 that infect F-pilus-bearing E. coli. This is a "third way" beyond the classic lytic/lysogenic dichotomy.',
+    category: 'Phage',
+    related: ['lytic-cycle', 'lysogeny', 'pseudolysogeny'],
+  },
+  {
+    id: 'pseudolysogeny',
+    term: 'Pseudolysogeny',
+    shortDef: 'Unstable "paused" phage state that is neither true lysogeny nor active lytic growth.',
+    longDef:
+      'A messy intermediate where phage DNA persists in the cell without integrating into the chromosome or actively replicating. Often occurs when host resources are depleted—the phage is "stuck" waiting for better conditions. Unlike true lysogeny, the phage genome is not stably inherited and can be lost during cell division. Sometimes called a "carrier state." Important in environmental samples where starved cells dominate.',
+    category: 'Phage',
+    related: ['lysogeny', 'chronic-infection', 'lytic-cycle'],
   },
   {
     id: 'packaging-motor',
