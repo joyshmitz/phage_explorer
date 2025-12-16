@@ -73,7 +73,7 @@ const DNA_TERMS: GlossaryTerm[] = [
     term: 'Double helix',
     shortDef: 'Right-handed helical structure of duplex DNA strands.',
     longDef:
-      'Two antiparallel strands wound around a common axis with major and minor grooves. Stabilized by base stacking and hydrogen bonding between paired bases.',
+      'Picture a twisted ladder: the rungs are base pairs (A-T, G-C) and the rails are sugar-phosphate backbones. The two strands wind around each other in a right-handed spiral, creating major and minor grooves where proteins can "read" the sequence. This elegant structure lets DNA store information (in the base sequence), replicate faithfully (each strand templates the other), and be accessed by cellular machinery (through groove binding).',
     category: 'DNA',
     related: ['antiparallel', 'major-groove', 'minor-groove'],
   },
@@ -127,7 +127,7 @@ const DNA_TERMS: GlossaryTerm[] = [
     term: 'Replication fork',
     shortDef: 'Y-shaped region where DNA strands are unwound and copied.',
     longDef:
-      'Moving complex containing helicase, primase, and polymerases that synthesize leading and lagging strands concurrently.',
+      'Think of it as a zipper being opened: helicase unzips the double helix, and two DNA polymerases follow behind, each copying one strand. The "Y" shape forms because the strands separate at the fork and get copied in the wake. In bacteria and phages, forks can move at ~1,000 bases per second—a full E. coli genome in ~40 minutes.',
     category: 'DNA',
     related: ['leading-strand', 'lagging-strand', 'okazaki-fragment'],
   },
@@ -136,7 +136,7 @@ const DNA_TERMS: GlossaryTerm[] = [
     term: 'Leading strand',
     shortDef: 'Continuously synthesized DNA strand oriented 5′→3′ toward fork.',
     longDef:
-      'Polymerase follows helicase without interruption because template is oriented for continuous extension in the direction of fork movement.',
+      'The "easy" strand: polymerase can simply follow the helicase, synthesizing DNA continuously in one smooth run. It\'s like writing a sentence from left to right—you just keep going. Named "leading" because it\'s synthesized in the direction the fork is moving.',
     category: 'DNA',
     related: ['lagging-strand', 'replication-fork'],
   },
@@ -145,7 +145,7 @@ const DNA_TERMS: GlossaryTerm[] = [
     term: 'Lagging strand',
     shortDef: 'Discontinuously synthesized strand built in Okazaki fragments.',
     longDef:
-      'Template runs opposite fork direction, forcing polymerase to generate short segments that are later ligated into a continuous strand.',
+      'The "awkward" strand: because DNA polymerase can only work 5′→3′, this strand must be built backward relative to fork movement. Imagine writing a sentence where you can only write left-to-right, but the paper is moving right-to-left—you have to keep starting new words and stitching them together. These short pieces (Okazaki fragments) get joined by ligase into a continuous strand.',
     category: 'DNA',
     related: ['okazaki-fragment', 'leading-strand', 'replication-fork'],
   },
@@ -163,7 +163,7 @@ const DNA_TERMS: GlossaryTerm[] = [
     term: 'Supercoiling',
     shortDef: 'Overwinding or underwinding of DNA that compacts the genome.',
     longDef:
-      'Topological state affecting accessibility and transcription. Phage packaging motors and topoisomerases manipulate supercoils during infection.',
+      'Think of a phone cord or rubber band that\'s been twisted: if you twist it enough, it coils up on itself. DNA does the same thing. Negative supercoiling (underwinding) helps open the helix for replication and transcription. Positive supercoiling (overwinding) builds up ahead of replication forks. Phages exploit supercoiling—their packaging motors generate enormous pressure by cramming DNA into capsids, creating tightly wound genomes.',
     category: 'DNA',
     related: ['topoisomerase', 'packaging-motor'],
   },
@@ -172,7 +172,7 @@ const DNA_TERMS: GlossaryTerm[] = [
     term: 'Topoisomerase',
     shortDef: 'Enzyme that cuts and rejoins DNA to relax or introduce supercoils.',
     longDef:
-      'Controls DNA topology by transiently breaking strands, allowing passage of DNA segments, then resealing to relieve torsional stress.',
+      'The cell\'s "swivel" for managing DNA tangles. These enzymes cut DNA strands, pass other DNA through the break, then reseal it—all without losing genetic information. Type I topoisomerases cut one strand; Type II cut both. Without them, replication would wind DNA so tight it couldn\'t proceed. Many antibiotics (quinolones) and anticancer drugs target topoisomerases.',
     category: 'DNA',
     related: ['supercoiling', 'replication-fork'],
   },
@@ -181,7 +181,7 @@ const DNA_TERMS: GlossaryTerm[] = [
     term: 'Melting temperature (Tm)',
     shortDef: 'Temperature where half of DNA duplex becomes single-stranded.',
     longDef:
-      'Depends on GC content, length, and salt concentration. Guides PCR primer design and hybridization-based assays.',
+      'The "breaking point" of the double helix. Heat a DNA solution and at some temperature the strands separate (denature). GC-rich DNA melts at higher temperatures because G-C pairs have three hydrogen bonds versus two for A-T. This matters for PCR primer design (primers should have similar Tm) and explains why GC content affects genome stability.',
     category: 'DNA',
     related: ['gc-content', 'denaturation'],
   },
@@ -211,7 +211,7 @@ const GENE_TERMS: GlossaryTerm[] = [
     term: 'Coding sequence (CDS)',
     shortDef: 'Portion of a gene that is translated into amino acids.',
     longDef:
-      'Begins at a start codon and ends at a stop codon, defining the exact amino acid chain produced by translation.',
+      'The "recipe" for a protein, written in DNA. It starts at a start codon (usually ATG), continues in triplets (codons), and ends at a stop codon. Everything between is translated into a chain of amino acids. In annotation files, CDS coordinates tell you exactly where the protein-coding part begins and ends—essential for understanding what a phage gene actually makes.',
     category: 'Gene',
     related: ['open-reading-frame', 'start-codon', 'stop-codon'],
   },
@@ -220,7 +220,7 @@ const GENE_TERMS: GlossaryTerm[] = [
     term: 'Open reading frame (ORF)',
     shortDef: 'Stretch of nucleotides with start, in-frame codons, and stop.',
     longDef:
-      'Candidate coding region lacking internal stops in a given frame. ORF detection is a first step toward annotating protein-coding genes.',
+      'A "potential gene"—any stretch of DNA that could theoretically encode a protein (start codon → no internal stops → stop codon). Finding ORFs is like finding grammatically valid sentences in a string of letters. Not every ORF is a real gene, but every real gene is an ORF. Long ORFs are usually real; short ones might be chance. Comparing ORFs across phages helps distinguish true genes from noise.',
     category: 'Gene',
     related: ['coding-sequence', 'reading-frame', 'start-codon'],
   },
@@ -247,16 +247,16 @@ const GENE_TERMS: GlossaryTerm[] = [
     term: 'Promoter',
     shortDef: 'DNA motif that recruits RNA polymerase to start transcription.',
     longDef:
-      'Often contains conserved boxes that position polymerase near the transcription start site. Strength and sequence context tune expression levels.',
+      'The "landing pad" for RNA polymerase—a DNA sequence that says "start transcribing here." Strong promoters attract polymerase frequently (high expression); weak promoters rarely (low expression). In bacteria, promoters typically have -10 and -35 boxes recognized by sigma factors. Phages often bring their own promoters or even their own polymerases (like T7) to hijack transcription.',
     category: 'Gene',
-    related: ['transcription-start-site', 'regulatory-motif'],
+    related: ['transcription-start-site', 'regulatory-motif', 'sigma-factor'],
   },
   {
     id: 'operator',
     term: 'Operator',
     shortDef: 'Regulatory DNA site bound by repressors or activators.',
     longDef:
-      'Overlaps or sits near promoter to modulate RNA polymerase access, enabling inducible or repressible control of gene expression.',
+      'The "traffic light" controlling gene expression. When a repressor protein binds the operator, it blocks RNA polymerase from reading the gene (red light). When the repressor releases, transcription proceeds (green light). Lambda phage\'s famous cI/Cro switch works by having two proteins compete for overlapping operators—whoever wins controls the phage\'s fate.',
     category: 'Gene',
     related: ['promoter', 'transcription-factor'],
   },
@@ -283,16 +283,16 @@ const GENE_TERMS: GlossaryTerm[] = [
     term: 'Ribosome binding site (RBS)',
     shortDef: 'Motif upstream of start codon that aligns ribosome for initiation.',
     longDef:
-      'Base-pairs with 16S rRNA (Shine–Dalgarno sequence) to position the start codon in the P site, controlling initiation efficiency.',
+      'The "welcome mat" for ribosomes—a sequence that says "start translating here." The ribosome recognizes this site, positions itself correctly over the start codon, and begins making protein. A strong RBS means lots of protein; a weak RBS means little protein. This gives cells (and phages) fine-grained control over how much of each protein to make, even from the same mRNA.',
     category: 'Gene',
-    related: ['start-codon', 'translation-initiation'],
+    related: ['start-codon', 'translation-initiation', 'shine-dalgarno-sequence'],
   },
   {
     id: 'shine-dalgarno-sequence',
     term: 'Shine–Dalgarno sequence',
     shortDef: 'Purine-rich RBS motif that pairs with 16S rRNA anti-SD site.',
     longDef:
-      'Key bacterial translation initiation element located a few bases upstream of the start codon; its spacing and strength tune protein output.',
+      'The specific "handshake" between mRNA and ribosome in bacteria. This AGGAGG-like sequence base-pairs with a complementary region in the 16S ribosomal RNA, physically pulling the ribosome into position. The spacing between Shine–Dalgarno and start codon matters—too close or too far and translation efficiency drops. Named for the scientists who discovered it in 1974.',
     category: 'Gene',
     related: ['ribosome-binding-site', 'translation-initiation'],
   },
@@ -301,7 +301,7 @@ const GENE_TERMS: GlossaryTerm[] = [
     term: 'Operon',
     shortDef: 'Cluster of genes transcribed as a single polycistronic mRNA.',
     longDef:
-      'Enables coordinated regulation of related functions (e.g., lysis genes). One promoter drives multiple coding sequences separated by RBS sites.',
+      'A "gene neighborhood" where related genes are transcribed together as one long mRNA. This lets the cell coordinate expression—if you need enzyme A, you probably need enzymes B and C too. Phage lysis cassettes are classic operons: holin, endolysin, and spanin genes sit together and get expressed together at the right moment to burst the cell.',
     category: 'Gene',
     related: ['transcript', 'promoter', 'transcription-terminator'],
   },
@@ -412,7 +412,7 @@ const TRANSLATION_TERMS: GlossaryTerm[] = [
     term: 'Ribosome',
     shortDef: 'Ribonucleoprotein machine that synthesizes proteins.',
     longDef:
-      'Composed of rRNA and proteins forming small (30S) and large (50S) subunits in bacteria. Coordinates mRNA decoding and peptide bond formation.',
+      'The cell\'s "protein factory"—a molecular machine that reads mRNA and assembles amino acids into proteins. Made of RNA and protein, it has two subunits that clamp together on mRNA like a clamp. Ribosomes are ancient, essential, and surprisingly similar across all life. A single E. coli cell has ~20,000 ribosomes; during phage infection, most get hijacked to make viral proteins at a rate of ~20 amino acids per second.',
     category: 'Translation',
     related: ['peptide-bond', 'translation-initiation', 'translation-elongation'],
   },
@@ -430,7 +430,7 @@ const TRANSLATION_TERMS: GlossaryTerm[] = [
     term: 'Codon',
     shortDef: 'Three-base word in mRNA that specifies one amino acid or stop.',
     longDef:
-      'Read sequentially by the ribosome; the genetic code maps 64 possible triplets to 20 amino acids and stop signals.',
+      'The fundamental "word" of the genetic code. Just as English uses 26 letters to make words, biology uses 4 nucleotides in groups of 3 (codons) to specify 20 amino acids plus stop signals. With 4³ = 64 possible codons mapping to ~21 meanings, the code is redundant—multiple codons can specify the same amino acid (e.g., GGU, GGC, GGA, GGG all code for glycine). This redundancy buffers against mutation damage.',
     category: 'Translation',
     related: ['anticodon', 'reading-frame', 'amino-acid'],
   },
@@ -439,7 +439,7 @@ const TRANSLATION_TERMS: GlossaryTerm[] = [
     term: 'Reading frame',
     shortDef: 'Partition of a nucleotide sequence into non-overlapping codons.',
     longDef:
-      'Three possible frames per strand; shifting by one base changes every downstream codon. Accurate frame selection is essential for correct protein output.',
+      'Imagine the sequence ATGCATGCA. Reading it as ATG-CAT-GCA gives one protein. Shift by one: TGC-ATG-CA gives a completely different protein. Shift again: GCA-TGC-A—different again. These are the three "reading frames." DNA has six total frames (three per strand). Getting the frame right is essential—wrong frame means gibberish protein. This is why start codons matter: they set the frame.',
     category: 'Translation',
     related: ['codon', 'frameshift', 'open-reading-frame'],
   },
@@ -448,7 +448,7 @@ const TRANSLATION_TERMS: GlossaryTerm[] = [
     term: 'Frameshift',
     shortDef: 'Insertion or deletion that alters the reading frame of translation.',
     longDef:
-      'Changes downstream amino acid sequence and often introduces premature stops. Some phages use programmed frameshifts to regulate protein ratios.',
+      'The "off by one" catastrophe. Insert or delete a single base and every codon downstream gets misread—like removing one letter from "THE CAT ATE" to get "TH ECA TAT E..." Usually fatal to the protein. But some phages use programmed frameshifts cleverly: a ribosome slips at a specific slippery sequence, producing two different proteins from one gene at controlled ratios.',
     category: 'Translation',
     related: ['reading-frame', 'codon', 'stop-codon'],
   },
@@ -529,7 +529,7 @@ const TRANSLATION_TERMS: GlossaryTerm[] = [
     term: 'Wobble base pairing',
     shortDef: 'Flexible pairing at the third codon position.',
     longDef:
-      'Allows one tRNA to recognize multiple codons, contributing to genetic code degeneracy and codon usage preferences.',
+      'A clever efficiency hack: the third position of a codon can "wobble" and still pair correctly with tRNA. G can pair with U, I (inosine) can pair with U, C, or A. This means one tRNA can serve multiple codons—cells don\'t need 61 different tRNAs. It\'s why the third codon position is often called "degenerate" and why synonymous mutations there usually don\'t matter.',
     category: 'Translation',
     related: ['anticodon', 'codon-bias'],
   },
@@ -538,7 +538,7 @@ const TRANSLATION_TERMS: GlossaryTerm[] = [
     term: 'Codon usage bias',
     shortDef: 'Preference for specific synonymous codons in a genome.',
     longDef:
-      'Reflects tRNA abundance, expression levels, and evolutionary pressures. Phages adapt codon usage to host tRNA pools.',
+      'Not all synonymous codons are created equal. Highly expressed genes tend to use "optimal" codons that match abundant tRNAs—translation is faster and more accurate. Rare codons can slow translation or cause errors. Phages often adapt their codon usage to match their host\'s tRNA pool, and unusual codon bias can be a fingerprint of horizontal gene transfer or recent host jumps.',
     category: 'Translation',
     related: ['wobble-base', 'transfer-rna', 'gc-content'],
   },
@@ -586,7 +586,7 @@ const PHAGE_TERMS: GlossaryTerm[] = [
     term: 'Capsid',
     shortDef: 'Protein shell that encloses the phage genome.',
     longDef:
-      'Often icosahedral; provides protection and structural attachment for tail components. Assembled from repeated capsomers.',
+      'The phage\'s "armored container"—a protective protein shell, usually icosahedral (20-sided), built from many copies of one or a few proteins. It\'s an engineering marvel: strong enough to withstand the enormous internal pressure of tightly packed DNA (atmospheres!), yet able to open and release the genome on cue. Size ranges from tiny (MS2 at 27 nm) to giant (jumbo phages at 200+ nm).',
     category: 'Phage',
     related: ['portal-protein', 'tail', 'virion'],
   },
@@ -595,7 +595,7 @@ const PHAGE_TERMS: GlossaryTerm[] = [
     term: 'Portal protein',
     shortDef: 'Gate-like capsid protein where DNA enters and exits.',
     longDef:
-      'Forms a dodecameric ring that interfaces with the packaging motor and tail, ensuring one-way genome translocation and sealing after packaging.',
+      'The "door" of the capsid—a ring of 12 identical proteins forming a channel at one vertex. During assembly, the packaging motor threads DNA in through the portal. During infection, DNA shoots out through the same channel into the host. The portal also anchors the tail and acts as a pressure valve, keeping the genome contained until the right moment.',
     category: 'Phage',
     related: ['packaging-motor', 'capsid'],
   },
@@ -604,7 +604,7 @@ const PHAGE_TERMS: GlossaryTerm[] = [
     term: 'Tail',
     shortDef: 'Phage appendage that delivers the genome into the host.',
     longDef:
-      'Composed of sheath, tube, baseplate, and fibers. Coordinates attachment, sheath contraction (for contractile tails), and genome injection.',
+      'The phage\'s "syringe"—a sophisticated injection machine. Tails come in three main types: long contractile (myoviruses like T4), long non-contractile (siphoviruses like Lambda), and short (podoviruses like T7). Contractile tails work like a spring-loaded needle: the sheath contracts, driving the inner tube through the cell envelope. All tails must solve the same problem: getting DNA across one or more bacterial membranes.',
     category: 'Phage',
     related: ['tail-sheath', 'tail-fiber', 'injection'],
   },
@@ -658,7 +658,7 @@ const PHAGE_TERMS: GlossaryTerm[] = [
     term: 'Adsorption',
     shortDef: 'Initial attachment of a phage to the host cell surface.',
     longDef:
-      'Mediated by tail fibers/spikes binding receptors such as LPS, teichoic acids, or porins, preceding genome injection.',
+      'The first step of infection—the phage "landing" on its target. Tail fibers or spikes recognize specific molecules on the bacterial surface (LPS, porins, pili, teichoic acids). This is highly specific: the phage is essentially asking "is this my host?" Wrong receptor = no binding = no infection. Adsorption is often the rate-limiting step in infection dynamics and a major determinant of host range. Bacteria can evolve resistance by modifying or hiding their receptors.',
     category: 'Phage',
     related: ['receptor-binding-protein', 'injection'],
   },
@@ -676,7 +676,7 @@ const PHAGE_TERMS: GlossaryTerm[] = [
     term: 'Host range',
     shortDef: 'Spectrum of bacterial strains a phage can infect.',
     longDef:
-      'Defined by receptor recognition, defense evasion, and replication compatibility. Tail fiber mutations can broaden or shift host range.',
+      'The phage\'s "menu"—which bacteria it can (and can\'t) infect. Some phages are specialists (narrow host range, often just one species or even specific strains); others are generalists (broad host range, infecting across genera). Host range is determined by receptor recognition (can the phage bind?), defense evasion (can it avoid CRISPR, restriction enzymes?), and replication compatibility (can it use the host\'s machinery?). For phage therapy, host range determines which infections a phage can treat.',
     category: 'Phage',
     related: ['tail-fiber', 'receptor-binding-protein'],
   },
@@ -748,7 +748,7 @@ const PHAGE_TERMS: GlossaryTerm[] = [
     term: 'Packaging motor',
     shortDef: 'ATP-driven complex that stuffs DNA into the capsid.',
     longDef:
-      'Generates high forces to condense the genome through the portal protein, often following headful or specific end signals.',
+      'One of the most powerful molecular motors known—the "DNA pump" that crams the phage genome into the capsid at pressures exceeding 60 atmospheres. Imagine stuffing 100 meters of rope into a tennis ball. The motor sits on the portal, grabs DNA, and ratchets it in using ATP hydrolysis. Speed: up to 2,000 base pairs per second. This compression stores energy that later helps shoot the DNA into the host.',
     category: 'Phage',
     related: ['portal-protein', 'capsid', 'supercoiling'],
   },
@@ -757,7 +757,7 @@ const PHAGE_TERMS: GlossaryTerm[] = [
     term: 'Burst size',
     shortDef: 'Average number of virions released per infected cell.',
     longDef:
-      'Depends on genome replication efficiency, assembly, and timing of lysis. Key metric for phage fitness and therapy dosing.',
+      'The phage\'s "offspring count"—how many new phages pop out when an infected cell bursts. Typical values: 50-200 for most phages, but ranges from ~10 (resource-limited conditions) to 1000+ (large hosts, efficient phages). It\'s a key fitness metric: more offspring = more infections = evolutionary success. But there\'s a trade-off with timing—wait longer, make more phages, but risk the host dying first.',
     category: 'Phage',
     related: ['latent-period', 'lytic-cycle'],
   },
@@ -766,7 +766,7 @@ const PHAGE_TERMS: GlossaryTerm[] = [
     term: 'Latent period',
     shortDef: 'Time between phage adsorption and cell lysis.',
     longDef:
-      'Encompasses genome replication, transcriptional program, assembly, and lysis timing. Balances burst size against infection speed.',
+      'The "incubation time"—how long the phage takes to replicate inside the host before bursting out. For T4 in fast-growing E. coli: ~25 minutes. It\'s a crucial life-history trait: lyse early (short latent period) and spread fast but with fewer offspring; lyse late (long latent period) and make more phages but risk losing the race. Some phages even adjust timing based on conditions.',
     category: 'Phage',
     related: ['burst-size', 'lytic-cycle'],
   },
@@ -775,7 +775,7 @@ const PHAGE_TERMS: GlossaryTerm[] = [
     term: 'Plaque',
     shortDef: 'Clear or turbid zone on a bacterial lawn caused by phage lysis.',
     longDef:
-      'Represents localized cycles of infection and lysis; plaque morphology reflects burst size, diffusion, and lysogeny propensity.',
+      'The visible "footprint" of phage infection. Spread bacteria on a plate, add phages, and you\'ll see circular clearings where phages killed the bacteria. Each plaque started from a single phage particle. Plaque size reflects burst size, latent period, and diffusion rate. Turbid (cloudy) plaques suggest temperate phages where some bacteria survive as lysogens. Plaque assays are how phages were first discovered and remain a standard technique for counting and isolating phages.',
     category: 'Phage',
     related: ['burst-size', 'latent-period'],
   },
@@ -784,7 +784,7 @@ const PHAGE_TERMS: GlossaryTerm[] = [
     term: 'Holin',
     shortDef: 'Membrane protein that times lysis by forming pores.',
     longDef:
-      'Accumulates in the inner membrane then triggers to allow endolysin access to the cell wall, coordinating precise lysis timing.',
+      'The phage\'s "timer"—a membrane protein that accumulates silently, then suddenly triggers to form holes in the inner membrane at precisely the right moment. This releases the endolysin to attack the cell wall. Holin timing is exquisitely controlled (to the minute!) and determines the latent period. Lambda\'s holin is the best-studied molecular clock in biology—an all-or-none switch that commits the cell to death.',
     category: 'Phage',
     related: ['endolysin', 'spanin', 'lytic-cycle'],
   },
@@ -793,7 +793,7 @@ const PHAGE_TERMS: GlossaryTerm[] = [
     term: 'Endolysin',
     shortDef: 'Enzyme that degrades the bacterial cell wall during lysis.',
     longDef:
-      'Accesses peptidoglycan after holin pore formation, collapsing cell integrity to release progeny virions.',
+      'The "wall-breaker"—an enzyme that chews through peptidoglycan, the mesh-like polymer that gives bacteria their shape and holds them together against osmotic pressure. Once the holin opens holes in the membrane, endolysin floods through and digests the wall. Without the wall, the cell explodes from internal pressure, releasing hundreds of phages. Endolysins are being developed as antibiotics ("enzybiotics").',
     category: 'Phage',
     related: ['holin', 'spanin', 'lytic-cycle'],
   },
@@ -859,7 +859,7 @@ const EVOLUTION_TERMS: GlossaryTerm[] = [
     term: 'Recombination',
     shortDef: 'Exchange of genetic material between DNA molecules.',
     longDef:
-      'Generates mosaic genomes and repairs damage. Phages recombine during co-infection to shuffle modules and adapt.',
+      'Nature\'s "copy-paste" between genomes. When two DNA molecules break and rejoin with exchanged parts, you get recombination. For phages, this is a major evolutionary force: two phages co-infecting the same cell can swap genes, creating hybrid offspring with new combinations of traits. This is why phage evolution is so fast—they don\'t just mutate, they mix and match entire functional modules.',
     category: 'Evolution',
     related: ['mosaic-genome', 'horizontal-gene-transfer'],
   },
@@ -868,7 +868,7 @@ const EVOLUTION_TERMS: GlossaryTerm[] = [
     term: 'Mosaic genome',
     shortDef: 'Genome composed of modules from diverse origins.',
     longDef:
-      'Phage genomes often show patchwork organization due to recombination and module swapping across lineages.',
+      'Phage genomes are "patchwork quilts"—stitched together from pieces with different evolutionary histories. The tail genes might come from one ancestor, the capsid genes from another, the lysis genes from a third. This modularity means phages evolve by swapping parts, not just point mutations. When you compare phage genomes, you often see blocks of similarity interrupted by completely different sequences. It\'s evolution by recombinatorial Lego.',
     category: 'Evolution',
     related: ['recombination', 'horizontal-gene-transfer'],
   },
@@ -886,7 +886,7 @@ const EVOLUTION_TERMS: GlossaryTerm[] = [
     term: 'Horizontal gene transfer (HGT)',
     shortDef: 'Movement of genes between organisms outside inheritance.',
     longDef:
-      'Occurs via phages (transduction), plasmids, or uptake of free DNA. Drives rapid acquisition of new capabilities.',
+      'Genes moving "sideways" between organisms rather than parent-to-child. It\'s how bacteria rapidly acquire antibiotic resistance, toxin genes, or metabolic capabilities. Phages are major HGT vectors—they accidentally (or intentionally) carry host genes between cells. This is why bacterial genomes are so plastic: they can gain new capabilities in a single generation rather than waiting for mutations. Evolution on fast-forward.',
     category: 'Evolution',
     related: ['transduction', 'transformation', 'conjugation'],
   },
@@ -895,7 +895,7 @@ const EVOLUTION_TERMS: GlossaryTerm[] = [
     term: 'Transduction',
     shortDef: 'Phage-mediated transfer of host DNA to another cell.',
     longDef:
-      'Generalized transduction packages random host fragments; specialized transduction moves genes near prophage integration sites.',
+      'Phages as "gene mailmen." Sometimes during packaging, a phage accidentally grabs host DNA instead of (or along with) its own genome. When this defective phage infects a new cell, it delivers bacterial genes instead of phage genes. Generalized transduction moves random host DNA; specialized transduction (from prophage excision errors) moves specific genes near the integration site. P1 phage is the classic transduction workhorse.',
     category: 'Evolution',
     related: ['horizontal-gene-transfer', 'prophage'],
   },
@@ -949,7 +949,7 @@ const EVOLUTION_TERMS: GlossaryTerm[] = [
     term: 'Genetic drift',
     shortDef: 'Random fluctuation of allele frequencies in populations.',
     longDef:
-      'Strong in small populations or bottlenecks, potentially fixing neutral or mildly deleterious mutations.',
+      'Evolution\'s "random walk"—genetic changes that happen by chance rather than selection. In small populations, random sampling matters: even beneficial mutations can be lost by bad luck, and neutral or harmful ones can spread. Phages experience extreme drift when only a few particles start each new infection. This randomness is why small population evolution is unpredictable, and why bottlenecks can dramatically reshape genetic diversity.',
     category: 'Evolution',
     related: ['population-bottleneck'],
   },
@@ -958,7 +958,7 @@ const EVOLUTION_TERMS: GlossaryTerm[] = [
     term: 'Population bottleneck',
     shortDef: 'Sharp reduction in population size that amplifies drift.',
     longDef:
-      'Occurs during infection cycles where few phages found new infections, reducing diversity and altering evolutionary trajectories.',
+      'When a population crashes to a few individuals, most genetic diversity is lost—like squeezing a diverse crowd through a narrow door and seeing who makes it through. For phages, bottlenecks happen constantly: each new infection starts from one or a few particles. This means phage populations lose diversity with each transmission, and rare variants can suddenly dominate by chance. Serial bottlenecks can fix mutations that selection alone wouldn\'t favor.',
     category: 'Evolution',
     related: ['genetic-drift', 'selection'],
   },
@@ -967,7 +967,7 @@ const EVOLUTION_TERMS: GlossaryTerm[] = [
     term: 'Fitness landscape',
     shortDef: 'Mapping of genotype to reproductive success.',
     longDef:
-      'Visualizes adaptive peaks and valleys; epistasis shapes paths available to evolving phages.',
+      'Imagine a mountainous terrain where height represents fitness and each location is a genotype. Evolution is like climbing uphill: mutations let you step to neighboring spots, and selection pushes you toward peaks. But the landscape is rugged—local peaks may not be the highest, and getting to a better peak might require crossing a valley (passing through less-fit intermediates). This metaphor helps explain why evolution can get "stuck" and why the same starting point can lead to different outcomes.',
     category: 'Evolution',
     related: ['selection', 'mutation'],
   },
@@ -1024,7 +1024,7 @@ const ANALYSIS_TERMS: GlossaryTerm[] = [
     term: 'GC content',
     shortDef: 'Fraction of G and C bases in a DNA sequence.',
     longDef:
-      'Impacts melting temperature, codon usage bias, and structural stability. Local shifts can signal foreign DNA or functional regions.',
+      'A genome\'s "thermal fingerprint"—the percentage of bases that are G or C (versus A or T). GC content varies dramatically: from ~25% in some parasites to ~75% in some bacteria. It affects DNA stability (more GC = higher melting temperature), codon usage, and even which amino acids a genome prefers. Phages often match their host\'s GC content; mismatches can indicate recent host jumps or horizontal transfer.',
     category: 'Analysis',
     related: ['gc-skew', 'k-mer'],
   },
@@ -1033,16 +1033,16 @@ const ANALYSIS_TERMS: GlossaryTerm[] = [
     term: 'GC skew',
     shortDef: 'Relative excess of G over C across a window.',
     longDef:
-      'Computed as (G - C)/(G + C). Cumulative skew can reveal replication origin and terminus in circular genomes.',
+      'A compositional asymmetry that reveals how DNA was replicated. The leading strand tends to accumulate G over C (and T over A) due to mutation biases during replication. Plot cumulative GC skew around a circular genome and you\'ll often see a clear switch point—that\'s the replication origin. It\'s like a fossil record of replication history written into the sequence itself.',
     category: 'Analysis',
-    related: ['gc-content'],
+    related: ['gc-content', 'replication-origin'],
   },
   {
     id: 'k-mer',
     term: 'k-mer',
     shortDef: 'Substring of length k within a sequence.',
     longDef:
-      'k-mer frequency vectors underpin many analyses: complexity, classification, assembly, and contamination detection.',
+      'The "word frequency" approach to sequences. Chop a genome into all overlapping words of length k (e.g., k=4 gives 4-mers like ATGC, TGCA, GCAT...) and count them. The resulting frequency profile is like a fingerprint—similar sequences have similar k-mer spectra. Used for assembly, species identification, complexity analysis, and detecting contamination. No alignment needed, making it fast and scalable.',
     category: 'Analysis',
     related: ['sequence-complexity', 'shannon-entropy'],
   },
@@ -1051,7 +1051,7 @@ const ANALYSIS_TERMS: GlossaryTerm[] = [
     term: 'Sequence complexity',
     shortDef: 'Measure of variability or repetitiveness in a sequence.',
     longDef:
-      'Low complexity regions contain repeats or homopolymers; high complexity suggests diverse k-mers. Affects alignment reliability.',
+      'How "interesting" is a sequence? High complexity means diverse, information-rich DNA with many different k-mers. Low complexity means repetitive stretches (ATATATATAT...) or homopolymers (AAAAAAA...). Low-complexity regions cause problems: they\'re hard to align, easy to misassemble, and can give false matches. Masking or filtering them is a standard first step in many analyses.',
     category: 'Analysis',
     related: ['k-mer', 'shannon-entropy'],
   },
@@ -1060,7 +1060,7 @@ const ANALYSIS_TERMS: GlossaryTerm[] = [
     term: 'Shannon entropy',
     shortDef: 'Information content metric based on symbol frequencies.',
     longDef:
-      'Calculates unpredictability of bases or k-mers. Used to highlight conserved versus variable regions.',
+      'A measure of "surprise" or unpredictability, borrowed from information theory. High entropy means high diversity (hard to predict the next symbol); low entropy means patterns (easy to predict). In sequences: a position where all aligned sequences have the same base has zero entropy (perfectly conserved); a position with equal A/T/G/C has maximum entropy (~2 bits). Use it to find conserved regions (low entropy) or variable regions (high entropy).',
     category: 'Analysis',
     related: ['sequence-complexity'],
   },
@@ -1087,7 +1087,7 @@ const ANALYSIS_TERMS: GlossaryTerm[] = [
     term: 'Sequence alignment',
     shortDef: 'Arrangement of sequences to maximize similarity and detect homology.',
     longDef:
-      'Includes pairwise or multiple alignments with scoring for matches, mismatches, and gaps. Foundation for comparative genomics.',
+      'The fundamental operation of comparative genomics: lining up sequences to see what\'s similar and what\'s different. Like laying two sentences side by side and seeing which words match. Insertions and deletions create "gaps" in the alignment. Good alignments reveal evolutionary relationships, conserved functional regions, and the location of mutations. Everything from BLAST searches to phylogenetic trees depends on alignment.',
     category: 'Analysis',
     related: ['pairwise-alignment', 'multiple-sequence-alignment', 'synteny'],
   },
@@ -1114,7 +1114,7 @@ const ANALYSIS_TERMS: GlossaryTerm[] = [
     term: 'Dot plot',
     shortDef: 'Matrix visualization of sequence similarity.',
     longDef:
-      'Places dots where subsequences match; diagonal lines show conserved regions, repeats, or rearrangements.',
+      'The simplest way to compare two sequences visually. Put one sequence on each axis, mark a dot wherever they match, and patterns emerge: a diagonal line means the sequences are similar in that region; parallel diagonals mean repeats; broken diagonals mean insertions or deletions; perpendicular patterns can indicate inversions. No assumptions, no parameters—just raw pattern recognition. Great for seeing the big picture before detailed alignment.',
     category: 'Analysis',
     related: ['synteny-map', 'alignment'],
   },
@@ -1123,7 +1123,7 @@ const ANALYSIS_TERMS: GlossaryTerm[] = [
     term: 'Synteny map',
     shortDef: 'Visual comparison of gene order between genomes.',
     longDef:
-      'Depicts conserved blocks and rearrangements, helping spot horizontal transfers and structural variation.',
+      'A "roadmap" comparing gene arrangements between two genomes. Conserved gene order (synteny) shows up as parallel blocks; rearrangements, inversions, or insertions appear as breaks or crossed lines. For phages, synteny maps reveal their mosaic nature: some regions are perfectly conserved between relatives, while others have been swapped, inverted, or replaced entirely. It\'s like comparing two editions of a book to see which chapters moved around.',
     category: 'Analysis',
     related: ['dot-plot', 'synteny'],
   },
@@ -1132,7 +1132,7 @@ const ANALYSIS_TERMS: GlossaryTerm[] = [
     term: 'Phylogenetic tree',
     shortDef: 'Diagram of evolutionary relationships inferred from sequences.',
     longDef:
-      'Branches represent divergence events; built from alignments or distance matrices to contextualize phage lineage and gene flow.',
+      'A "family tree" for sequences or organisms, showing who\'s related to whom and how closely. Branch lengths often represent evolutionary distance (more changes = longer branch). Trees are built from sequence alignments using various methods (neighbor-joining, maximum likelihood, Bayesian). For phages, trees are tricky because of rampant horizontal transfer and recombination—different genes may have different trees, revealing the mosaic nature of phage evolution.',
     category: 'Analysis',
     related: ['alignment', 'homolog'],
   },
