@@ -224,7 +224,12 @@ function Model3DViewBase({ phage }: Model3DViewProps): React.ReactElement {
 
   // Auto-quality: start at 'high' and adapt based on performance
   const [autoQuality, setAutoQuality] = useState<QualityLevel>(() => (coarsePointer ? 'medium' : 'high'));
-  const quality = autoQuality;
+  // Manual quality override: null means auto, otherwise locked to a specific level
+  const [manualQuality, setManualQuality] = useState<QualityLevel | null>(null);
+  const quality = manualQuality ?? autoQuality;
+
+  // Track whether to show keyboard hints in fullscreen
+  const [showKeyHints, setShowKeyHints] = useState(true);
 
   const [renderMode, setRenderMode] = useState<RenderMode>(() => (coarsePointer ? 'ribbon' : 'ball'));
 
@@ -839,6 +844,31 @@ function Model3DViewBase({ phage }: Model3DViewProps): React.ReactElement {
           togglePause();
           event.preventDefault();
           break;
+        case 'q':
+        case 'Q': {
+          // Cycle quality: auto -> low -> medium -> high -> ultra -> auto
+          const levels: (QualityLevel | null)[] = [null, 'low', 'medium', 'high', 'ultra'];
+          const currentIdx = levels.indexOf(manualQuality);
+          const nextIdx = (currentIdx + 1) % levels.length;
+          setManualQuality(levels[nextIdx]);
+          event.preventDefault();
+          break;
+        }
+        case 'h':
+        case 'H':
+          setShowKeyHints(v => !v);
+          event.preventDefault();
+          break;
+        case 'r':
+        case 'R':
+          handleResetView();
+          event.preventDefault();
+          break;
+        case 's':
+        case 'S':
+          handleScreenshot();
+          event.preventDefault();
+          break;
         default:
           break;
       }
@@ -846,7 +876,7 @@ function Model3DViewBase({ phage }: Model3DViewProps): React.ReactElement {
 
     window.addEventListener('keydown', handleKey);
     return () => window.removeEventListener('keydown', handleKey);
-  }, [fullscreen, togglePause]);
+  }, [fullscreen, manualQuality, togglePause]);
 
   const handleScreenshot = () => {
     const renderer = rendererRef.current;
@@ -1028,10 +1058,32 @@ function Model3DViewBase({ phage }: Model3DViewProps): React.ReactElement {
           </>
         ) : null}
 
-        {/* Auto quality indicator (read-only) */}
-        <SubtleBadge style={{ marginLeft: 'auto', fontSize: '11px' }}>
-          {quality}
-        </SubtleBadge>
+        {/* Quality selector */}
+        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <span className="text-dim" style={{ fontSize: '11px' }}>Quality:</span>
+          <select
+            className="select-compact"
+            value={manualQuality ?? 'auto'}
+            onChange={(e) => {
+              const val = e.target.value;
+              setManualQuality(val === 'auto' ? null : val as QualityLevel);
+            }}
+            style={{
+              fontSize: '11px',
+              padding: '4px 8px',
+              background: 'var(--bg-darker)',
+              border: '1px solid var(--border)',
+              borderRadius: '4px',
+              color: 'var(--text-primary)',
+            }}
+          >
+            <option value="auto">auto ({autoQuality})</option>
+            <option value="low">low</option>
+            <option value="medium">medium</option>
+            <option value="high">high</option>
+            <option value="ultra">ultra</option>
+          </select>
+        </div>
       </div>
 
       <div
@@ -1120,12 +1172,77 @@ function Model3DViewBase({ phage }: Model3DViewProps): React.ReactElement {
           </div>
         )}
 
-        {/* Fullscreen HUD */}
+        {/* Fullscreen HUD - Stats overlay top right */}
         {fullscreen && (
-          <div className="three-overlay" style={{ right: '1rem', top: '1rem', left: 'auto', width: 'auto' }}>
-            <div className="badge-row" style={{ gap: '6px' }}>
-              <Badge>FPS {fps || '—'}</Badge>
-              <SubtleBadge>Quality {quality}</SubtleBadge>
+          <div
+            className="three-overlay"
+            style={{
+              right: '1rem',
+              top: '1rem',
+              left: 'auto',
+              width: 'auto',
+              background: 'rgba(15, 21, 41, 0.85)',
+              backdropFilter: 'blur(4px)',
+              borderRadius: '8px',
+              padding: '10px 14px',
+            }}
+          >
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', minWidth: '140px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span className="text-dim" style={{ fontSize: '11px' }}>FPS</span>
+                <Badge>{fps || '—'}</Badge>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span className="text-dim" style={{ fontSize: '11px' }}>Quality</span>
+                <SubtleBadge style={{ cursor: 'pointer' }} title="Press Q to cycle">
+                  {manualQuality ? quality : `auto (${quality})`}
+                </SubtleBadge>
+              </div>
+              {atomCount && (
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span className="text-dim" style={{ fontSize: '11px' }}>Atoms</span>
+                  <SubtleBadge>{atomCount.toLocaleString()}</SubtleBadge>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Fullscreen HUD - Keyboard hints bottom left */}
+        {fullscreen && showKeyHints && (
+          <div
+            className="three-overlay"
+            style={{
+              left: '1rem',
+              bottom: '1rem',
+              top: 'auto',
+              right: 'auto',
+              width: 'auto',
+              background: 'rgba(15, 21, 41, 0.85)',
+              backdropFilter: 'blur(4px)',
+              borderRadius: '8px',
+              padding: '12px 16px',
+            }}
+          >
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '12px' }}>
+              <span style={{ color: 'var(--text-dim)', marginBottom: '4px', fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                Keyboard Controls
+              </span>
+              <div style={{ display: 'flex', gap: '16px' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                  <span><kbd>↑↓←→</kbd> Rotate</span>
+                  <span><kbd>+/-</kbd> Zoom</span>
+                  <span><kbd>Space</kbd> {paused ? 'Play' : 'Pause'}</span>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                  <span><kbd>Q</kbd> Quality</span>
+                  <span><kbd>R</kbd> Reset view</span>
+                  <span><kbd>S</kbd> Screenshot</span>
+                </div>
+              </div>
+              <span style={{ color: 'var(--text-dim)', marginTop: '6px', fontSize: '10px' }}>
+                <kbd>H</kbd> hide hints · <kbd>Esc</kbd> exit
+              </span>
             </div>
           </div>
         )}
