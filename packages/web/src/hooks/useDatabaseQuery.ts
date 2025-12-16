@@ -63,7 +63,7 @@ export function useDatabaseQuery(
     repository: query.data ?? null,
     isLoading: query.isLoading,
     isFetching: query.isFetching,
-    error: query.error ? (query.error as Error).message : null,
+    error: query.error instanceof Error ? query.error.message : query.error ? String(query.error) : null,
     progress,
     isCached,
     reload,

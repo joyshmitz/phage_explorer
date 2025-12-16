@@ -248,6 +248,9 @@ export function subscribeMainStoreToStorage(): () => void {
   let lastPrefs = '';
 
   const unsubscribe = usePhageStore.subscribe((state) => {
+    // Guard against uninitialized state
+    if (!state.currentTheme) return;
+
     const prefs = {
       themeId: state.currentTheme.id,
       viewMode: state.viewMode,

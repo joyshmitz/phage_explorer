@@ -33,6 +33,12 @@ async function main() {
   console.log('Creating tables...');
 
   sqlite.exec(`
+    DROP TABLE IF EXISTS codon_adaptation;
+    DROP TABLE IF EXISTS host_trna_pools;
+    DROP TABLE IF EXISTS defense_systems;
+    DROP TABLE IF EXISTS amg_annotations;
+    DROP TABLE IF EXISTS protein_domains;
+    DROP TABLE IF EXISTS annotation_meta;
     DROP TABLE IF EXISTS preferences;
     DROP TABLE IF EXISTS tropism_predictions;
     DROP TABLE IF EXISTS models;
@@ -40,7 +46,6 @@ async function main() {
     DROP TABLE IF EXISTS genes;
     DROP TABLE IF EXISTS sequences;
     DROP TABLE IF EXISTS phages;
-    DROP TABLE IF EXISTS tropism_predictions;
 
     CREATE TABLE phages (
       id INTEGER PRIMARY KEY AUTOINCREMENT,

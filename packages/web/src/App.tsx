@@ -879,14 +879,14 @@ export default function App(): React.ReactElement {
               </div>
               {currentPhage ? (
                 <div className="detail-card">
-                  <div style={{ display: 'flex', gap: '1rem', alignItems: 'flex-start' }}>
-                    {/* Illustration thumbnail */}
+                  <div style={{ display: 'flex', flexDirection: isNarrow ? 'column' : 'row', gap: '1rem', alignItems: isNarrow ? 'stretch' : 'flex-start' }}>
+                    {/* Illustration - larger display for high-res images */}
                     {hasIllustration(currentPhage.slug ?? '') && (
-                      <div style={{ flexShrink: 0, width: isNarrow ? '100px' : '140px' }}>
+                      <div style={{ flexShrink: 0, width: isNarrow ? '100%' : '320px', maxWidth: isNarrow ? '400px' : '320px' }}>
                         <PhageIllustration
                           slug={currentPhage.slug ?? ''}
                           name={currentPhage.name}
-                          compact
+                          compact={false}
                         />
                       </div>
                     )}
