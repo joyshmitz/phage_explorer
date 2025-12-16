@@ -1,6 +1,8 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { useReducedMotion } from '../../hooks/useReducedMotion';
+import { haptics } from '../../utils/haptics';
+import { IconPlus, IconX } from '../ui';
 
 interface FloatingActionButtonProps {
   isOpen: boolean;
@@ -12,6 +14,8 @@ interface FloatingActionButtonProps {
  * Mobile-first Floating Action Button (FAB)
  * - Renders via portal to avoid stacking issues
  * - Supports long-press gesture for secondary action
+ * - Haptic feedback on interactions
+ * - SVG icons with smooth rotation animation
  * - Respects reduced motion preference
  */
 export function FloatingActionButton({
@@ -32,36 +36,42 @@ export function FloatingActionButton({
     };
   }, []);
 
-  const handleTouchStart = () => {
+  const handleTouchStart = useCallback(() => {
     if (!onLongPress) return;
     longPressTimer.current = window.setTimeout(() => {
       longPressTimer.current = null;
+      haptics.heavy();
       onLongPress();
     }, 500);
-  };
+  }, [onLongPress]);
 
-  const clearLongPress = () => {
+  const clearLongPress = useCallback(() => {
     if (longPressTimer.current) {
       window.clearTimeout(longPressTimer.current);
       longPressTimer.current = null;
     }
-  };
+  }, []);
+
+  const handleClick = useCallback(() => {
+    haptics.medium();
+    onToggle();
+  }, [onToggle]);
 
   const content = (
     <button
       type="button"
-      className={`fab ${isOpen ? 'open' : ''} ${reducedMotion ? 'fab--no-anim' : ''}`}
+      className={`fab ${isOpen ? 'fab--open' : ''} ${reducedMotion ? 'fab--no-anim' : ''}`}
       aria-label={isOpen ? 'Close control menu' : 'Open control menu'}
       aria-expanded={isOpen}
       aria-haspopup="menu"
       aria-controls="action-drawer"
-      onClick={onToggle}
+      onClick={handleClick}
       onTouchStart={handleTouchStart}
       onTouchEnd={clearLongPress}
       onTouchCancel={clearLongPress}
     >
       <span className="fab-icon" aria-hidden="true">
-        {isOpen ? '×' : '☰'}
+        {isOpen ? <IconX size={24} strokeWidth={2.5} /> : <IconPlus size={24} strokeWidth={2.5} />}
       </span>
     </button>
   );

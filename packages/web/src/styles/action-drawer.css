@@ -1,0 +1,139 @@
+/* =============================================================================
+   ActionDrawer - Categorized Quick Action Menu Styles
+   ============================================================================= */
+
+.action-drawer {
+  padding: var(--space-3) var(--space-4);
+  padding-bottom: calc(var(--space-4) + env(safe-area-inset-bottom, 0px));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+/* =============================================================================
+   Categories
+   ============================================================================= */
+
+.action-drawer__category {
+  margin-bottom: var(--space-4);
+}
+
+.action-drawer__category:last-child {
+  margin-bottom: 0;
+}
+
+.action-drawer__category-label {
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-text-muted);
+  margin: 0 0 var(--space-2) var(--space-1);
+}
+
+/* =============================================================================
+   Action Grid
+   ============================================================================= */
+
+.action-drawer__grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: var(--space-2);
+}
+
+/* Responsive: fewer columns on very small screens */
+@media (max-width: 380px) {
+  .action-drawer__grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+/* =============================================================================
+   Action Items
+   ============================================================================= */
+
+.action-drawer__item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-1);
+  padding: var(--space-3) var(--space-2);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--ease-out),
+    border-color var(--duration-fast) var(--ease-out),
+    transform var(--duration-fast) var(--ease-out);
+  -webkit-tap-highlight-color: transparent;
+  min-height: 72px;
+}
+
+.action-drawer__item:active {
+  transform: scale(0.95);
+  background: var(--color-surface-active);
+}
+
+.action-drawer__item:focus-visible {
+  outline: 2px solid var(--color-border-focus);
+  outline-offset: 2px;
+}
+
+/* Active state (toggled on) */
+.action-drawer__item--active {
+  background: color-mix(in srgb, var(--color-primary) 15%, transparent);
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+}
+
+.action-drawer__item--active .action-drawer__item-icon {
+  color: var(--color-primary);
+}
+
+/* Disabled state */
+.action-drawer__item--disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.action-drawer__item--disabled:active {
+  transform: none;
+  background: var(--color-surface);
+}
+
+/* =============================================================================
+   Item Icon & Label
+   ============================================================================= */
+
+.action-drawer__item-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-text);
+  transition: color var(--duration-fast) var(--ease-out);
+}
+
+.action-drawer__item-label {
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-text);
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+/* =============================================================================
+   Reduced Motion
+   ============================================================================= */
+
+@media (prefers-reduced-motion: reduce) {
+  .action-drawer__item {
+    transition: none;
+  }
+
+  .action-drawer__item:active {
+    transform: none;
+  }
+}

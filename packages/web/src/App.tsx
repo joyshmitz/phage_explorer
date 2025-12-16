@@ -42,6 +42,7 @@ import { LearnMenu } from './components/LearnMenu';
 
 // Mobile controls
 import { ControlDeck } from './components/mobile/ControlDeck';
+import { FloatingActionButton, ActionDrawer } from './components/controls';
 import { DataFreshnessIndicator } from './components/ui/DataFreshnessIndicator';
 import { IconSettings } from './components/ui/icons';
 
@@ -130,6 +131,7 @@ export default function App(): JSX.Element {
   const [fullSequence, setFullSequence] = useState<string>('');
   const [selectedGene, setSelectedGene] = useState<GeneInfo | null>(null);
   const [mobileListOpen, setMobileListOpen] = useState(false);
+  const [actionDrawerOpen, setActionDrawerOpen] = useState(false);
   const [analysisSidebarCollapsed, setAnalysisSidebarCollapsed] = useState(false);
   const swipeStartRef = useRef<{ x: number; y: number; time: number } | null>(null);
   const glossaryShellRef = useRef<HTMLDivElement | null>(null);
@@ -638,6 +640,14 @@ export default function App(): JSX.Element {
     toggleBeginnerMode();
   }, [beginnerModeEnabled, showBeginnerToast, toggleBeginnerMode]);
 
+  const handleToggleActionDrawer = useCallback(() => {
+    setActionDrawerOpen((prev) => !prev);
+  }, []);
+
+  const handleCloseActionDrawer = useCallback(() => {
+    setActionDrawerOpen(false);
+  }, []);
+
   const loadingOverlayNeeded = isLoading || (!repository && progress);
   const showErrorOverlay = !!error && !repository;
 
@@ -1107,6 +1117,18 @@ export default function App(): JSX.Element {
       )}
       <BlockedHotkeyToast info={blockedHotkey} onDismiss={dismissBlockedHotkey} />
       <ControlDeck onPrevPhage={handlePrevPhage} onNextPhage={handleNextPhage} />
+      {isMobile && (
+        <>
+          <FloatingActionButton
+            isOpen={actionDrawerOpen}
+            onToggle={handleToggleActionDrawer}
+          />
+          <ActionDrawer
+            isOpen={actionDrawerOpen}
+            onClose={handleCloseActionDrawer}
+          />
+        </>
+      )}
       <DataFreshnessIndicator isCached={isCached} isLoading={isLoading} />
     </>
   );

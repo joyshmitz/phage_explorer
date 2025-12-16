@@ -1,4 +1,7 @@
-/* Floating Action Button for mobile control palette */
+/* =============================================================================
+   Floating Action Button for mobile control palette
+   ============================================================================= */
+
 .fab {
   position: fixed;
   bottom: calc(16px + env(safe-area-inset-bottom, 0px));
@@ -19,20 +22,22 @@
   transition: transform var(--duration-fast) var(--ease-out),
     box-shadow var(--duration-fast) var(--ease-out),
     background var(--duration-fast) var(--ease-out);
+  -webkit-tap-highlight-color: transparent;
 }
 
 .fab .fab-icon {
-  font-size: 22px;
-  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   transition: transform var(--duration-fast) var(--ease-out);
 }
 
-.fab.open .fab-icon {
+.fab--open .fab-icon {
   transform: rotate(45deg);
 }
 
 .fab:active {
-  transform: scale(0.96);
+  transform: scale(0.92);
 }
 
 .fab:hover {
@@ -45,8 +50,15 @@
   box-shadow: 0 0 0 4px rgba(72, 130, 255, 0.35);
 }
 
-.fab--no-anim {
+.fab--no-anim,
+.fab--no-anim .fab-icon {
   transition: none;
+}
+
+/* When action drawer is open, hide FAB slightly or move it */
+.fab--open {
+  background: var(--color-surface);
+  color: var(--color-text);
 }
 
 @media (max-width: 900px) {
