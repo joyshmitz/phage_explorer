@@ -33,7 +33,7 @@ import { SyntenyOverlay } from './SyntenyOverlay';
 import { SettingsOverlay } from './SettingsOverlay';
 import { HelpOverlay } from './HelpOverlay';
 import { WelcomeModal } from './WelcomeModal';
-import { FeatureTour } from './FeatureTour';
+// FeatureTour removed - TourEngine (education/components/TourEngine.tsx) is the proper implementation
 import { GenomicSignaturePCAOverlay } from './GenomicSignaturePCAOverlay';
 import { CodonBiasOverlay } from './CodonBiasOverlay';
 import { SelectionPressureOverlay } from './SelectionPressureOverlay';
@@ -98,7 +98,6 @@ export function OverlayManager({ repository, currentPhage }: OverlayManagerProps
       <RepeatsOverlay repository={repository} currentPhage={currentPhage} />
       <KmerAnomalyOverlay repository={repository} currentPhage={currentPhage} />
       <SettingsOverlay />
-      <FeatureTour />
       <CommandPalette />
       <IllustrationOverlay />
     </>
