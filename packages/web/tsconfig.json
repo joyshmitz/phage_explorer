@@ -30,7 +30,7 @@
       "@phage-explorer/comparison/*": ["../../packages/comparison/src/*"],
       "@phage-explorer/tui": ["../../packages/tui/src"],
       "@phage-explorer/tui/*": ["../../packages/tui/src/*"],
-      "@phage/wasm-compute": ["../../packages/wasm-compute/pkg/wasm_compute.js"],
+      "@phage/wasm-compute": ["../../packages/wasm-compute/pkg/wasm_compute"],
       "@phage/wasm-compute/pkg/*": ["../../packages/wasm-compute/pkg/*"],
       "@phage-explorer/web/*": ["./src/*"]
     }
