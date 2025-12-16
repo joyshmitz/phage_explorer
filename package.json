@@ -32,7 +32,9 @@
   },
   "devDependencies": {
     "@types/bun": "^1.3.3",
+    "@types/pako": "^2.0.4",
     "@types/react": "^19.2.7",
+    "@types/three": "^0.182.0",
     "eslint": "^9.39.1",
     "playwright": "^1.57.0",
     "typescript": "^5.9.3",

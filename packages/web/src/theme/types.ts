@@ -89,6 +89,8 @@ export interface ThemePalette {
 
   // Sparkline gradient (5 stops)
   sparkline: [string, string, string, string, string];
+  // Extended gradient for sparklines (for core compatibility)
+  sparklineGradient: string[];
 }
 
 /**

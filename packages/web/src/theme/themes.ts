@@ -49,6 +49,7 @@ const holographicPalette: ThemePalette = {
   panelBorder: 'rgba(191, 0, 255, 0.25)',
   panelShadow: '#000010',
   sparkline: ['#0a0025', '#4a00b4', '#bf00ff', '#00f5ff', '#00ffa3'],
+  sparklineGradient: ['#0a0025', '#4a00b4', '#bf00ff', '#00f5ff', '#00ffa3'],
 };
 
 const holographicNucleotides: NucleotideTheme = {
@@ -134,6 +135,7 @@ const cyberpunkPalette: ThemePalette = {
   panelBorder: '#ff00ff',
   panelShadow: '#050510',
   sparkline: ['#1a0a2e', '#7b1fa2', '#ff00ff', '#00ffff', '#00ff88'],
+  sparklineGradient: ['#1a0a2e', '#7b1fa2', '#ff00ff', '#00ffff', '#00ff88'],
 };
 
 const cyberpunkNucleotides: NucleotideTheme = {
@@ -219,6 +221,7 @@ const classicPalette: ThemePalette = {
   panelBorder: '#4d4d6c',
   panelShadow: '#0a0a15',
   sparkline: ['#1a535c', '#2a9d8f', '#e9c46a', '#f4a261', '#e76f51'],
+  sparklineGradient: ['#1a535c', '#2a9d8f', '#e9c46a', '#f4a261', '#e76f51'],
 };
 
 const classicNucleotides: NucleotideTheme = {
@@ -304,6 +307,7 @@ const oceanPalette: ThemePalette = {
   panelBorder: '#264653',
   panelShadow: '#030810',
   sparkline: ['#0a2342', '#1a535c', '#2a9d8f', '#48cae4', '#ffe66d'],
+  sparklineGradient: ['#0a2342', '#1a535c', '#2a9d8f', '#48cae4', '#ffe66d'],
 };
 
 const oceanNucleotides: NucleotideTheme = {
@@ -389,6 +393,7 @@ const matrixPalette: ThemePalette = {
   panelBorder: '#004400',
   panelShadow: '#000000',
   sparkline: ['#001a00', '#003300', '#006600', '#00aa00', '#00ff00'],
+  sparklineGradient: ['#001a00', '#003300', '#006600', '#00aa00', '#00ff00'],
 };
 
 const matrixNucleotides: NucleotideTheme = {
@@ -474,6 +479,7 @@ const sunsetPalette: ThemePalette = {
   panelBorder: '#5a4e69',
   panelShadow: '#0a0a12',
   sparkline: ['#2d1b30', '#6b2737', '#d62246', '#ff6b35', '#ffd166'],
+  sparklineGradient: ['#2d1b30', '#6b2737', '#d62246', '#ff6b35', '#ffd166'],
 };
 
 const sunsetNucleotides: NucleotideTheme = {
@@ -559,6 +565,7 @@ const forestPalette: ThemePalette = {
   panelBorder: '#344e41',
   panelShadow: '#030805',
   sparkline: ['#1b4332', '#2d6a4f', '#40916c', '#74c69d', '#b7e4c7'],
+  sparklineGradient: ['#1b4332', '#2d6a4f', '#40916c', '#74c69d', '#b7e4c7'],
 };
 
 const forestNucleotides: NucleotideTheme = {
@@ -644,6 +651,7 @@ const monochromePalette: ThemePalette = {
   panelBorder: '#505050',
   panelShadow: '#000000',
   sparkline: ['#202020', '#404040', '#606060', '#909090', '#c0c0c0'],
+  sparklineGradient: ['#202020', '#404040', '#606060', '#909090', '#c0c0c0'],
 };
 
 const monochromeNucleotides: NucleotideTheme = {
