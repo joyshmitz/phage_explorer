@@ -55,10 +55,12 @@
   transition: none;
 }
 
-/* When action drawer is open, hide FAB slightly or move it */
+/* When action drawer is open, FAB needs higher z-index to stay above backdrop */
 .fab--open {
   background: var(--color-surface);
   color: var(--color-text);
+  /* Backdrop is z-modal-backdrop (400), so FAB needs to be above it */
+  z-index: calc(var(--z-modal-backdrop) + 10);
 }
 
 @media (max-width: 900px) {
