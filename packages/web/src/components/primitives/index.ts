@@ -1,8 +1,10 @@
+// Re-export types
 export * from './types';
 export * from './HeatmapCanvas';
 export * from './ScatterCanvas';
 export * from './ArcDiagram';
-export * from './GenomeTrack';
+// Export GenomeTrack component explicitly to avoid ambiguity with GenomeTrack type
+export { GenomeTrack, GenomeTrackProps } from './GenomeTrack';
 export * from './GelCanvas';
 export * from './ColorLegend';
 export * from './colorScales';

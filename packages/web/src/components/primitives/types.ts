@@ -78,6 +78,8 @@ export interface GelBand {
   size: number; // bp - used for position calculation
   intensity: number; // 0..1
   label?: string;
+  /** Normalized position 0..1; if omitted, computed from size */
+  position?: number;
 }
 
 export interface GelLane {

@@ -1,4 +1,5 @@
 import type { Theme } from '@phage-explorer/core';
+import type { GlyphAtlas } from './glyphAtlas';
 
 export type Nucleotide = 'A' | 'C' | 'G' | 'T' | 'N';
 

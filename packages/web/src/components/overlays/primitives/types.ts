@@ -1,2 +1,20 @@
-export * from '../../primitives/types';
-
+// Re-export all types from parent primitives
+export type {
+  ColorScale,
+  HeatmapShape,
+  HeatmapMatrix,
+  HeatmapHover,
+  ScatterPoint,
+  ScatterHover,
+  ArcNode,
+  ArcLink,
+  GenomeTrackDatum,
+  GenomeTrack,
+  GenomeTrackHover,
+  GelBand,
+  GelLane,
+  GelInteraction,
+  GenomeTrackSegment,
+  GenomeTrackInteraction,
+  ArcInteraction,
+} from '../../primitives/types';
