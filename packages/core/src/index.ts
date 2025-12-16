@@ -71,3 +71,6 @@ export * from './analysis/pca';
 
 // Codon usage bias analysis
 export * from './analysis/codon-bias';
+
+// Prophage excision site prediction
+export * from './analysis/prophage-excision';

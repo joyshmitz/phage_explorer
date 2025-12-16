@@ -176,6 +176,16 @@ const ANALYSIS_ITEMS: AnalysisItem[] = [
     category: 'Evolutionary',
     requiresLevel: 'power',
   },
+  {
+    id: 'prophage-excision',
+    overlayId: 'prophageExcision',
+    label: 'Prophage Excision',
+    description: 'Predict attL/attR sites and model excision product',
+    icon: <IconRepeat size={ITEM_ICON_SIZE} />,
+    shortcut: 'Alt+E',
+    category: 'Evolutionary',
+    requiresLevel: 'power',
+  },
 
   // Host Interaction
   {

@@ -49,6 +49,7 @@ import { PromoterOverlay } from './PromoterOverlay';
 import { RepeatsOverlay } from './RepeatsOverlay';
 import { KmerAnomalyOverlay } from './KmerAnomalyOverlay';
 import { IllustrationOverlay } from './IllustrationOverlay';
+import { ProphageExcisionOverlay } from './ProphageExcisionOverlay';
 
 interface OverlayManagerProps {
   repository: PhageRepository | null;
@@ -88,6 +89,7 @@ export function OverlayManager({ repository, currentPhage }: OverlayManagerProps
       <AMGPathwayOverlay repository={repository} currentPhage={currentPhage} />
       <CodonAdaptationOverlay repository={repository} currentPhage={currentPhage} />
       <DefenseArmsRaceOverlay repository={repository} currentPhage={currentPhage} />
+      <ProphageExcisionOverlay repository={repository} currentPhage={currentPhage} />
       {/* Sequence-based overlays - they use global state */}
       <GCSkewOverlay />
       <ComplexityOverlay />

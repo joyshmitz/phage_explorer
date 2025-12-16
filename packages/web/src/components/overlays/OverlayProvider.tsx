@@ -88,7 +88,8 @@ export type OverlayId =
   | 'amgPathway'
   | 'codonAdaptation'
   | 'defenseArmsRace'
-  | 'illustration';
+  | 'illustration'
+  | 'prophageExcision';
 
 export interface OverlayConfig {
   id: OverlayId;

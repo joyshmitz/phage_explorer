@@ -55,6 +55,7 @@ export { SettingsOverlay } from './SettingsOverlay';
 // Layer 2 Advanced Overlays
 export { KmerAnomalyOverlay } from './KmerAnomalyOverlay';
 export { SelectionPressureOverlay } from './SelectionPressureOverlay';
+export { ProphageExcisionOverlay } from './ProphageExcisionOverlay';
 
 // Primitives
 export * from './primitives';
