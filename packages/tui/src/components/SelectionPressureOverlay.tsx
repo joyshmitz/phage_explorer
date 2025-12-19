@@ -23,9 +23,14 @@ export function SelectionPressureOverlay({ repository }: Props): React.ReactElem
 
   useEffect(() => {
     const load = async () => {
-        if (!currentPhage) return;
-        
+        if (!currentPhage) {
+          setLoading(false);
+          return;
+        }
+
         setLoading(true);
+        setTargetSeq(null);
+        setReferenceSeq(null);
         // Use diff reference if set, else previous phage
         let refId = diffRefId;
         if (!refId) {
@@ -47,6 +52,8 @@ export function SelectionPressureOverlay({ repository }: Props): React.ReactElem
             setTargetSeq(tSeq);
             setReferenceSeq(rSeq);
         } catch (e) {
+            setTargetSeq(null);
+            setReferenceSeq(null);
             console.error(e);
         } finally {
             setLoading(false);
@@ -61,8 +68,8 @@ export function SelectionPressureOverlay({ repository }: Props): React.ReactElem
   }, [targetSeq, referenceSeq]);
 
   useInput((input, key) => {
-    if (key.escape || input === 'v' || input === 'V') {
-      closeOverlay('pressure'); // Using 'pressure' ID as mapped in MenuOverlays, though it might be 'selectionPressure'
+    if (key.escape) {
+      closeOverlay('selectionPressure');
     }
   });
 
