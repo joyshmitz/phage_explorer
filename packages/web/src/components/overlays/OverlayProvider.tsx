@@ -89,7 +89,12 @@ export type OverlayId =
   | 'codonAdaptation'
   | 'defenseArmsRace'
   | 'illustration'
-  | 'prophageExcision';
+  | 'prophageExcision'
+  | 'mosaicRadar'
+  | 'logo'
+  | 'periodicity'
+  | 'gpuWasmBenchmark'
+  | 'cocktailCompatibility';
 
 export interface OverlayConfig {
   id: OverlayId;

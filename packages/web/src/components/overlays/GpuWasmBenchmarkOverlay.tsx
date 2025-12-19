@@ -148,7 +148,8 @@ export function GpuWasmBenchmarkOverlay({
           const wasm = await import('@phage/wasm-compute');
           // Some builds auto-init; calling init() again should be a no-op, but keep it best-effort.
           try {
-            await wasm.default?.();
+            const init = (wasm as unknown as { default?: () => Promise<void> }).default;
+            if (typeof init === 'function') await init();
           } catch {
             // Ignore init errors; the functions may still be usable depending on bundler output.
           }
