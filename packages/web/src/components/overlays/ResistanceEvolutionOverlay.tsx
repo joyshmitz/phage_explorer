@@ -68,6 +68,10 @@ export function ResistanceEvolutionOverlay(): React.ReactElement | null {
   const rafRef = useRef<number | null>(null);
   const lastTimeRef = useRef<number>(0);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const wasOpenRef = useRef(false);
+
+  // Track overlay open state without causing dependency issues
+  const overlayIsOpen = isOpen('resistanceEvolution');
 
   // Hotkey to toggle overlay
   useHotkey(
@@ -85,22 +89,38 @@ export function ResistanceEvolutionOverlay(): React.ReactElement | null {
     lastTimeRef.current = 0;
   }, []);
 
-  // Initialize on mount and when cocktail size changes
+  // Initialize when overlay opens (not on every isOpen reference change)
   useEffect(() => {
-    if (isOpen('resistanceEvolution')) {
+    if (overlayIsOpen && !wasOpenRef.current) {
+      // Overlay just opened - initialize
       initSimulation(cocktailSize);
     }
+    wasOpenRef.current = overlayIsOpen;
+
     return () => {
       if (rafRef.current) {
         cancelAnimationFrame(rafRef.current);
         rafRef.current = null;
       }
     };
-  }, [isOpen, cocktailSize, initSimulation]);
+  }, [overlayIsOpen, initSimulation]);
 
-  // Animation loop
+  // Reinitialize when cocktail size changes (while overlay is open)
+  const prevCocktailSizeRef = useRef(cocktailSize);
   useEffect(() => {
-    if (!isRunning || !state) return;
+    if (overlayIsOpen && cocktailSize !== prevCocktailSizeRef.current) {
+      initSimulation(cocktailSize);
+    }
+    prevCocktailSizeRef.current = cocktailSize;
+  }, [overlayIsOpen, cocktailSize, initSimulation]);
+
+  // Track if state is initialized (to avoid putting state in deps)
+  const hasStateRef = useRef(false);
+  hasStateRef.current = state !== null;
+
+  // Animation loop - only depends on isRunning to avoid re-running on every state update
+  useEffect(() => {
+    if (!isRunning || !hasStateRef.current) return;
 
     const animate = (timestamp: number) => {
       if (!lastTimeRef.current) lastTimeRef.current = timestamp;
@@ -130,7 +150,7 @@ export function ResistanceEvolutionOverlay(): React.ReactElement | null {
         rafRef.current = null;
       }
     };
-  }, [isRunning, state]);
+  }, [isRunning]);
 
   // Draw population history chart
   useEffect(() => {
