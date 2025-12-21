@@ -33,6 +33,7 @@ const SimulationHub = lazy(() => import('./SimulationHub').then(m => ({ default:
 const SimulationView = lazy(() => import('../SimulationView'));
 const ComparisonOverlay = lazy(() => import('./ComparisonOverlay').then(m => ({ default: m.ComparisonOverlay })));
 const CollaborationOverlay = lazy(() => import('./CollaborationOverlay').then(m => ({ default: m.CollaborationOverlay })));
+const ResistanceEvolutionOverlay = lazy(() => import('./ResistanceEvolutionOverlay').then(m => ({ default: m.ResistanceEvolutionOverlay })));
 
 // Sequence analysis overlays
 const GCSkewOverlay = lazy(() => import('./GCSkewOverlay').then(m => ({ default: m.GCSkewOverlay })));
@@ -123,6 +124,7 @@ export function OverlayManager({ repository, currentPhage }: OverlayManagerProps
         <SimulationView />
         <ComparisonOverlay repository={repository} />
         <CollaborationOverlay />
+        <ResistanceEvolutionOverlay />
 
         {/* Sequence analysis */}
         <GCSkewOverlay repository={repository} currentPhage={currentPhage} />

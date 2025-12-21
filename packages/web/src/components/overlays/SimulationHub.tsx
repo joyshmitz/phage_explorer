@@ -105,6 +105,7 @@ function getSimulationThumbnail(simId: string, colors: ThumbnailProps): React.Re
     case 'evolution-replay': return <ResistanceEvolutionThumbnail {...colors} />;
     case 'packaging-motor': return <DNAPackagingThumbnail {...colors} />;
     case 'infection-kinetics': return <PopulationDynamicsThumbnail {...colors} />;
+    case 'resistance-cocktail': return <ResistanceEvolutionThumbnail {...colors} />;
     default: return null;
   }
 }

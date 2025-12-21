@@ -95,7 +95,8 @@ export type OverlayId =
   | 'periodicity'
   | 'gpuWasmBenchmark'
   | 'cocktailCompatibility'
-  | 'rnaStructure';
+  | 'rnaStructure'
+  | 'resistanceEvolution';
 
 export interface OverlayConfig {
   id: OverlayId;
