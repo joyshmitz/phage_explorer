@@ -94,7 +94,8 @@ export type OverlayId =
   | 'logo'
   | 'periodicity'
   | 'gpuWasmBenchmark'
-  | 'cocktailCompatibility';
+  | 'cocktailCompatibility'
+  | 'rnaStructure';
 
 export interface OverlayConfig {
   id: OverlayId;

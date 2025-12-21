@@ -74,3 +74,9 @@ export * from './analysis/codon-bias';
 
 // Prophage excision site prediction
 export * from './analysis/prophage-excision';
+
+// Periodicity / tandem repeat spectrogram
+export * from './analysis/periodicity';
+
+// RNA Structure & Packaging Signal analysis
+export * from './analysis/rna-structure';

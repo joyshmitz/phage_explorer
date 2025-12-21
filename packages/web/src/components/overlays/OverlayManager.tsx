@@ -69,6 +69,7 @@ const SelectionPressureOverlay = lazy(() => import('./SelectionPressureOverlay')
 const BiasDecompositionOverlay = lazy(() => import('./BiasDecompositionOverlay').then(m => ({ default: m.BiasDecompositionOverlay })));
 const ProteinDomainOverlay = lazy(() => import('./ProteinDomainOverlay').then(m => ({ default: m.ProteinDomainOverlay })));
 const FoldQuickviewOverlay = lazy(() => import('./FoldQuickviewOverlay').then(m => ({ default: m.FoldQuickviewOverlay })));
+const RNAStructureOverlay = lazy(() => import('./RNAStructureOverlay').then(m => ({ default: m.RNAStructureOverlay })));
 
 // Host & phage interaction overlays
 const TropismOverlay = lazy(() => import('./TropismOverlay').then(m => ({ default: m.TropismOverlay })));
@@ -152,6 +153,7 @@ export function OverlayManager({ repository, currentPhage }: OverlayManagerProps
         <BiasDecompositionOverlay repository={repository} currentPhage={currentPhage} />
         <ProteinDomainOverlay repository={repository} currentPhage={currentPhage} />
         <FoldQuickviewOverlay repository={repository} currentPhage={currentPhage} />
+        <RNAStructureOverlay repository={repository} currentPhage={currentPhage} />
 
         {/* Host interactions */}
         <TropismOverlay repository={repository} phage={currentPhage} />

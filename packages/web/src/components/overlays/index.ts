@@ -56,7 +56,12 @@ export { SettingsOverlay } from './SettingsOverlay';
 export { KmerAnomalyOverlay } from './KmerAnomalyOverlay';
 export { SelectionPressureOverlay } from './SelectionPressureOverlay';
 export { ProphageExcisionOverlay } from './ProphageExcisionOverlay';
+export { MosaicRadarOverlay } from './MosaicRadarOverlay';
+export { HGTOverlay } from './HGTOverlay';
+export { LogoOverlay } from './LogoOverlay';
+
+// Advanced Analysis Overlays
+export { RNAStructureOverlay } from './RNAStructureOverlay';
 
 // Primitives
 export * from './primitives';
-
