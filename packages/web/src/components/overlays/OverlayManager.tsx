@@ -82,6 +82,9 @@ const StructureConstraintOverlay = lazy(() => import('./StructureConstraintOverl
 const VirionStabilityOverlay = lazy(() => import('./VirionStabilityOverlay').then(m => ({ default: m.VirionStabilityOverlay })));
 const PackagingPressureOverlay = lazy(() => import('./PackagingPressureOverlay').then(m => ({ default: m.PackagingPressureOverlay })));
 
+// Module analysis overlays
+const ModuleOverlay = lazy(() => import('./ModuleOverlay').then(m => ({ default: m.ModuleOverlay })));
+
 // Benchmark & diagnostic
 const GpuWasmBenchmarkOverlay = lazy(() => import('./GpuWasmBenchmarkOverlay').then(m => ({ default: m.GpuWasmBenchmarkOverlay })));
 
@@ -165,6 +168,9 @@ export function OverlayManager({ repository, currentPhage }: OverlayManagerProps
         <StructureConstraintOverlay repository={repository} currentPhage={currentPhage} />
         <VirionStabilityOverlay />
         <PackagingPressureOverlay />
+
+        {/* Module analysis */}
+        <ModuleOverlay repository={repository} currentPhage={currentPhage} />
 
         {/* Benchmark */}
         <GpuWasmBenchmarkOverlay repository={repository} currentPhage={currentPhage} />

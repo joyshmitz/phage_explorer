@@ -152,6 +152,16 @@ const ANALYSIS_ITEMS: AnalysisItem[] = [
     category: 'Gene Features',
     requiresLevel: 'intermediate',
   },
+  {
+    id: 'module-coherence',
+    overlayId: 'modules',
+    label: 'Module Coherence',
+    description: 'Functional module completeness & stoichiometry',
+    icon: <IconLayers size={ITEM_ICON_SIZE} />,
+    shortcut: 'l',
+    category: 'Gene Features',
+    requiresLevel: 'intermediate',
+  },
 
   // Codon Analysis
   {
