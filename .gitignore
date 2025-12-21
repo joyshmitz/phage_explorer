@@ -93,3 +93,6 @@ packages/wasm-compute/node_modules/
 !packages/wasm-compute/pkg/
 .vercel
 .env*.local
+
+# bv (beads viewer) local config and caches
+.bv/

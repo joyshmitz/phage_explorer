@@ -1,6 +1,6 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "buildCommand": "cd packages/web && bun install && bun run build",
+  "buildCommand": "cd packages/web && bun install && bun run ../../scripts/build-web-db.ts --source ../../phage.db --output public && bun run build",
   "outputDirectory": "packages/web/dist",
   "installCommand": "bun install",
   "framework": null,

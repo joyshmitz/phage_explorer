@@ -27,8 +27,8 @@
     "lint": "bunx eslint packages --max-warnings=0 --no-warn-ignored",
     "typecheck": "tsc --noEmit",
     "check": "bun run lint && bun run typecheck",
-    "test": "bun test test.ts",
-    "test:integration": "PHAGE_INTEGRATION=1 bun test --filter integration"
+    "test": "bun test packages/core packages/comparison packages/db-runtime packages/db-schema packages/renderer-3d packages/state packages/data-pipeline packages/tui packages/web/src",
+    "test:integration": "PHAGE_INTEGRATION=1 bun test --test-name-pattern integration packages/core packages/comparison packages/db-runtime packages/db-schema packages/renderer-3d packages/state packages/data-pipeline packages/tui packages/web/src"
   },
   "devDependencies": {
     "@types/bun": "^1.3.3",
