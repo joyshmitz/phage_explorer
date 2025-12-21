@@ -14,10 +14,10 @@ import type {
 } from './types';
 import type { GeneInfo, CodonUsageData } from '@phage-explorer/core';
 
-import { multiResolutionKmerAnalysis } from './kmer-analysis';
+import { multiResolutionKmerAnalysis, minHashJaccard } from './kmer-analysis';
 import { analyzeInformationTheory } from './information-theory';
 import { compareFrequencyDistributions } from './rank-correlation';
-import { analyzeEditDistance, quickSimilarityEstimate } from './edit-distance';
+import { analyzeEditDistance } from './edit-distance';
 import {
   analyzeBiologicalMetrics,
   compareCodonUsage,
@@ -313,12 +313,14 @@ function categorizeSimilarity(score: number): SimilarityCategory {
 /**
  * Quick comparison for filtering/sorting.
  * Returns a simple similarity score without full analysis.
+ * Uses alignment-free MinHash (k=7) for robustness against shifts and indels.
  */
 export function quickCompare(
   sequenceA: string,
   sequenceB: string
 ): { similarity: number; estimateType: 'quick' } {
-  const similarity = quickSimilarityEstimate(sequenceA, sequenceB);
+  // Use MinHash with k=7 (good balance for relatedness)
+  const similarity = minHashJaccard(sequenceA, sequenceB, 7, 128) * 100;
   return { similarity, estimateType: 'quick' };
 }
 

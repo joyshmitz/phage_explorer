@@ -6,6 +6,7 @@ export interface HGTOptions {
   window?: number;
   step?: number;
   zThreshold?: number;
+  minValidRatio?: number;
 }
 
 interface WindowStat {
@@ -41,7 +42,7 @@ function std(values: number[], m: number): number {
   return Math.sqrt(v);
 }
 
-function computeGC(seq: string): number {
+function computeGC(seq: string): { percent: number; total: number } {
   let gc = 0;
   let total = 0;
   for (const c of seq) {
@@ -49,31 +50,42 @@ function computeGC(seq: string): number {
     if (u === 'G' || u === 'C') gc++;
     if (u === 'A' || u === 'T' || u === 'G' || u === 'C') total++;
   }
-  return total > 0 ? (gc / total) * 100 : 0;
+  return {
+    percent: total > 0 ? (gc / total) * 100 : 0,
+    total,
+  };
 }
 
-function slidingGC(sequence: string, window = 2000, step = 1000): WindowStat[] {
+function slidingGC(
+  sequence: string,
+  window = 2000,
+  step = 1000,
+  minValidRatio = 0.5
+): WindowStat[] {
   const stats: WindowStat[] = [];
-  const gcValues: number[] = [];
+  const validWindows: { start: number; end: number; gc: number }[] = [];
 
+  // First pass: Collect valid GC values to compute robust statistics
   for (let start = 0; start < sequence.length; start += step) {
     const slice = sequence.slice(start, start + window);
     if (!slice.length) break;
-    const gc = computeGC(slice);
-    gcValues.push(gc);
+    
+    const { percent, total } = computeGC(slice);
+    
+    // Skip windows with insufficient valid data (e.g. gaps/Ns)
+    if (total < slice.length * minValidRatio) continue;
+
+    validWindows.push({ start, end: start + slice.length, gc: percent });
   }
 
+  const gcValues = validWindows.map(w => w.gc);
   const mu = mean(gcValues);
   const sigma = std(gcValues, mu) || 1;
 
-  let idx = 0;
-  for (let start = 0; start < sequence.length; start += step) {
-    const slice = sequence.slice(start, start + window);
-    if (!slice.length) break;
-    const gc = gcValues[idx] ?? 0;
-    const z = (gc - mu) / sigma;
-    stats.push({ start, end: start + slice.length, gc, z });
-    idx++;
+  // Second pass: Compute Z-scores for valid windows
+  for (const w of validWindows) {
+    const z = (w.gc - mu) / sigma;
+    stats.push({ start: w.start, end: w.end, gc: w.gc, z });
   }
 
   return stats;
@@ -81,29 +93,55 @@ function slidingGC(sequence: string, window = 2000, step = 1000): WindowStat[] {
 
 function mergeIslands(windows: WindowStat[], zThreshold = 2): GenomicIsland[] {
   const islands: GenomicIsland[] = [];
-  let current: GenomicIsland | null = null;
+  // Extend type locally to track count for averaging
+  let current: (GenomicIsland & { count: number }) | null = null;
 
   for (const w of windows) {
     if (Math.abs(w.z) >= zThreshold) {
-      if (!current) {
-        current = { start: w.start, end: w.end, gc: w.gc, zScore: w.z, genes: [], hallmarks: [], donors: [], amelioration: 'unknown' };
+      if (!current || w.start > current.end) {
+        if (current) {
+          const island = { ...current } as (GenomicIsland & { count?: number });
+          delete island.count;
+          islands.push(island);
+        }
+        current = { 
+          start: w.start, 
+          end: w.end, 
+          gc: w.gc, 
+          zScore: w.z, 
+          genes: [], 
+          hallmarks: [], 
+          donors: [], 
+          amelioration: 'unknown',
+          count: 1 
+        };
       } else {
+        // Weighted average update
+        const n = current.count;
         current.end = w.end;
-        current.gc = (current.gc + w.gc) / 2;
-        current.zScore = (current.zScore + w.z) / 2;
+        current.gc = (current.gc * n + w.gc) / (n + 1);
+        current.zScore = (current.zScore * n + w.z) / (n + 1);
+        current.count++;
       }
     } else if (current) {
-      islands.push(current);
+      // Strip internal count property
+      const island = { ...current } as (GenomicIsland & { count?: number });
+      delete island.count;
+      islands.push(island);
       current = null;
     }
   }
-  if (current) islands.push(current);
+  if (current) {
+    const island = { ...current } as (GenomicIsland & { count?: number });
+    delete island.count;
+    islands.push(island);
+  }
   return islands;
 }
 
 function attachGenes(islands: GenomicIsland[], genes: GeneInfo[]): void {
   for (const island of islands) {
-    island.genes = genes.filter(g => g.startPos >= island.start && g.endPos <= island.end);
+    island.genes = genes.filter(g => g.startPos <= island.end && g.endPos >= island.start);
     island.hallmarks = island.genes
       .filter(g => {
         const text = `${g.name ?? ''} ${g.product ?? ''}`.toLowerCase();
@@ -115,15 +153,14 @@ function attachGenes(islands: GenomicIsland[], genes: GeneInfo[]): void {
 
 function inferDonors(
   islandSeq: string,
-  referenceSketches: Record<string, string>,
+  referenceSets: Record<string, Set<string>>,
   k = 15
 ): DonorCandidate[] {
   const islandSet = extractKmerSet(islandSeq, k);
   if (islandSet.size === 0) return [];
   const candidates: DonorCandidate[] = [];
 
-  for (const [taxon, refSeq] of Object.entries(referenceSketches)) {
-    const refSet = extractKmerSet(refSeq, k);
+  for (const [taxon, refSet] of Object.entries(referenceSets)) {
     if (refSet.size === 0) continue;
     const j = jaccardIndex(islandSet, refSet);
     // Note: WASM min_hash_jaccard could be used here for better performance if available
@@ -152,17 +189,27 @@ export function analyzeHGTProvenance(
   referenceSketches: Record<string, string> = {},
   options?: HGTOptions
 ): HGTAnalysis {
-  const genomeGC = computeGC(genomeSequence);
+  const { percent: genomeGC } = computeGC(genomeSequence);
   const windowSize = options?.window ?? 2000;
   const step = options?.step ?? 1000;
   const zThreshold = options?.zThreshold ?? 2;
-  const windows = slidingGC(genomeSequence, windowSize, step);
+  const minValidRatio = options?.minValidRatio ?? 0.5;
+  
+  const windows = slidingGC(genomeSequence, windowSize, step, minValidRatio);
   const islands = mergeIslands(windows, zThreshold);
   attachGenes(islands, genes);
 
+  // Pre-compute reference k-mer sets once to avoid re-computation per island
+  // Use k=15 as used in inferDonors
+  const k = 15;
+  const referenceSets: Record<string, Set<string>> = {};
+  for (const [taxon, seq] of Object.entries(referenceSketches)) {
+    referenceSets[taxon] = extractKmerSet(seq, k);
+  }
+
   const stamps: PassportStamp[] = islands.map(island => {
     const seq = genomeSequence.slice(island.start, island.end);
-    const donors = inferDonors(seq, referenceSketches);
+    const donors = inferDonors(seq, referenceSets, k);
     const best = donors[0] ?? null;
     const amelioration = estimateAmelioration(island.gc - genomeGC);
     island.donors = donors;

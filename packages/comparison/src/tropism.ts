@@ -1,5 +1,5 @@
 import type { PhageFull, GeneInfo } from '@phage-explorer/core';
-import { translateSequence } from '@phage-explorer/core';
+import { translateSequence, reverseComplement } from '@phage-explorer/core';
 
 export interface ReceptorCandidate {
   receptor: string;
@@ -56,15 +56,6 @@ function containsAny(text: string, needles: string[]): boolean {
 function isTailFiberGene(gene: GeneInfo): boolean {
   const text = `${gene.name ?? ''} ${gene.product ?? ''}`.toLowerCase();
   return containsAny(text, fiberKeywords);
-}
-
-function reverseComplement(seq: string): string {
-  const map: Record<string, string> = { A: 'T', T: 'A', C: 'G', G: 'C', N: 'N' };
-  return seq
-    .split('')
-    .reverse()
-    .map(c => map[c] ?? 'N')
-    .join('');
 }
 
 function translateGeneSequence(genome: string, gene: GeneInfo): string {

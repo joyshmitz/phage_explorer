@@ -471,6 +471,10 @@ export function analyzeEditDistance(
 /**
  * Fast identity check using sampling.
  * Quickly estimates if sequences are similar enough to warrant full comparison.
+ * 
+ * @deprecated This method relies on positional sampling and assumes sequences are globally aligned.
+ * It will fail (return ~0) for unaligned or frameshifted sequences.
+ * Use `minHashJaccard` (from kmer-analysis) or `quickCompare` (from comparison-engine) for robust alignment-free estimation.
  */
 export function quickSimilarityEstimate(
   a: string,

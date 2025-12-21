@@ -98,7 +98,9 @@ interface GeneTokens {
 
 function preprocessGene(g: GeneInfo): GeneTokens {
   const n = (g.product || g.name || '').toLowerCase();
-  const terms = n.split(/[\s-]+/).filter(t => t.length > 3);
+  // Split on whitespace, commas, semicolons, dots, hyphens
+  // Keep terms of length 2+ to capture short phage names (CI, Cro, Int, gp3)
+  const terms = n.split(/[\s,;.-]+/).filter(t => t.length >= 2);
   return { name: n, terms };
 }
 

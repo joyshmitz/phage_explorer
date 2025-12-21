@@ -276,13 +276,13 @@ function analyzeKmersJS(
   sequenceB: string,
   k: number
 ): KmerAnalysis {
-  // Extract k-mer sets (presence/absence)
-  const setA = extractKmerSet(sequenceA, k);
-  const setB = extractKmerSet(sequenceB, k);
+  // Extract canonical k-mer sets (presence/absence)
+  const setA = extractCanonicalKmerSet(sequenceA, k);
+  const setB = extractCanonicalKmerSet(sequenceB, k);
 
-  // Extract k-mer frequencies (abundance)
-  const freqsA = extractKmerFrequencies(sequenceA, k);
-  const freqsB = extractKmerFrequencies(sequenceB, k);
+  // Extract canonical k-mer frequencies (abundance)
+  const freqsA = extractCanonicalKmerFrequencies(sequenceA, k);
+  const freqsB = extractCanonicalKmerFrequencies(sequenceB, k);
 
   // Compute metrics
   const shared = kmerIntersectionSize(setA, setB);
@@ -348,6 +348,30 @@ export function extractCanonicalKmerSet(sequence: string, k: number): Set<string
 }
 
 /**
+ * Extract canonical k-mer frequencies (abundance-aware).
+ */
+export function extractCanonicalKmerFrequencies(sequence: string, k: number): Map<string, number> {
+  const freqs = new Map<string, number>();
+  const seq = sequence.toUpperCase();
+  const complement: Record<string, string> = { A: 'T', T: 'A', G: 'C', C: 'G' };
+
+  for (let i = 0; i <= seq.length - k; i++) {
+    const kmer = seq.substring(i, i + k);
+    if (kmer.includes('N')) continue;
+
+    let revComp = '';
+    for (let j = k - 1; j >= 0; j--) {
+      revComp += complement[kmer[j]] ?? kmer[j];
+    }
+
+    const canonical = kmer < revComp ? kmer : revComp;
+    freqs.set(canonical, (freqs.get(canonical) ?? 0) + 1);
+  }
+
+  return freqs;
+}
+
+/**
  * Estimate Jaccard similarity using MinHash for very large sequences.
  * This provides O(n) space and time complexity instead of O(n^2).
  * Uses WASM implementation when available (3-5x faster).
@@ -373,6 +397,28 @@ export function minHashJaccard(
   return minHashJaccardJS(sequenceA, sequenceB, k, numHashes);
 }
 
+// Cache for deterministic MinHash seeds
+const seedCache = new Map<number, Uint32Array>();
+
+// Generate deterministic seeds for MinHash
+function getDeterministicSeeds(count: number): Uint32Array {
+  if (seedCache.has(count)) {
+    return seedCache.get(count)!;
+  }
+
+  const seeds = new Uint32Array(count);
+  // Simple LCG for deterministic pseudo-random numbers
+  let state = 0xdeadbeef;
+  for (let i = 0; i < count; i++) {
+    state = Math.imul(state, 1664525) + 1013904223;
+    state = state >>> 0;
+    seeds[i] = state;
+  }
+
+  seedCache.set(count, seeds);
+  return seeds;
+}
+
 /**
  * Pure JS implementation of MinHash Jaccard (fallback when WASM unavailable).
  */
@@ -392,11 +438,9 @@ function minHashJaccardJS(
     return h >>> 0;
   };
 
-  // Generate permutation seeds once
-  const seeds = new Uint32Array(numHashes);
-  for (let i = 0; i < numHashes; i++) {
-    seeds[i] = Math.floor(Math.random() * 0xffffffff);
-  }
+  // Get deterministic permutation seeds
+  const seeds = getDeterministicSeeds(numHashes);
+  const complement: Record<string, string> = { A: 'T', T: 'A', G: 'C', C: 'G' };
 
   // Generate min-hash signature for a sequence
   const getSignature = (seq: string): Uint32Array => {
@@ -407,7 +451,13 @@ function minHashJaccardJS(
       const kmer = s.substring(i, i + k);
       if (kmer.includes('N')) continue;
 
-      const baseHash = fnv1a(kmer);
+      let revComp = '';
+      for (let j = k - 1; j >= 0; j--) {
+        revComp += complement[kmer[j]] ?? kmer[j];
+      }
+      const canonical = kmer < revComp ? kmer : revComp;
+
+      const baseHash = fnv1a(canonical);
 
       // Permute hash to get 'numHashes' independent values
       // h_i(x) = (a * x + b) % prime is better, but XOR-shift is faster

@@ -23,7 +23,9 @@ interface GeneTokens {
 
 function preprocessGene(g: GeneInfo): GeneTokens {
   const n = (g.product || g.name || '').toLowerCase();
-  const terms = n.split(/[\s-]+/).filter(t => t.length > 3);
+  // Split on whitespace, commas, semicolons, dots, hyphens
+  // Keep terms of length 2+ to capture short phage names (CI, Cro, Int, gp3)
+  const terms = n.split(/[\s,;.-]+/).filter(t => t.length >= 2);
   return { name: n, terms };
 }
 
@@ -31,13 +33,13 @@ function preprocessGene(g: GeneInfo): GeneTokens {
 function geneDistanceOptimized(t1: GeneTokens, t2: GeneTokens): number {
   if (!t1.name || !t2.name) return 1.0;
   if (t1.name === t2.name) return 0.0;
-  if (t1.name.includes(t2.name) || t2.name.includes(t1.name)) return 0.2;
   
-  // Check common terms
-  // Optimization: Loop smaller array
-  const [small, large] = t1.terms.length < t2.terms.length ? [t1.terms, t2.terms] : [t2.terms, t1.terms];
-  for (const term of small) {
-    if (large.includes(term)) return 0.5;
+  if (t1.terms.length === 0 || t2.terms.length === 0) return 1.0;
+
+  // Check common terms using Set for O(N+M)
+  const set1 = new Set(t1.terms);
+  for (const term of t2.terms) {
+    if (set1.has(term)) return 0.5;
   }
   
   return 1.0;

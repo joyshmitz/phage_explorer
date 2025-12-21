@@ -30,15 +30,21 @@ import { jaccardIndex, extractKmerSet } from './kmer-analysis';
  * Calculate GC content of a sequence.
  */
 export function calculateGCContent(sequence: string): number {
-  const seq = sequence.toUpperCase();
   let gc = 0;
   let total = 0;
+  const len = sequence.length;
 
-  for (const char of seq) {
-    if (char === 'G' || char === 'C') {
+  for (let i = 0; i < len; i++) {
+    const char = sequence.charCodeAt(i);
+    // G=71, C=67, g=103, c=99
+    // A=65, T=84, a=97, t=116
+    if (char === 71 || char === 67 || char === 103 || char === 99) {
       gc++;
       total++;
-    } else if (char === 'A' || char === 'T') {
+    } else if (
+      char === 65 || char === 84 || // A, T
+      char === 97 || char === 116   // a, t
+    ) {
       total++;
     }
   }
@@ -593,8 +599,9 @@ export function compareDinucleotideBias(
   const gcA = calculateGCContent(sequenceA) / 100;
   const gcB = calculateGCContent(sequenceB) / 100;
 
-  const expectedCpGA = gcA * gcA * totalA; // Expected CpG if random
-  const expectedCpGB = gcB * gcB * totalB;
+  // Expected CpG = P(C) * P(G) * N ≈ (GC/2) * (GC/2) * N
+  const expectedCpGA = (gcA / 2) * (gcA / 2) * totalA;
+  const expectedCpGB = (gcB / 2) * (gcB / 2) * totalB;
 
   const cpgRatioA = expectedCpGA > 0 ? (countsA['CG'] ?? 0) / expectedCpGA : 0;
   const cpgRatioB = expectedCpGB > 0 ? (countsB['CG'] ?? 0) / expectedCpGB : 0;
