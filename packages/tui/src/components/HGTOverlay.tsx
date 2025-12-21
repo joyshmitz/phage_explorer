@@ -82,20 +82,23 @@ export function HGTOverlay(): React.ReactElement {
       )}
 
       <Box flexDirection="column">
-        {overlayData.stamps.slice(0, 4).map((s, idx) => (
-          <Box key={idx} flexDirection="column" marginBottom={1}>
-            <Text color={colors.accent} bold>
-              [{idx + 1}] {s.island.start.toLocaleString()}–{s.island.end.toLocaleString()} bp · ΔGC {s.gcDelta.toFixed(1)}%
-            </Text>
-            <Text color={colors.textDim}>
-              Amelioration: {s.amelioration}
-              {s.donor ? ` · Donor: ${s.donor.taxon} (${(s.donor.similarity * 100).toFixed(1)}%)` : ' · Donor: unknown'}
-            </Text>
-            {s.hallmarks?.length ? (
-              <Text color={colors.textDim} dimColor>Hallmarks: {s.hallmarks.join(', ')}</Text>
-            ) : null}
-          </Box>
-        ))}
+        {overlayData.stamps.slice(0, 4).map((s, idx) => {
+          if (!s || !s.island) return null;
+          return (
+            <Box key={idx} flexDirection="column" marginBottom={1}>
+              <Text color={colors.accent} bold>
+                [{idx + 1}] {s.island.start.toLocaleString()}–{s.island.end.toLocaleString()} bp · ΔGC {s.gcDelta.toFixed(1)}%
+              </Text>
+              <Text color={colors.textDim}>
+                Amelioration: {s.amelioration}
+                {s.donor ? ` · Donor: ${s.donor.taxon} (${(s.donor.similarity * 100).toFixed(1)}%)` : ' · Donor: unknown'}
+              </Text>
+              {s.hallmarks?.length ? (
+                <Text color={colors.textDim} dimColor>Hallmarks: {s.hallmarks.join(', ')}</Text>
+              ) : null}
+            </Box>
+          );
+        })}
         {overlayData.stamps.length > 4 && (
           <Text color={colors.textDim}>…{overlayData.stamps.length - 4} more islands</Text>
         )}

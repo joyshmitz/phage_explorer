@@ -9,8 +9,9 @@ import {
   models,
   preferences,
   tropismPredictions,
+  foldEmbeddings,
 } from '@phage-explorer/db-schema';
-import type { PhageSummary, PhageFull, GeneInfo, CodonUsageData } from '@phage-explorer/core';
+import { decodeFloat32VectorLE, type PhageSummary, type PhageFull, type GeneInfo, type CodonUsageData, type FoldEmbedding } from '@phage-explorer/core';
 import type { PhageRepository, CacheEntry, TropismPrediction } from './types';
 import { CHUNK_SIZE } from './types';
 import { LRUCache } from './lru-cache';
@@ -307,6 +308,57 @@ export class BunSqliteRepository implements PhageRepository {
     const parsed = rows.map(r => ({
       ...r,
       evidence: safeJsonParse<string[]>(r.evidence, []),
+    }));
+
+    this.cache.set(cacheKey, { data: parsed, timestamp: Date.now() });
+    return parsed;
+  }
+
+  async getFoldEmbeddings(phageId: number, model = 'protein-k3-hash-v1'): Promise<FoldEmbedding[]> {
+    const cacheKey = `foldEmbeddings:${phageId}:${model}`;
+    const cached = this.cache.get(cacheKey) as CacheEntry<FoldEmbedding[]> | undefined;
+    if (cached && Date.now() - cached.timestamp < 60000) {
+      return cached.data;
+    }
+
+    let rows: Array<{
+      geneId: number;
+      dims: number;
+      vector: unknown;
+      name: string | null;
+      product: string | null;
+      startPos: number;
+      endPos: number;
+    }> = [];
+
+    try {
+      rows = await this.db
+        .select({
+          geneId: foldEmbeddings.geneId,
+          dims: foldEmbeddings.dims,
+          vector: foldEmbeddings.vector,
+          name: genes.name,
+          product: genes.product,
+          startPos: genes.startPos,
+          endPos: genes.endPos,
+        })
+        .from(foldEmbeddings)
+        .innerJoin(genes, eq(foldEmbeddings.geneId, genes.id))
+        .where(and(eq(foldEmbeddings.phageId, phageId), eq(foldEmbeddings.model, model)))
+        .orderBy(asc(foldEmbeddings.geneId));
+    } catch {
+      // Optional table: older phage.db builds may not include fold_embeddings.
+      const empty: FoldEmbedding[] = [];
+      this.cache.set(cacheKey, { data: empty, timestamp: Date.now() });
+      return empty;
+    }
+
+    const parsed: FoldEmbedding[] = rows.map((row) => ({
+      geneId: row.geneId,
+      vector: decodeFloat32VectorLE(row.vector as Uint8Array, row.dims),
+      length: Math.max(0, Math.floor((row.endPos - row.startPos) / 3)),
+      name: row.name,
+      product: row.product,
     }));
 
     this.cache.set(cacheKey, { data: parsed, timestamp: Date.now() });

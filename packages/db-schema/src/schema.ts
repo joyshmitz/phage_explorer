@@ -85,6 +85,22 @@ export const tropismPredictions = sqliteTable('tropism_predictions', {
   index('idx_tropism_gene').on(table.geneId),
 ]);
 
+// Fold / protein embeddings (used by FoldQuickview novelty + nearest neighbors)
+export const foldEmbeddings = sqliteTable('fold_embeddings', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  phageId: integer('phage_id').notNull().references(() => phages.id),
+  geneId: integer('gene_id').notNull().references(() => genes.id),
+  model: text('model').notNull(), // e.g., "protein-k3-hash-v1"
+  dims: integer('dims').notNull(),
+  vector: blob('vector').notNull(), // Float32Array bytes (little-endian)
+  meta: text('meta'), // JSON
+  createdAt: integer('created_at'), // unix timestamp
+}, (table) => [
+  index('idx_fold_embeddings_phage').on(table.phageId),
+  index('idx_fold_embeddings_gene').on(table.geneId),
+  uniqueIndex('uniq_fold_embeddings_gene_model').on(table.geneId, table.model),
+]);
+
 // User preferences
 export const preferences = sqliteTable('preferences', {
   key: text('key').primaryKey(),
@@ -209,6 +225,9 @@ export type NewPreference = typeof preferences.$inferInsert;
 
 export type TropismPrediction = typeof tropismPredictions.$inferSelect;
 export type NewTropismPrediction = typeof tropismPredictions.$inferInsert;
+
+export type FoldEmbeddingRow = typeof foldEmbeddings.$inferSelect;
+export type NewFoldEmbeddingRow = typeof foldEmbeddings.$inferInsert;
 
 // New annotation table types
 export type ProteinDomain = typeof proteinDomains.$inferSelect;

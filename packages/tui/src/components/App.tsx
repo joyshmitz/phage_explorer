@@ -33,6 +33,7 @@ import { CGROverlay } from './CGROverlay';
 import { HilbertOverlay } from './HilbertOverlay';
 import { GelOverlay } from './GelOverlay';
 import { CRISPROverlay } from './CRISPROverlay';
+import { SelectionPressureOverlay } from './SelectionPressureOverlay';
 	import { SyntenyOverlay } from './SyntenyOverlay';
 	import { TropismOverlay } from './TropismOverlay';
 	import { StructureConstraintOverlay } from './StructureConstraintOverlay';
@@ -55,7 +56,7 @@ import { HGTOverlay } from './HGTOverlay';
 import { BiasDecompositionOverlay } from './BiasDecompositionOverlay';
 import { analyzeHGTProvenance, analyzeTailFiberTropism } from '@phage-explorer/comparison';
 import type { FoldEmbedding, StructuralConstraintReport } from '@phage-explorer/core';
-import { analyzeStructuralConstraints } from '@phage-explorer/core';
+import { analyzeStructuralConstraints, reverseComplement, translateSequence } from '@phage-explorer/core';
 import { initializeCommands } from '../commands/definitions';
 
 const ANALYSIS_MENU_ID: OverlayId = 'analysisMenu';
@@ -81,6 +82,68 @@ const MOSAIC_ID: OverlayId = 'mosaicRadar';
 const ANOMALY_ID: OverlayId = 'anomaly';
 const DOTPLOT_ID: OverlayId = 'dotPlot';
 const NONB_ID: OverlayId = 'non-b-dna';
+const FOLD_EMBEDDING_MODEL = 'protein-k3-hash-v1';
+
+function proteinKmerHashEmbedding(aa: string, options?: { k?: number; dims?: number }): number[] {
+  const k = options?.k ?? 3;
+  const dims = options?.dims ?? 256;
+  const vec = new Array<number>(dims).fill(0);
+  const seq = aa.toUpperCase();
+  if (seq.length < k) return vec;
+
+  for (let i = 0; i <= seq.length - k; i++) {
+    let hash = 2166136261; // FNV-1a
+    for (let j = 0; j < k; j++) {
+      const code = seq.charCodeAt(i + j);
+      // Skip kmers that contain stop/unknowns (common in partial translations).
+      if (code < 65 || code > 90 || code === 42) {
+        hash = 0;
+        break;
+      }
+      hash ^= code;
+      hash = Math.imul(hash, 16777619);
+    }
+    if (hash === 0) continue;
+    vec[(hash >>> 0) % dims] += 1;
+  }
+
+  let norm = 0;
+  for (const v of vec) norm += v * v;
+  norm = Math.sqrt(norm) || 1;
+  for (let i = 0; i < vec.length; i++) vec[i] /= norm;
+  return vec;
+}
+
+async function computeEmbeddingsForPhage(args: {
+  repository: PhageRepository;
+  phageId: number;
+  model: string;
+}): Promise<FoldEmbedding[]> {
+  const { repository, phageId } = args;
+  const length = await repository.getFullGenomeLength(phageId);
+  const genome = await repository.getSequenceWindow(phageId, 0, length);
+  const genes = await repository.getGenes(phageId);
+
+  const embeddings: FoldEmbedding[] = [];
+  for (const gene of genes) {
+    if (gene.type !== 'CDS') continue;
+    const window = genome.slice(gene.startPos, gene.endPos);
+    const dna = gene.strand === '-' ? reverseComplement(window) : window;
+    const aa = translateSequence(dna, 0);
+    embeddings.push({
+      geneId: gene.id,
+      vector: proteinKmerHashEmbedding(aa, { k: 3, dims: 256 }),
+      length: aa.length,
+      name: gene.name ?? null,
+      product: gene.product ?? null,
+    });
+  }
+
+  // FoldEmbedding doesn't include model metadata; keep it implicit in the caller.
+  void args.model;
+
+  return embeddings;
+}
 
 interface AppProps {
   repository: PhageRepository;
@@ -166,6 +229,77 @@ export function App({ repository, foldEmbeddings = [] }: AppProps): React.ReactE
   const [sequence, setSequence] = useState<string>('');
   const [analysisProgress, setAnalysisProgress] = useState<string>('');
 
+  // Fold Quickview corpus (all phage fold embeddings)
+  const [foldCorpus, setFoldCorpus] = useState<FoldEmbedding[]>(foldEmbeddings);
+  const [foldCorpusLoading, setFoldCorpusLoading] = useState(false);
+  const [foldCorpusError, setFoldCorpusError] = useState<string | null>(null);
+  const [foldCorpusSource, setFoldCorpusSource] = useState<'db' | 'computed'>('db');
+
+  // If embeddings are injected (e.g., tests), prefer them and skip DB loads.
+  useEffect(() => {
+    if (foldEmbeddings.length === 0) return;
+    setFoldCorpus(foldEmbeddings);
+    setFoldCorpusLoading(false);
+    setFoldCorpusError(null);
+    setFoldCorpusSource('db');
+  }, [foldEmbeddings]);
+
+  const loadFoldCorpus = React.useCallback(async () => {
+    if (foldEmbeddings.length > 0) return;
+    if (foldCorpusLoading) return;
+    if (phages.length === 0) return;
+
+    setFoldCorpusLoading(true);
+    setFoldCorpusError(null);
+
+    try {
+      // 1) Prefer DB-backed embeddings when the table exists and is populated.
+      if (repository.getFoldEmbeddings) {
+        const perPhage = await Promise.all(
+          phages.map((p) => repository.getFoldEmbeddings?.(p.id, FOLD_EMBEDDING_MODEL) ?? Promise.resolve([]))
+        );
+        const flattened = perPhage.flat();
+        if (flattened.length > 0) {
+          setFoldCorpus(flattened);
+          setFoldCorpusSource('db');
+          return;
+        }
+      }
+
+      // 2) Fallback: compute lightweight embeddings on demand from sequences.
+      const computed: FoldEmbedding[] = [];
+      for (const phage of phages) {
+        const perPhage = await computeEmbeddingsForPhage({
+          repository,
+          phageId: phage.id,
+          model: FOLD_EMBEDDING_MODEL,
+        });
+        computed.push(...perPhage);
+      }
+      setFoldCorpus(computed);
+      setFoldCorpusSource('computed');
+      if (computed.length === 0) {
+        setFoldCorpusError('No fold embeddings available (DB missing and fallback produced zero CDS embeddings).');
+      }
+    } catch (err) {
+      setFoldCorpus([]);
+      setFoldCorpusError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setFoldCorpusLoading(false);
+    }
+  }, [foldEmbeddings.length, foldCorpusLoading, phages, repository]);
+
+  // Load fold embeddings corpus on-demand when Fold Quickview opens.
+  useEffect(() => {
+    if (activeOverlay !== 'foldQuickview') return;
+    if (foldEmbeddings.length > 0) return;
+    if (foldCorpusLoading) return;
+    if (foldCorpus.length > 0) return;
+    if (phages.length === 0) return;
+    if (foldCorpusError) return;
+    void loadFoldCorpus();
+  }, [activeOverlay, foldEmbeddings.length, foldCorpus.length, foldCorpusError, foldCorpusLoading, loadFoldCorpus, phages.length]);
+
   // Update terminal size
   useEffect(() => {
     const updateSize = () => {
@@ -202,13 +336,9 @@ export function App({ repository, foldEmbeddings = [] }: AppProps): React.ReactE
     const load = async () => {
       try {
         const sampleSequence = (seq: string): string => {
-          // Downsample to keep memory light: take every 5th base, cap at 50k chars
-          const step = 5;
-          let sampled = '';
-          for (let i = 0; i < seq.length && sampled.length < 50_000; i += step) {
-            sampled += seq[i];
-          }
-          return sampled;
+          // Take a contiguous slice to preserve k-mers for HGT analysis.
+          // Cap at 200k to cover most phages (T4 is ~169k) while limiting memory.
+          return seq.substring(0, 200_000);
         };
 
         const entries = await Promise.all(
@@ -262,6 +392,10 @@ export function App({ repository, foldEmbeddings = [] }: AppProps): React.ReactE
           const cache = overlayCacheRef.current.get(phage.id);
           
          if (cache && cache.length === length && cache.hash === seqHash && cache.refVersion === referenceVersionRef.current) {
+             // Refresh LRU order (delete and re-set)
+             overlayCacheRef.current.delete(phage.id);
+             overlayCacheRef.current.set(phage.id, cache);
+             
              setOverlayData(cache.data);
              setStructureReport(cache.data[STRUCTURE_ID] as StructuralConstraintReport ?? null);
              setAnalysisProgress('');
@@ -316,7 +450,13 @@ export function App({ repository, foldEmbeddings = [] }: AppProps): React.ReactE
                setOverlayData({ ...partialData });
              }
              
-             // Cache result
+             // Cache result (LRU eviction)
+             if (overlayCacheRef.current.size >= 10) {
+               const oldest = overlayCacheRef.current.keys().next().value;
+               if (typeof oldest === 'number') {
+                 overlayCacheRef.current.delete(oldest);
+               }
+             }
              overlayCacheRef.current.set(phage.id, { length, hash: seqHash, refVersion: referenceVersionRef.current, data: partialData });
              setAnalysisProgress('');
           }
@@ -829,8 +969,8 @@ export function App({ repository, foldEmbeddings = [] }: AppProps): React.ReactE
       {activeOverlay === 'help' && (
         <Box
           position="absolute"
-          marginLeft={Math.floor((terminalCols - 50) / 2)}
-          marginTop={Math.floor((terminalRows - 20) / 2)}
+          marginLeft={Math.max(0, Math.floor((terminalCols - 50) / 2))}
+          marginTop={Math.max(0, Math.floor((terminalRows - 20) / 2))}
         >
           <HelpOverlay />
         </Box>
@@ -839,8 +979,8 @@ export function App({ repository, foldEmbeddings = [] }: AppProps): React.ReactE
       {activeOverlay === 'aaKey' && (
         <Box
           position="absolute"
-          marginLeft={Math.floor((terminalCols - 60) / 2)}
-          marginTop={Math.floor((terminalRows - 18) / 2)}
+          marginLeft={Math.max(0, Math.floor((terminalCols - 60) / 2))}
+          marginTop={Math.max(0, Math.floor((terminalRows - 18) / 2))}
         >
           <AAKeyOverlay />
         </Box>
@@ -849,8 +989,8 @@ export function App({ repository, foldEmbeddings = [] }: AppProps): React.ReactE
       {activeOverlay === 'search' && (
         <Box
           position="absolute"
-          marginLeft={Math.floor((terminalCols - 60) / 2)}
-          marginTop={Math.floor((terminalRows - 16) / 2)}
+          marginLeft={Math.max(0, Math.floor((terminalCols - 60) / 2))}
+          marginTop={Math.max(0, Math.floor((terminalRows - 16) / 2))}
         >
           <SearchOverlay repository={repository} />
         </Box>
@@ -859,8 +999,8 @@ export function App({ repository, foldEmbeddings = [] }: AppProps): React.ReactE
       {activeOverlay === ANALYSIS_MENU_ID && (
         <Box
           position="absolute"
-          marginLeft={Math.floor((terminalCols - 70) / 2)}
-          marginTop={Math.floor((terminalRows - 20) / 2)}
+          marginLeft={Math.max(0, Math.floor((terminalCols - 70) / 2))}
+          marginTop={Math.max(0, Math.floor((terminalRows - 20) / 2))}
         >
           <AnalysisMenuOverlay onClose={() => closeOverlay(ANALYSIS_MENU_ID)} />
         </Box>
@@ -869,8 +1009,8 @@ export function App({ repository, foldEmbeddings = [] }: AppProps): React.ReactE
       {activeOverlay === SIMULATION_MENU_ID && (
         <Box
           position="absolute"
-          marginLeft={Math.floor((terminalCols - 80) / 2)}
-          marginTop={Math.floor((terminalRows - 24) / 2)}
+          marginLeft={Math.max(0, Math.floor((terminalCols - 80) / 2))}
+          marginTop={Math.max(0, Math.floor((terminalRows - 24) / 2))}
         >
           <SimulationHubOverlay onClose={() => closeOverlay(SIMULATION_MENU_ID)} />
         </Box>
@@ -879,8 +1019,8 @@ export function App({ repository, foldEmbeddings = [] }: AppProps): React.ReactE
       {activeOverlay === 'gcSkew' && (
         <Box
           position="absolute"
-          marginLeft={Math.floor((terminalCols - 80) / 2)}
-          marginTop={Math.floor((terminalRows - 14) / 2)}
+          marginLeft={Math.max(0, Math.floor((terminalCols - 80) / 2))}
+          marginTop={Math.max(0, Math.floor((terminalRows - 14) / 2))}
         >
           <GCOverlay sequence={sequence} />
         </Box>
@@ -889,8 +1029,8 @@ export function App({ repository, foldEmbeddings = [] }: AppProps): React.ReactE
       {activeOverlay === 'bendability' && (
         <Box
           position="absolute"
-          marginLeft={Math.floor((terminalCols - 80) / 2)}
-          marginTop={Math.floor((terminalRows - 12) / 2)}
+          marginLeft={Math.max(0, Math.floor((terminalCols - 80) / 2))}
+          marginTop={Math.max(0, Math.floor((terminalRows - 12) / 2))}
         >
           <BendabilityOverlay sequence={sequence} />
         </Box>
@@ -899,8 +1039,8 @@ export function App({ repository, foldEmbeddings = [] }: AppProps): React.ReactE
       {activeOverlay === 'promoter' && (
         <Box
           position="absolute"
-          marginLeft={Math.floor((terminalCols - 72) / 2)}
-          marginTop={Math.floor((terminalRows - 12) / 2)}
+          marginLeft={Math.max(0, Math.floor((terminalCols - 72) / 2))}
+          marginTop={Math.max(0, Math.floor((terminalRows - 12) / 2))}
         >
           <PromoterOverlay sequence={sequence} />
         </Box>
@@ -909,8 +1049,8 @@ export function App({ repository, foldEmbeddings = [] }: AppProps): React.ReactE
       {activeOverlay === PRESSURE_ID && (
         <Box
           position="absolute"
-          marginLeft={Math.floor((terminalCols - 90) / 2)}
-          marginTop={Math.floor((terminalRows - 14) / 2)}
+          marginLeft={Math.max(0, Math.floor((terminalCols - 90) / 2))}
+          marginTop={Math.max(0, Math.floor((terminalRows - 14) / 2))}
         >
           <PackagingPressureOverlay />
         </Box>
@@ -919,8 +1059,8 @@ export function App({ repository, foldEmbeddings = [] }: AppProps): React.ReactE
       {activeOverlay === STABILITY_ID && (
         <Box
           position="absolute"
-          marginLeft={Math.floor((terminalCols - 96) / 2)}
-          marginTop={Math.floor((terminalRows - 18) / 2)}
+          marginLeft={Math.max(0, Math.floor((terminalCols - 96) / 2))}
+          marginTop={Math.max(0, Math.floor((terminalRows - 18) / 2))}
         >
           <VirionStabilityOverlay />
         </Box>
@@ -929,8 +1069,8 @@ export function App({ repository, foldEmbeddings = [] }: AppProps): React.ReactE
       {activeOverlay === TRANSCRIPTION_ID && (
         <Box
           position="absolute"
-          marginLeft={Math.floor((terminalCols - 90) / 2)}
-          marginTop={Math.floor((terminalRows - 14) / 2)}
+          marginLeft={Math.max(0, Math.floor((terminalCols - 90) / 2))}
+          marginTop={Math.max(0, Math.floor((terminalRows - 14) / 2))}
         >
           <TranscriptionFlowOverlay
             sequence={sequence}
@@ -942,8 +1082,8 @@ export function App({ repository, foldEmbeddings = [] }: AppProps): React.ReactE
       {activeOverlay === 'repeats' && (
         <Box
           position="absolute"
-          marginLeft={Math.floor((terminalCols - 72) / 2)}
-          marginTop={Math.floor((terminalRows - 12) / 2)}
+          marginLeft={Math.max(0, Math.floor((terminalCols - 72) / 2))}
+          marginTop={Math.max(0, Math.floor((terminalRows - 12) / 2))}
         >
           <RepeatOverlay sequence={sequence} />
         </Box>
@@ -952,8 +1092,8 @@ export function App({ repository, foldEmbeddings = [] }: AppProps): React.ReactE
       {activeOverlay === 'modules' && (
         <Box
           position="absolute"
-          marginLeft={Math.floor((terminalCols - 84) / 2)}
-          marginTop={Math.floor((terminalRows - 18) / 2)}
+          marginLeft={Math.max(0, Math.floor((terminalCols - 84) / 2))}
+          marginTop={Math.max(0, Math.floor((terminalRows - 18) / 2))}
         >
           <ModuleOverlay />
         </Box>
@@ -962,8 +1102,8 @@ export function App({ repository, foldEmbeddings = [] }: AppProps): React.ReactE
       {activeOverlay === 'hgt' && (
         <Box
           position="absolute"
-          marginLeft={Math.floor((terminalCols - 92) / 2)}
-          marginTop={Math.floor((terminalRows - 24) / 2)}
+          marginLeft={Math.max(0, Math.floor((terminalCols - 92) / 2))}
+          marginTop={Math.max(0, Math.floor((terminalRows - 24) / 2))}
         >
           <HGTOverlay />
         </Box>
@@ -972,8 +1112,8 @@ export function App({ repository, foldEmbeddings = [] }: AppProps): React.ReactE
       {activeOverlay === TROPISM_ID && (
         <Box
           position="absolute"
-          marginLeft={Math.floor((terminalCols - 84) / 2)}
-          marginTop={Math.floor((terminalRows - 20) / 2)}
+          marginLeft={Math.max(0, Math.floor((terminalCols - 84) / 2))}
+          marginTop={Math.max(0, Math.floor((terminalRows - 20) / 2))}
         >
           <TropismOverlay />
         </Box>
@@ -982,8 +1122,8 @@ export function App({ repository, foldEmbeddings = [] }: AppProps): React.ReactE
       {activeOverlay === STRUCTURE_ID && (
         <Box
           position="absolute"
-          marginLeft={Math.floor((terminalCols - 94) / 2)}
-          marginTop={Math.floor((terminalRows - 24) / 2)}
+          marginLeft={Math.max(0, Math.floor((terminalCols - 94) / 2))}
+          marginTop={Math.max(0, Math.floor((terminalRows - 24) / 2))}
         >
           <StructureConstraintOverlay proteinReport={structureReport} />
         </Box>
@@ -992,18 +1132,68 @@ export function App({ repository, foldEmbeddings = [] }: AppProps): React.ReactE
       {activeOverlay === NONB_ID && (
         <Box
           position="absolute"
-          marginLeft={Math.floor((terminalCols - 80) / 2)}
-          marginTop={Math.floor((terminalRows - 20) / 2)}
+          marginLeft={Math.max(0, Math.floor((terminalCols - 80) / 2))}
+          marginTop={Math.max(0, Math.floor((terminalRows - 20) / 2))}
         >
           <NonBDNAOverlay sequence={sequence} />
+        </Box>
+      )}
+
+      {activeOverlay === 'cgr' && (
+        <Box
+          position="absolute"
+          marginLeft={Math.max(0, Math.floor((terminalCols - 86) / 2))}
+          marginTop={Math.max(0, Math.floor((terminalRows - 24) / 2))}
+        >
+          <CGROverlay sequence={sequence} />
+        </Box>
+      )}
+
+      {activeOverlay === DOTPLOT_ID && (
+        <Box
+          position="absolute"
+          marginLeft={Math.max(0, Math.floor((terminalCols - 94) / 2))}
+          marginTop={Math.max(0, Math.floor((terminalRows - 26) / 2))}
+        >
+          <DotPlotOverlay sequence={sequence} />
+        </Box>
+      )}
+
+      {activeOverlay === 'selectionPressure' && (
+        <Box
+          position="absolute"
+          marginLeft={Math.max(0, Math.floor((terminalCols - 90) / 2))}
+          marginTop={Math.max(0, Math.floor((terminalRows - 22) / 2))}
+        >
+          <SelectionPressureOverlay repository={repository} />
+        </Box>
+      )}
+
+      {activeOverlay === 'hilbert' && (
+        <Box
+          position="absolute"
+          marginLeft={Math.max(0, Math.floor((terminalCols - 80) / 2))}
+          marginTop={Math.max(0, Math.floor((terminalRows - 24) / 2))}
+        >
+          <HilbertOverlay sequence={sequence} />
+        </Box>
+      )}
+
+      {activeOverlay === 'gel' && (
+        <Box
+          position="absolute"
+          marginLeft={Math.max(0, Math.floor((terminalCols - 96) / 2))}
+          marginTop={Math.max(0, Math.floor((terminalRows - 24) / 2))}
+        >
+          <GelOverlay sequence={sequence} />
         </Box>
       )}
 
       {activeOverlay === CRISPR_ID && (
         <Box
           position="absolute"
-          marginLeft={Math.floor((terminalCols - 74) / 2)}
-          marginTop={Math.floor((terminalRows - 18) / 2)}
+          marginLeft={Math.max(0, Math.floor((terminalCols - 74) / 2))}
+          marginTop={Math.max(0, Math.floor((terminalRows - 18) / 2))}
         >
           <CRISPROverlay sequence={sequence} genes={currentPhage?.genes ?? []} />
         </Box>
@@ -1012,8 +1202,8 @@ export function App({ repository, foldEmbeddings = [] }: AppProps): React.ReactE
       {activeOverlay === SYNTENY_ID && (
         <Box
           position="absolute"
-          marginLeft={Math.floor((terminalCols - 94) / 2)}
-          marginTop={Math.floor((terminalRows - 24) / 2)}
+          marginLeft={Math.max(0, Math.floor((terminalCols - 94) / 2))}
+          marginTop={Math.max(0, Math.floor((terminalRows - 24) / 2))}
         >
           <SyntenyOverlay repository={repository} />
         </Box>
@@ -1022,8 +1212,8 @@ export function App({ repository, foldEmbeddings = [] }: AppProps): React.ReactE
       {activeOverlay === MOSAIC_ID && (
         <Box
           position="absolute"
-          marginLeft={Math.floor((terminalCols - 96) / 2)}
-          marginTop={Math.floor((terminalRows - 20) / 2)}
+          marginLeft={Math.max(0, Math.floor((terminalCols - 96) / 2))}
+          marginTop={Math.max(0, Math.floor((terminalRows - 20) / 2))}
         >
           <MosaicRadarView
             sequence={sequence}
@@ -1036,8 +1226,8 @@ export function App({ repository, foldEmbeddings = [] }: AppProps): React.ReactE
       {activeOverlay === BIAS_ID && (
         <Box
           position="absolute"
-          marginLeft={Math.floor((terminalCols - 96) / 2)}
-          marginTop={Math.floor((terminalRows - 24) / 2)}
+          marginLeft={Math.max(0, Math.floor((terminalCols - 96) / 2))}
+          marginTop={Math.max(0, Math.floor((terminalRows - 24) / 2))}
         >
           <BiasDecompositionOverlay repository={repository} />
         </Box>
@@ -1046,8 +1236,8 @@ export function App({ repository, foldEmbeddings = [] }: AppProps): React.ReactE
       {activeOverlay === 'phasePortrait' && (
         <Box
           position="absolute"
-          marginLeft={Math.floor((terminalCols - 84) / 2)}
-          marginTop={Math.floor((terminalRows - 22) / 2)}
+          marginLeft={Math.max(0, Math.floor((terminalCols - 84) / 2))}
+          marginTop={Math.max(0, Math.floor((terminalRows - 22) / 2))}
         >
           <PhasePortraitOverlay sequence={sequence} />
         </Box>
@@ -1056,18 +1246,25 @@ export function App({ repository, foldEmbeddings = [] }: AppProps): React.ReactE
       {activeOverlay === 'foldQuickview' && (
         <Box
           position="absolute"
-          marginLeft={Math.floor((terminalCols - 90) / 2)}
-          marginTop={Math.floor((terminalRows - 22) / 2)}
+          marginLeft={Math.max(0, Math.floor((terminalCols - 90) / 2))}
+          marginTop={Math.max(0, Math.floor((terminalRows - 22) / 2))}
         >
-          <FoldQuickview embeddings={foldEmbeddings ?? []} />
+          <FoldQuickview
+            embeddings={foldEmbeddings.length > 0 ? foldEmbeddings : foldCorpus}
+            genomeSequence={sequence}
+            loading={foldEmbeddings.length === 0 && foldCorpusLoading}
+            error={foldEmbeddings.length === 0 ? foldCorpusError : null}
+            corpusSource={foldEmbeddings.length > 0 ? 'db' : foldCorpusSource}
+            onReload={foldEmbeddings.length > 0 ? undefined : () => void loadFoldCorpus()}
+          />
         </Box>
       )}
 
       {activeOverlay === 'kmerAnomaly' && (
         <Box
           position="absolute"
-          marginLeft={Math.floor((terminalCols - 80) / 2)}
-          marginTop={Math.floor((terminalRows - 16) / 2)}
+          marginLeft={Math.max(0, Math.floor((terminalCols - 80) / 2))}
+          marginTop={Math.max(0, Math.floor((terminalRows - 16) / 2))}
         >
           <KmerAnomalyOverlay />
         </Box>
@@ -1076,8 +1273,8 @@ export function App({ repository, foldEmbeddings = [] }: AppProps): React.ReactE
       {activeOverlay === 'complexity' && (
         <Box
           position="absolute"
-          marginLeft={Math.floor((terminalCols - 90) / 2)}
-          marginTop={Math.floor((terminalRows - 26) / 2)}
+          marginLeft={Math.max(0, Math.floor((terminalCols - 90) / 2))}
+          marginTop={Math.max(0, Math.floor((terminalRows - 26) / 2))}
         >
           <SequenceComplexityOverlay
             sequence={sequence}
@@ -1091,8 +1288,8 @@ export function App({ repository, foldEmbeddings = [] }: AppProps): React.ReactE
       {activeOverlay === 'commandPalette' && (
         <Box
           position="absolute"
-          marginLeft={Math.floor((terminalCols - 70) / 2)}
-          marginTop={Math.floor((terminalRows - 18) / 2)}
+          marginLeft={Math.max(0, Math.floor((terminalCols - 70) / 2))}
+          marginTop={Math.max(0, Math.floor((terminalRows - 18) / 2))}
         >
           <CommandPalette onClose={() => closeOverlay('commandPalette')} />
         </Box>
@@ -1101,8 +1298,8 @@ export function App({ repository, foldEmbeddings = [] }: AppProps): React.ReactE
       {activeOverlay === 'comparison' && (
         <Box
           position="absolute"
-          marginLeft={Math.floor((terminalCols - 90) / 2)}
-          marginTop={Math.floor((terminalRows - 35) / 2)}
+          marginLeft={Math.max(0, Math.floor((terminalCols - 90) / 2))}
+          marginTop={Math.max(0, Math.floor((terminalRows - 35) / 2))}
         >
           <ComparisonOverlay repository={repository} />
         </Box>
@@ -1111,8 +1308,8 @@ export function App({ repository, foldEmbeddings = [] }: AppProps): React.ReactE
       {activeOverlay === SIMULATION_VIEW_ID && (
         <Box
           position="absolute"
-          marginLeft={Math.floor((terminalCols - 90) / 2)}
-          marginTop={Math.floor((terminalRows - 24) / 2)}
+          marginLeft={Math.max(0, Math.floor((terminalCols - 90) / 2))}
+          marginTop={Math.max(0, Math.floor((terminalRows - 24) / 2))}
         >
           <SimulationView onClose={() => closeOverlay(SIMULATION_VIEW_ID)} />
         </Box>

@@ -63,6 +63,11 @@ export function DotPlotOverlay({ sequence, threshold = 0.8, bins = 120 }: DotPlo
   );
   const effectiveWindow = manualWindow ?? result.window;
 
+  // Reset manual window when sequence changes (e.g. switching phages)
+  React.useEffect(() => {
+    setManualWindow(null);
+  }, [sequence]);
+
   useInput((input, key) => {
     if (key.escape) {
       closeOverlay('dotPlot');

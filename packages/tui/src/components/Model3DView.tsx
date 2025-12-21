@@ -6,7 +6,9 @@ import {
   renderModel,
   createAnimationState,
   updateAnimation,
+  createRenderContext,
   type AnimationState,
+  type RenderContext,
 } from '@phage-explorer/renderer-3d';
 
 interface Model3DViewProps {
@@ -30,6 +32,7 @@ const Model3DViewInner = memo(function Model3DViewInner({
 
   // Use ref for animation state to avoid triggering re-renders on every tick
   const animStateRef = useRef<AnimationState>(createAnimationState());
+  const renderContextRef = useRef<RenderContext | null>(null);
   const [frameLines, setFrameLines] = useState<string[]>([]);
 
   const colors = theme.colors;
@@ -57,6 +60,11 @@ const Model3DViewInner = memo(function Model3DViewInner({
       // Update animation state in ref (no React state update)
       animStateRef.current = updateAnimation(animStateRef.current, 1, speed);
 
+      // Ensure context exists and matches dimensions
+      if (!renderContextRef.current || renderContextRef.current.width !== renderWidth || renderContextRef.current.height !== renderHeight) {
+        renderContextRef.current = createRenderContext(renderWidth, renderHeight);
+      }
+
       // Render the new frame with quality settings
       const frame = renderModel(
         model,
@@ -66,7 +74,8 @@ const Model3DViewInner = memo(function Model3DViewInner({
           height: renderHeight,
           quality,
           useBlocks: fullscreen && quality === 'ultra',
-        }
+        },
+        renderContextRef.current
       );
 
       // Only update state with the rendered lines
@@ -83,6 +92,10 @@ const Model3DViewInner = memo(function Model3DViewInner({
       return;
     }
 
+    if (!renderContextRef.current || renderContextRef.current.width !== renderWidth || renderContextRef.current.height !== renderHeight) {
+      renderContextRef.current = createRenderContext(renderWidth, renderHeight);
+    }
+
     const frame = renderModel(
       model,
       { rx: animStateRef.current.rx, ry: animStateRef.current.ry, rz: animStateRef.current.rz },
@@ -91,7 +104,8 @@ const Model3DViewInner = memo(function Model3DViewInner({
         height: renderHeight,
         quality,
         useBlocks: fullscreen && quality === 'ultra',
-      }
+      },
+      renderContextRef.current
     );
 
     setFrameLines(frame.lines);

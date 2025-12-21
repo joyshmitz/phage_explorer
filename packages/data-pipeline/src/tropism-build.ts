@@ -28,23 +28,35 @@ const fiberKeywords = [
   'receptor binding protein', 'rbp', 'baseplate', 'gp37', 'gp38', 'fibritin', 'gp12',
 ];
 
-const receptorPrototypes: Record<string, number[]> = {
-  'LamB/OmpC porin': vecFromMotifs(['SYG', 'ALG', 'RGD']),
-  'FhuA/TonB': vecFromMotifs(['TSX', 'FHU']),
-  'BtuB': vecFromMotifs(['B12', 'B12']),
-  'LPS / tailspike': vecFromMotifs(['GGXGXD', 'HXH']),
-  'Type IV pilus': vecFromMotifs(['VQGDT', 'PIL']),
-  'Flagellum': vecFromMotifs(['FLG', 'FLA']),
-};
-
-function vecFromMotifs(motifs: string[]): number[] {
-  const vec = new Array(128).fill(0);
-  motifs.forEach(m => {
-    const code = m.charCodeAt(0) % 128;
-    vec[code] += 1;
-  });
-  return vec;
+// Helper to sum multiple trigram vectors
+function sumEmbeddings(seqs: string[]): number[] {
+  const sum = new Array(8000).fill(0);
+  let count = 0;
+  for (const s of seqs) {
+    // Only process sequences long enough for at least one trigram
+    if (s.length < 3) continue;
+    const v = trigramEmbedding(s);
+    for (let i = 0; i < 8000; i++) sum[i] += v[i];
+    count++;
+  }
+  // Normalize average
+  if (count > 0) {
+    const norm = Math.sqrt(sum.reduce((acc, v) => acc + v * v, 0)) || 1;
+    for (let i = 0; i < 8000; i++) sum[i] /= norm;
+  }
+  return sum;
 }
+
+// Prototypes based on known receptor-binding domains
+// Short motifs are padded or used as-is if length >= 3
+// We removed B12 (invalid) and expanded degenerate codes where possible
+const receptorPrototypes: Record<string, number[]> = {
+  'LamB/OmpC porin': sumEmbeddings(['SYG', 'ALG', 'RGD', 'GYG', 'SGF']), 
+  'FhuA/TonB': sumEmbeddings(['TSX', 'FHU', 'GLG']), // X is skipped by embedding
+  'LPS / tailspike': sumEmbeddings(['GGGG', 'GGAG', 'GGDG', 'GGEG', 'GHH']), // Expanded GGXG repeats
+  'Type IV pilus': sumEmbeddings(['VQGDT', 'VQG', 'GDT', 'PIL']),
+  'Flagellum': sumEmbeddings(['FLG', 'FLA', 'FGL']),
+};
 
 function parseArgs(): Options {
   const args = process.argv.slice(2);

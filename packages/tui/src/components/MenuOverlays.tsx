@@ -149,6 +149,15 @@ export function AnalysisMenuOverlay({ onClose }: MenuOverlayProps): React.ReactE
           minLevel: 'intermediate',
         },
         {
+          id: 'analysis-selection-pressure',
+          label: 'Selection Pressure (dN/dS)',
+          description: 'Detect purifying vs positive selection windows',
+          icon: '📈',
+          shortcut: 'A→dN/dS',
+          action: () => openOverlay('selectionPressure'),
+          minLevel: 'intermediate',
+        },
+        {
           id: 'analysis-anomaly',
           label: 'Anomaly Scanner',
           description: 'Find HGT/repeats via KL divergence (Z)',

@@ -242,6 +242,17 @@ export function initializeCommands(): void {
   });
 
   registerCommand({
+    id: 'selection-pressure',
+    label: 'Selection pressure (dN/dS)',
+    description: 'Detect purifying vs positive selection windows',
+    keywords: ['selection', 'dn/ds', 'pressure', 'omega'],
+    category: 'Overlay',
+    shortcut: 'A→dN/dS',
+    minLevel: 'intermediate',
+    action: () => usePhageStore.getState().openOverlay('selectionPressure'),
+  });
+
+  registerCommand({
     id: 'cgr',
     label: 'CGR fractal fingerprint',
     description: 'Chaos Game Representation of sequence',

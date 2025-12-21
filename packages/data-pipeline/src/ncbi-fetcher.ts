@@ -22,6 +22,7 @@ export interface NCBIFeature {
   locusTag?: string;
   product?: string;
   qualifiers: Record<string, string>;
+  segments?: Array<{ start: number; end: number }>;
 }
 
 // Sleep helper for rate limiting
@@ -198,7 +199,14 @@ export function parseGenBank(genbank: string): NCBISequenceResult {
       }
       // Continuation of qualifier value
       else if (line.match(/^\s{21}/) && currentQualifierKey) {
-        currentQualifierValue += line.trim();
+        const part = line.trim();
+        const needsSpace = ['product', 'note', 'function', 'inference', 'standard_name', 'organism'].includes(currentQualifierKey);
+        
+        if (needsSpace && currentQualifierValue.length > 0 && !currentQualifierValue.endsWith('-') && !currentQualifierValue.endsWith('"')) {
+          currentQualifierValue += ' ' + part;
+        } else {
+          currentQualifierValue += part;
+        }
       }
     }
 
@@ -229,30 +237,56 @@ export function parseGenBank(genbank: string): NCBISequenceResult {
 
 // Parse feature location string to find total extent (min start, max end)
 function parseLocation(location: string, feature: Partial<NCBIFeature>): void {
-  // Remove accession references (e.g., "NC_001234.1:") to avoid parsing version numbers as coordinates
-  // Also remove simple accessions "J02459:"
-  const localLocation = location.replace(/[a-zA-Z][a-zA-Z0-9_.]*:/g, '');
+  // Remove accession references (e.g., "NC_001234.1:")
+  let localLocation = location.replace(/[a-zA-Z][a-zA-Z0-9_.]*:/g, '');
 
-  // Extract all integers from the cleaned location string
-  const numbers = localLocation.match(/\d+/g)?.map(n => parseInt(n, 10));
-  
-  if (!numbers || numbers.length === 0) {
-    return;
-  }
-
-  // GenBank is 1-based, we want 0-based
-  // Find min and max coordinates
-  const min = Math.min(...numbers);
-  const max = Math.max(...numbers);
-
-  feature.start = Math.max(0, min - 1);
-  feature.end = max;
-
-  // Determine strand based on presence of 'complement'
+  // Check for complement strand
   if (location.includes('complement(')) {
     feature.strand = '-';
   } else {
     feature.strand = '+';
+  }
+
+  const segments: Array<{start: number, end: number}> = [];
+
+  // 1. Extract explicit ranges (A..B)
+  // We use a replacement strategy to avoid double-counting numbers in step 2
+  localLocation = localLocation.replace(/(\d+)\.\.(\d+)/g, (match, sStr, eStr) => {
+    const s = parseInt(sStr, 10);
+    const e = parseInt(eStr, 10);
+    const segMin = Math.min(s, e);
+    const segMax = Math.max(s, e);
+    // GenBank is 1-based inclusive. Convert to 0-based half-open [start, end)
+    segments.push({ start: Math.max(0, segMin - 1), end: segMax });
+    return ' '; // Replace with space
+  });
+
+  // 2. Extract remaining single points (points are 1-based inclusive)
+  const pointMatches = localLocation.match(/\d+/g);
+  if (pointMatches) {
+    for (const pStr of pointMatches) {
+      const p = parseInt(pStr, 10);
+      segments.push({ start: Math.max(0, p - 1), end: p });
+    }
+  }
+
+  if (segments.length === 0) return;
+
+  // 3. Compute bounding box
+  let min = Infinity;
+  let max = -Infinity;
+
+  for (const seg of segments) {
+    if (seg.start < min) min = seg.start;
+    if (seg.end > max) max = seg.end;
+  }
+
+  feature.start = min;
+  feature.end = max;
+
+  // Only set segments if there are multiple (e.g. join or distinct regions)
+  if (segments.length > 1) {
+    feature.segments = segments;
   }
 }
 

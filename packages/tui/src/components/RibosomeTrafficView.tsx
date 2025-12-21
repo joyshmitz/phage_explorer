@@ -84,12 +84,14 @@ export function RibosomeTrafficView({ state }: RibosomeTrafficViewProps): React.
   }, [state.productionHistory]);
 
   const stallSpark = useMemo(() => {
-    if (state.productionHistory.length < 2) return '';
+    // If stallHistory doesn't exist yet (old state), fallback to empty
+    if (!state.stallHistory || state.stallHistory.length < 2) return '';
     const deltas: number[] = [];
-    const stalls = state.stallEvents;
-    deltas.push(stalls);
+    for (let i = 1; i < state.stallHistory.length; i++) {
+      deltas.push(state.stallHistory[i] - state.stallHistory[i - 1]);
+    }
     return toSpark(deltas, 40);
-  }, [state.stallEvents, state.productionHistory.length]);
+  }, [state.stallHistory]);
 
   const track = useMemo(() => {
     const cells = Array.from({ length: window }, () => '·');

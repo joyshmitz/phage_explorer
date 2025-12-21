@@ -34,6 +34,22 @@ export interface RenderConfig {
   lightDirection?: Vector3;
 }
 
+export interface RenderContext {
+  zBuffer: Float32Array;
+  bBuffer: Float32Array;
+  width: number;
+  height: number;
+}
+
+export function createRenderContext(width: number, height: number): RenderContext {
+  return {
+    zBuffer: new Float32Array(width * height),
+    bBuffer: new Float32Array(width * height),
+    width,
+    height,
+  };
+}
+
 export interface RenderedFrame {
   lines: string[];
   width: number;
@@ -156,15 +172,32 @@ function isInViewFrustum(z: number): boolean {
 export function renderModel(
   model: Model3D,
   rotationAngles: { rx: number; ry: number; rz: number },
-  config: RenderConfig
+  config: RenderConfig,
+  context?: RenderContext
 ): RenderedFrame {
   const { width, height } = config;
   const chars = selectGradient(config);
 
-  // Initialize flat buffers for performance
-  // Use Infinity for Z-buffer depth (far away)
-  const zBuffer = new Float32Array(width * height).fill(Infinity);
-  const bBuffer = new Float32Array(width * height);
+  // Initialize or reuse buffers
+  let zBuffer: Float32Array;
+  let bBuffer: Float32Array;
+
+  if (context && context.width === width && context.height === height) {
+    // Reuse buffers - must clear Z buffer
+    zBuffer = context.zBuffer;
+    bBuffer = context.bBuffer;
+    zBuffer.fill(Infinity);
+    // bBuffer doesn't strictly need clearing as we only read where zBuffer was written? 
+    // Actually we iterate 0..width*height at the end.
+    // If zBuffer is Infinity, we draw space. So bBuffer values don't matter there.
+    // So fill(Infinity) for zBuffer is sufficient.
+  } else {
+    // Allocation fallback
+    zBuffer = new Float32Array(width * height).fill(Infinity);
+    bBuffer = new Float32Array(width * height);
+    // If context provided but size mismatch, we should ideally update it or warn?
+    // For now, just allocate locally to be safe.
+  }
 
   // Create rotation matrix
   const rotMatrix = rotation(rotationAngles.rx, rotationAngles.ry, rotationAngles.rz);

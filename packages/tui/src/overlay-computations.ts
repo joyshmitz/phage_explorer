@@ -119,7 +119,7 @@ export function computeBendability(sequence: string, window = 400): NumericOverl
 export function computePromoterMarks(sequence: string): MarkOverlay {
   const hits = detectPromoters(sequence);
   const marks = hits.map(h => h.pos);
-  const motifsFound = hits.map(h => h.motif);
+  const motifsFound = hits.map(h => `${h.motif} (${h.strand})`);
   return {
     id: 'promoter',
     label: 'Promoter/RBS motifs',

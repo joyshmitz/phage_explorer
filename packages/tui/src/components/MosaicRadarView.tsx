@@ -46,7 +46,7 @@ export function MosaicRadarView({ sequence, references, currentPhageId }: Mosaic
     if (input === ']') setK(v => Math.min(8, v + 1));
     if (input === 'b' || input === 'B') setShowBreakpoints(v => !v);
     if (input === 'm') setMinSim(s => Math.max(0.01, +(s - 0.02).toFixed(2)));
-    if (input === 'M') setMinSim(s => Math.min(0.3, +(s + 0.02).toFixed(2)));
+    if (input === 'M') setMinSim(s => Math.min(0.95, +(s + 0.02).toFixed(2)));
   });
 
   if (!sequence.length || result.windows.length === 0) {

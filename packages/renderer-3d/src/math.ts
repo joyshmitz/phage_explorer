@@ -138,11 +138,17 @@ export function project(
 ): { x: number; y: number; z: number } {
   // Simple perspective projection
   const z = v.z + distance;
-  const factor = fov / z;
+  // Guard against divide by zero behind camera
+  const safeZ = Math.max(0.1, z); 
+  const factor = fov / safeZ;
+
+  // Preserve aspect ratio (assume 2:1 character ratio)
+  // Calculate unified scale based on the limiting dimension
+  const scale = Math.min(screenWidth, screenHeight * 2);
 
   return {
-    x: (v.x * factor * screenWidth) / 2 + screenWidth / 2,
-    y: (-v.y * factor * screenHeight) / 2 + screenHeight / 2,
+    x: (v.x * factor * scale) / 2 + screenWidth / 2,
+    y: (-v.y * factor * scale) / 4 + screenHeight / 2,
     z: z, // Keep z for depth sorting/shading
   };
 }

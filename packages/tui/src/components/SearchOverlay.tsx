@@ -45,13 +45,8 @@ export function SearchOverlay({ repository }: SearchOverlayProps): React.ReactEl
     doSearch();
   }, [searchQuery, repository, setSearchResults]);
 
-  // Handle keyboard navigation
-  useInput((input, key) => {
-    if (key.downArrow) {
-      setSelectedIndex(i => Math.min(i + 1, searchResults.length - 1));
-    } else if (key.upArrow) {
-      setSelectedIndex(i => Math.max(i - 1, 0));
-    } else if (key.return && searchResults.length > 0) {
+  const handleSelect = () => {
+    if (searchResults.length > 0) {
       // Find the index of this phage in the main list
       const selected = searchResults[selectedIndex];
       const mainIndex = phages.findIndex(p => p.id === selected.id);
@@ -59,12 +54,26 @@ export function SearchOverlay({ repository }: SearchOverlayProps): React.ReactEl
         setCurrentPhageIndex(mainIndex);
       }
       closeOverlay();
+    }
+  };
+
+  // Handle keyboard navigation
+  useInput((input, key) => {
+    if (key.downArrow) {
+      setSelectedIndex(i => Math.min(i + 1, searchResults.length - 1));
+    } else if (key.upArrow) {
+      setSelectedIndex(i => Math.max(i - 1, 0));
     } else if (key.escape) {
       closeOverlay();
     }
+    // Return key handled by TextInput onSubmit
   });
 
   const maxResults = 8;
+  // Calculate scroll offset to keep selected item in view
+  const scrollOffset = Math.max(0, Math.min(selectedIndex - maxResults + 1, searchResults.length - maxResults));
+  // Clamp negative offset if few results
+  const effectiveOffset = Math.max(0, scrollOffset);
 
   return (
     <Box
@@ -97,6 +106,7 @@ export function SearchOverlay({ repository }: SearchOverlayProps): React.ReactEl
           <TextInput
             value={searchQuery}
             onChange={setSearchQuery}
+            onSubmit={handleSelect}
             placeholder="name, host, family, or accession..."
           />
         </Box>
@@ -128,8 +138,9 @@ export function SearchOverlay({ repository }: SearchOverlayProps): React.ReactEl
             <Text color={colors.textDim}>No phages match "{searchQuery}"</Text>
           </Box>
         ) : (
-          searchResults.slice(0, maxResults).map((phage, i) => {
-            const isSelected = i === selectedIndex;
+          searchResults.slice(effectiveOffset, effectiveOffset + maxResults).map((phage, i) => {
+            const realIndex = effectiveOffset + i;
+            const isSelected = realIndex === selectedIndex;
             const hostAbbr = phage.host ? phage.host.split(/[\s,]+/)[0] : '';
 
             return (
@@ -165,7 +176,8 @@ export function SearchOverlay({ repository }: SearchOverlayProps): React.ReactEl
         {/* Show "more results" indicator */}
         {searchResults.length > maxResults && (
           <Text color={colors.textMuted}>
-            ... and {searchResults.length - maxResults} more
+            {effectiveOffset > 0 ? '↑ ' : ''}
+            ... {searchResults.length - effectiveOffset - maxResults > 0 ? `and ${searchResults.length - effectiveOffset - maxResults} more` : ''}
           </Text>
         )}
       </Box>

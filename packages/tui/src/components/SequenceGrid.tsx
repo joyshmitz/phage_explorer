@@ -3,6 +3,7 @@ import { Box, Text } from 'ink';
 import { usePhageStore } from '@phage-explorer/state';
 import {
   buildGrid,
+  applyDiff,
   getNucleotideColor,
   getAminoAcidColor,
   type GridRow,
@@ -127,6 +128,7 @@ export function SequenceGrid({
   const readingFrame = usePhageStore(s => s.readingFrame);
   const scrollPosition = usePhageStore(s => s.scrollPosition);
   const diffEnabled = usePhageStore(s => s.diffEnabled);
+  const diffReferenceSequence = usePhageStore(s => s.diffReferenceSequence);
 
   // Build the grid based on current scroll position
   const grid = useMemo(() => {
@@ -153,14 +155,25 @@ export function SequenceGrid({
 
     const seqSlice = sequence.substring(startIndex, startIndex + sliceLength);
 
-    return buildGrid(seqSlice, startIndex, {
+    // Get the character before the slice for correct codon translation at the boundary
+    const contextBefore = startIndex > 0 ? sequence[startIndex - 1] : undefined;
+
+    const baseGrid = buildGrid(seqSlice, startIndex, {
       viewportCols: effectiveCols,
       viewportRows: effectiveRows,
       mode: viewMode,
       frame: readingFrame,
       totalLength: genomeLength,
+      contextBefore,
     });
-  }, [sequence, scrollPosition, viewMode, readingFrame, width, height, genomeLength]);
+
+    if (diffEnabled && diffReferenceSequence) {
+      const refSlice = diffReferenceSequence.substring(startIndex, startIndex + sliceLength);
+      return applyDiff(baseGrid, refSlice, viewMode, readingFrame, startIndex);
+    }
+
+    return baseGrid;
+  }, [sequence, scrollPosition, viewMode, readingFrame, width, height, genomeLength, diffEnabled, diffReferenceSequence]);
 
   // K-mer anomaly mini-strip aligned to current viewport
   const kmerStrip = useMemo(() => {

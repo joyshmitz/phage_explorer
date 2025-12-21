@@ -62,6 +62,7 @@ export type OverlayId =
   | 'biasDecomposition'
   | 'crispr'
   | 'dotPlot'
+  | 'selectionPressure'
   | 'logo'
   | 'structureConstraints'
   | 'synteny'
@@ -266,6 +267,14 @@ export interface PhageExplorerActions {
   resetBeginnerProgress: () => void;
 }
 
+// Layout constants
+const SIDEBAR_WIDTH = 30;
+const HUD_HEIGHT = 4;
+const FOOTER_HEIGHT = 2;
+const GENE_MAP_HEIGHT = 2;
+const BORDER_WIDTH = 2;
+const BORDER_HEIGHT = 2;
+
 // Combined store type
 export type PhageExplorerStore = PhageExplorerState & PhageExplorerActions;
 
@@ -364,14 +373,24 @@ export const usePhageStore = create<PhageExplorerStore>((set, get) => ({
   setViewMode: (mode) => set({ viewMode: mode, scrollPosition: 0 }),
 
   toggleViewMode: () => {
-    const { viewMode } = get();
+    const { viewMode, scrollPosition } = get();
     const nextMode: ViewMode =
       viewMode === 'dna' ? 'aa' :
       viewMode === 'aa' ? 'dual' :
       'dna';
+    
+    // Preserve approximate visual position
+    let newScroll = scrollPosition;
+    if (viewMode === 'dna' && nextMode === 'aa') {
+      newScroll = Math.floor(scrollPosition / 3);
+    } else if (viewMode === 'aa' && nextMode !== 'aa') {
+      newScroll = scrollPosition * 3;
+    }
+    // dual <-> dna shares DNA coords, no change needed
+
     set({
       viewMode: nextMode,
-      scrollPosition: 0,
+      scrollPosition: newScroll,
     });
   },
 
@@ -379,14 +398,11 @@ export const usePhageStore = create<PhageExplorerStore>((set, get) => ({
 
   cycleReadingFrame: () => {
     const { readingFrame } = get();
-    if (readingFrame >= 0) {
-      set({ readingFrame: ((readingFrame + 1) % 3) as ReadingFrame });
-      return;
-    }
-    const reverseFrames: ReadingFrame[] = [-1, -2, -3];
-    const idx = reverseFrames.indexOf(readingFrame);
-    const next = reverseFrames[(idx + 1) % reverseFrames.length];
-    set({ readingFrame: next });
+    const frames: ReadingFrame[] = [0, 1, 2, -1, -2, -3];
+    const currentIndex = frames.indexOf(readingFrame);
+    // If not found (shouldn't happen), default to 0
+    const nextIndex = (currentIndex + 1) % frames.length;
+    set({ readingFrame: frames[nextIndex] });
   },
 
   setScrollPosition: (position) => {
@@ -408,8 +424,10 @@ export const usePhageStore = create<PhageExplorerStore>((set, get) => ({
       ? Math.floor(currentPhage.genomeLength / 3)
       : currentPhage.genomeLength;
 
-    // Approximate chars per screen
-    const charsPerScreen = (terminalCols - 30) * (terminalRows - 10);
+    const gridCols = Math.max(1, terminalCols - SIDEBAR_WIDTH - BORDER_WIDTH);
+    const gridRows = Math.max(1, terminalRows - HUD_HEIGHT - FOOTER_HEIGHT - GENE_MAP_HEIGHT - BORDER_HEIGHT);
+    const charsPerScreen = gridCols * gridRows;
+    
     set({ scrollPosition: Math.max(0, length - charsPerScreen) });
   },
 
@@ -775,19 +793,13 @@ export const useGridDimensions = () => {
   const cols = usePhageStore((s) => s.terminalCols);
   const rows = usePhageStore((s) => s.terminalRows);
 
-  // Calculate usable grid area
-  const sidebarWidth = 30;
-  const hudHeight = 4;
-  const footerHeight = 2;
-  const geneMapHeight = 2;
-
   return {
-    gridCols: Math.max(1, cols - sidebarWidth - 2),
-    gridRows: Math.max(1, rows - hudHeight - footerHeight - geneMapHeight - 2),
-    sidebarWidth,
-    hudHeight,
-    footerHeight,
-    geneMapHeight,
+    gridCols: Math.max(1, cols - SIDEBAR_WIDTH - BORDER_WIDTH),
+    gridRows: Math.max(1, rows - HUD_HEIGHT - FOOTER_HEIGHT - GENE_MAP_HEIGHT - BORDER_HEIGHT),
+    sidebarWidth: SIDEBAR_WIDTH,
+    hudHeight: HUD_HEIGHT,
+    footerHeight: FOOTER_HEIGHT,
+    geneMapHeight: GENE_MAP_HEIGHT,
   };
 };
 

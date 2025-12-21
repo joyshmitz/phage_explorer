@@ -1,4 +1,4 @@
-import type { PhageSummary, PhageFull, GeneInfo, CodonUsageData } from '@phage-explorer/core';
+import type { PhageSummary, PhageFull, GeneInfo, CodonUsageData, FoldEmbedding } from '@phage-explorer/core';
 
 // Repository interface for database operations
 export interface PhageRepository {
@@ -47,6 +47,9 @@ export interface PhageRepository {
   setBiasVector?(phageId: number, vector: number[]): Promise<void>;
   getCodonVector?(phageId: number): Promise<number[] | null>;
   setCodonVector?(phageId: number, vector: number[]): Promise<void>;
+
+  // Optional embeddings for FoldQuickview
+  getFoldEmbeddings?(phageId: number, model?: string): Promise<FoldEmbedding[]>;
 
   // Close database connection
   close(): Promise<void>;

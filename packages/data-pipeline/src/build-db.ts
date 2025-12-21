@@ -4,6 +4,7 @@
 
 import { Database } from 'bun:sqlite';
 import { drizzle } from 'drizzle-orm/bun-sqlite';
+import { eq } from 'drizzle-orm';
 import {
   phages,
   sequences,
@@ -11,8 +12,15 @@ import {
   codonUsage,
   preferences,
   tropismPredictions,
+  foldEmbeddings,
 } from '@phage-explorer/db-schema';
-import { countCodonUsage, countAminoAcidUsage, translateSequence } from '@phage-explorer/core';
+import {
+  countCodonUsage,
+  countAminoAcidUsage,
+  translateSequence,
+  reverseComplement,
+  encodeFloat32VectorLE,
+} from '@phage-explorer/core';
 import { PHAGE_CATALOG } from './phage-catalog';
 import { fetchPhageSequence, type NCBISequenceResult } from './ncbi-fetcher';
 import { readFileSync, existsSync } from 'fs';
@@ -21,6 +29,36 @@ const DB_PATH = './phage.db';
 const CHUNK_SIZE = 10000; // 10kb chunks
 const TROPISM_PATH = './data/tropism-embeddings.json';
 const BATCH_INSERT_SIZE = 100; // Batch inserts for 5-10x faster writes
+
+function proteinKmerHashEmbedding(aa: string, options?: { k?: number; dims?: number }): number[] {
+  const k = options?.k ?? 3;
+  const dims = options?.dims ?? 256;
+  const vec = new Array<number>(dims).fill(0);
+  const seq = aa.toUpperCase();
+  if (seq.length < k) return vec;
+
+  for (let i = 0; i <= seq.length - k; i++) {
+    let hash = 2166136261; // FNV-1a
+    for (let j = 0; j < k; j++) {
+      const code = seq.charCodeAt(i + j);
+      // Skip kmers that contain stop/unknowns (common in partial translations)
+      if (code < 65 || code > 90 || code === 42) {
+        hash = 0;
+        break;
+      }
+      hash ^= code;
+      hash = Math.imul(hash, 16777619);
+    }
+    if (hash === 0) continue;
+    vec[(hash >>> 0) % dims] += 1;
+  }
+
+  let norm = 0;
+  for (const v of vec) norm += v * v;
+  norm = Math.sqrt(norm) || 1;
+  for (let i = 0; i < vec.length; i++) vec[i] /= norm;
+  return vec;
+}
 
 async function main() {
   console.log('Building phage database...\n');
@@ -40,6 +78,7 @@ async function main() {
     DROP TABLE IF EXISTS protein_domains;
     DROP TABLE IF EXISTS annotation_meta;
     DROP TABLE IF EXISTS preferences;
+    DROP TABLE IF EXISTS fold_embeddings;
     DROP TABLE IF EXISTS tropism_predictions;
     DROP TABLE IF EXISTS models;
     DROP TABLE IF EXISTS codon_usage;
@@ -126,6 +165,20 @@ async function main() {
     );
     CREATE INDEX idx_tropism_phage ON tropism_predictions(phage_id);
     CREATE INDEX idx_tropism_gene ON tropism_predictions(gene_id);
+
+    CREATE TABLE fold_embeddings (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      phage_id INTEGER NOT NULL REFERENCES phages(id),
+      gene_id INTEGER NOT NULL REFERENCES genes(id),
+      model TEXT NOT NULL,
+      dims INTEGER NOT NULL,
+      vector BLOB NOT NULL,
+      meta TEXT,
+      created_at INTEGER
+    );
+    CREATE INDEX idx_fold_embeddings_phage ON fold_embeddings(phage_id);
+    CREATE INDEX idx_fold_embeddings_gene ON fold_embeddings(gene_id);
+    CREATE UNIQUE INDEX uniq_fold_embeddings_gene_model ON fold_embeddings(gene_id, model);
 
     -- Annotation tables (populated by annotation pipeline)
     CREATE TABLE annotation_meta (
@@ -278,17 +331,50 @@ async function main() {
       console.log(`  Inserted ${numChunks} sequence chunks`);
 
       // Insert gene annotations (batched for performance)
-      const geneValues = sequenceData.features.map(feature => ({
-        phageId,
-        name: feature.gene || null,
-        locusTag: feature.locusTag || null,
-        startPos: feature.start,
-        endPos: feature.end,
-        strand: feature.strand,
-        product: feature.product || null,
-        type: feature.type,
-        qualifiers: JSON.stringify(feature.qualifiers),
-      }));
+      const geneValues: Array<{
+        phageId: number;
+        name: string | null;
+        locusTag: string | null;
+        startPos: number;
+        endPos: number;
+        strand: string | null;
+        product: string | null;
+        type: string | null;
+        qualifiers: string;
+      }> = [];
+
+      for (const feature of sequenceData.features) {
+        if (feature.segments && feature.segments.length > 1) {
+          // Multi-segment feature (e.g. wrap-around or join)
+          // Insert a row for each segment
+          for (const segment of feature.segments) {
+            geneValues.push({
+              phageId,
+              name: feature.gene || null,
+              locusTag: feature.locusTag || null,
+              startPos: segment.start,
+              endPos: segment.end,
+              strand: feature.strand,
+              product: feature.product || null,
+              type: feature.type,
+              qualifiers: JSON.stringify(feature.qualifiers),
+            });
+          }
+        } else {
+          // Single feature
+          geneValues.push({
+            phageId,
+            name: feature.gene || null,
+            locusTag: feature.locusTag || null,
+            startPos: feature.start,
+            endPos: feature.end,
+            strand: feature.strand,
+            product: feature.product || null,
+            type: feature.type,
+            qualifiers: JSON.stringify(feature.qualifiers),
+          });
+        }
+      }
 
       for (let i = 0; i < geneValues.length; i += BATCH_INSERT_SIZE) {
         const batch = geneValues.slice(i, i + BATCH_INSERT_SIZE);
@@ -296,17 +382,99 @@ async function main() {
       }
       console.log(`  Inserted ${sequenceData.features.length} gene annotations`);
 
+      // Insert simple protein embeddings for CDS genes (used by FoldQuickview)
+      // Note: This is a lightweight, deterministic hash embedding (not a true structure model).
+      const insertedGenes = await db
+        .select({
+          id: genes.id,
+          startPos: genes.startPos,
+          endPos: genes.endPos,
+          strand: genes.strand,
+          name: genes.name,
+          product: genes.product,
+          type: genes.type,
+        })
+        .from(genes)
+        .where(eq(genes.phageId, phageId));
+
+      const embeddingModel = 'protein-k3-hash-v1';
+      const embeddingDims = 256;
+      const now = Date.now();
+      const embeddingValues: Array<{
+        phageId: number;
+        geneId: number;
+        model: string;
+        dims: number;
+        vector: Uint8Array;
+        meta: string;
+        createdAt: number;
+      }> = [];
+
+      for (const g of insertedGenes) {
+        if (g.type !== 'CDS') continue;
+        const window = seq.substring(g.startPos, g.endPos);
+        const dna = g.strand === '-' ? reverseComplement(window) : window;
+        const aa = translateSequence(dna, 0);
+        const vector = proteinKmerHashEmbedding(aa, { k: 3, dims: embeddingDims });
+        embeddingValues.push({
+          phageId,
+          geneId: g.id,
+          model: embeddingModel,
+          dims: embeddingDims,
+          vector: encodeFloat32VectorLE(vector),
+          meta: JSON.stringify({ k: 3, dims: embeddingDims, source: 'hash-kmer' }),
+          createdAt: now,
+        });
+      }
+
+      for (let i = 0; i < embeddingValues.length; i += BATCH_INSERT_SIZE) {
+        const batch = embeddingValues.slice(i, i + BATCH_INSERT_SIZE);
+        await db.insert(foldEmbeddings).values(batch);
+      }
+      console.log(`  Inserted ${embeddingValues.length} fold embeddings (${embeddingModel})`);
+
       // Calculate and insert codon usage
-      const codonCounts = countCodonUsage(seq, 0);
-      const aaSeq = translateSequence(seq, 0);
-      const aaCounts = countAminoAcidUsage(aaSeq);
+      // We must calculate this from the CDS features, not the raw genome frame 0
+      const totalCodonCounts: Record<string, number> = {};
+      const totalAACounts: Record<string, number> = {};
+
+      for (const feature of sequenceData.features) {
+        if (feature.type === 'CDS') {
+          let cdsSeq = '';
+          
+          if (feature.segments && feature.segments.length > 1) {
+             // Concatenate segments
+             for (const segment of feature.segments) {
+                cdsSeq += seq.substring(segment.start, segment.end);
+             }
+          } else {
+             cdsSeq = seq.substring(feature.start, feature.end);
+          }
+          
+          if (feature.strand === '-') {
+            cdsSeq = reverseComplement(cdsSeq);
+          }
+          
+          const codonCounts = countCodonUsage(cdsSeq, 0);
+          const aaSeq = translateSequence(cdsSeq, 0);
+          const aaCounts = countAminoAcidUsage(aaSeq);
+          
+          // Accumulate
+          for (const [codon, count] of Object.entries(codonCounts)) {
+            totalCodonCounts[codon] = (totalCodonCounts[codon] || 0) + count;
+          }
+          for (const [aa, count] of Object.entries(aaCounts)) {
+            totalAACounts[aa] = (totalAACounts[aa] || 0) + count;
+          }
+        }
+      }
 
       await db.insert(codonUsage).values({
         phageId,
-        aaCounts: JSON.stringify(aaCounts),
-        codonCounts: JSON.stringify(codonCounts),
+        aaCounts: JSON.stringify(totalAACounts),
+        codonCounts: JSON.stringify(totalCodonCounts),
       });
-      console.log(`  Calculated codon usage`);
+      console.log(`  Calculated codon usage from CDS features`);
 
       sqlite.exec('COMMIT');
     } catch (txError) {
@@ -347,13 +515,14 @@ async function main() {
       });
 
       // Build lookup for genes per phage
-      const geneRows = await db.select({ id: genes.id, phageId: genes.phageId, locusTag: genes.locusTag }).from(genes);
+      const geneRows = await db.select({ id: genes.id, phageId: genes.phageId, locusTag: genes.locusTag, name: genes.name }).from(genes);
       const geneMap = new Map<number, Map<string, number>>();
       geneRows.forEach(g => {
-        if (!g.locusTag) return;
         const key = g.phageId;
         if (!geneMap.has(key)) geneMap.set(key, new Map());
-        geneMap.get(key)!.set(g.locusTag.toLowerCase(), g.id);
+        const map = geneMap.get(key)!;
+        if (g.locusTag) map.set(g.locusTag.toLowerCase(), g.id);
+        if (g.name) map.set(g.name.toLowerCase(), g.id);
       });
 
       // Collect all valid tropism prediction values

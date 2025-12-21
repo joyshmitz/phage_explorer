@@ -183,7 +183,7 @@ export const PHAGE_CATALOG: PhageCatalogEntry[] = [
     description: 'T5 is a lytic phage with a unique two-step DNA injection mechanism. First, only 8% of the genome enters, then the rest follows.',
     pdbIds: ['8ZVI', '6OMC', '5TJT'],
   },
-  // === NEW PHAGES (14 additions for diversity) ===
+  // === NEW PHAGES (12 additions for diversity) ===
   {
     slug: 'p1',
     name: 'Enterobacteria phage P1',
