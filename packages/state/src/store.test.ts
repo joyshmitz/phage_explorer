@@ -4,7 +4,7 @@
 
 import { describe, it, expect, beforeEach } from 'bun:test';
 import { usePhageStore } from './store';
-import type { PhageSummary, PhageFull } from '@phage-explorer/core';
+import type { PhageSummary } from '@phage-explorer/core';
 
 // Reset store before each test
 beforeEach(() => {
@@ -17,17 +17,6 @@ const mockPhages: PhageSummary[] = [
   { id: 2, name: 'Lambda', slug: 'lambda', genomeLength: 48502 },
   { id: 3, name: 'Phage C', slug: 'phage-c', genomeLength: 45000 },
 ];
-
-const mockPhageFull: PhageFull = {
-  id: 1,
-  name: 'Phage A',
-  slug: 'phage-a',
-  genomeLength: 50000,
-  sequence: 'ATCG'.repeat(12500),
-  genes: [],
-  gcContent: 45.5,
-  ncbiAccession: 'NC_001234',
-};
 
 describe('PhageExplorerStore - Phage Navigation', () => {
   it('sets phages list', () => {

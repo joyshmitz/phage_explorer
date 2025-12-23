@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'bun:test';
-import { alignSynteny, type SyntenyBlock } from '../src/synteny';
+import { alignSynteny } from '../src/synteny';
 import type { GeneInfo } from '@phage-explorer/core';
 
 const gene = (name: string): GeneInfo => ({
