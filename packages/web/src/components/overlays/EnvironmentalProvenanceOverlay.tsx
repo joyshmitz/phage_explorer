@@ -10,8 +10,7 @@
  * Hotkey: Ctrl+Shift+E (environmental)
  */
 
-import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react';
-import { usePhageStore } from '@phage-explorer/state';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import type { PhageFull } from '@phage-explorer/core';
 import type { PhageRepository } from '../../db';
 import { useTheme } from '../../hooks/useTheme';
@@ -22,7 +21,6 @@ import {
   analyzeProvenance,
   generateDemoProvenanceData,
   type ProvenanceResult,
-  type BiomeType,
   BIOME_NAMES,
   BIOME_COLORS,
 } from '@phage-explorer/core';
@@ -45,7 +43,6 @@ const NOVELTY_COLORS: Record<string, string> = {
 };
 
 export function EnvironmentalProvenanceOverlay({
-  repository,
   currentPhage,
 }: EnvironmentalProvenanceOverlayProps): React.ReactElement | null {
   const { theme } = useTheme();
@@ -58,8 +55,10 @@ export function EnvironmentalProvenanceOverlay({
   const [loading, setLoading] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>('overview');
   const [result, setResult] = useState<ProvenanceResult | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   const wasOpenRef = useRef(false);
+  const lastAnalyzedKeyRef = useRef<string | null>(null);
 
   // Hotkey: Ctrl+Shift+E
   useHotkey(
@@ -69,32 +68,38 @@ export function EnvironmentalProvenanceOverlay({
     { modes: ['NORMAL'], category: 'Analysis', minLevel: 'intermediate' }
   );
 
-  // Run analysis when overlay opens
-  useEffect(() => {
-    const nowOpen = isOpen('environmentalProvenance');
-    const justOpened = nowOpen && !wasOpenRef.current;
-    wasOpenRef.current = nowOpen;
+  const overlayIsOpen = isOpen('environmentalProvenance');
 
-    if (!nowOpen) return;
-    if (!justOpened && result) return;
+  // Run analysis when overlay opens or phage changes
+  useEffect(() => {
+    const justOpened = overlayIsOpen && !wasOpenRef.current;
+    wasOpenRef.current = overlayIsOpen;
+
+    if (!overlayIsOpen) return;
+
+    const phageKey = currentPhage?.id ?? 'demo';
+    const shouldRun = justOpened || lastAnalyzedKeyRef.current !== phageKey || !result;
+    if (!shouldRun) return;
 
     setLoading(true);
+    setError(null);
 
     const runAnalysis = async () => {
       try {
-        const phageName = currentPhage?.id ?? 'demo';
-        const hits = generateDemoProvenanceData(phageName);
+        lastAnalyzedKeyRef.current = phageKey;
+        const hits = generateDemoProvenanceData(phageKey);
         const analysisResult = analyzeProvenance(hits);
         setResult(analysisResult);
       } catch (err) {
-        console.error('Provenance analysis failed:', err);
+        setResult(null);
+        setError(err instanceof Error ? err.message : 'Provenance analysis failed.');
       } finally {
         setLoading(false);
       }
     };
 
     runAnalysis();
-  }, [isOpen, result, currentPhage]);
+  }, [overlayIsOpen, result, currentPhage]);
 
   // Draw biome distribution chart
   useEffect(() => {
@@ -166,7 +171,7 @@ export function EnvironmentalProvenanceOverlay({
     const resizeObserver = new ResizeObserver(draw);
     resizeObserver.observe(canvas);
     return () => resizeObserver.disconnect();
-  }, [isOpen, viewMode, result, colors]);
+  }, [overlayIsOpen, viewMode, result, colors]);
 
   // Draw geographic map
   useEffect(() => {
@@ -189,7 +194,7 @@ export function EnvironmentalProvenanceOverlay({
       ctx.fillStyle = colors.background;
       ctx.fillRect(0, 0, width, height);
 
-      const { geoHeatmap, topHits } = result;
+      const { geoHeatmap } = result;
 
       // Draw simplified world map outline
       ctx.strokeStyle = colors.borderLight;
@@ -247,9 +252,9 @@ export function EnvironmentalProvenanceOverlay({
     const resizeObserver = new ResizeObserver(draw);
     resizeObserver.observe(canvas);
     return () => resizeObserver.disconnect();
-  }, [isOpen, viewMode, result, colors]);
+  }, [overlayIsOpen, viewMode, result, colors]);
 
-  if (!isOpen('environmentalProvenance')) return null;
+  if (!overlayIsOpen) return null;
 
   return (
     <Overlay id="environmentalProvenance" title="ENVIRONMENTAL PROVENANCE MAP" size="xl">
@@ -321,6 +326,8 @@ export function EnvironmentalProvenanceOverlay({
         {/* Content area */}
         {loading ? (
           <AnalysisPanelSkeleton />
+        ) : error ? (
+          <div style={{ padding: '1rem', color: colors.error }}>{error}</div>
         ) : !result ? (
           <div style={{ padding: '2rem', textAlign: 'center', color: colors.textMuted }}>
             No provenance data available.

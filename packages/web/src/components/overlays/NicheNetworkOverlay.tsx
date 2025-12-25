@@ -15,8 +15,6 @@ import {
   analyzeNiches,
   generateDemoAbundanceTable,
   type NicheAnalysisResult,
-  type CoOccurrenceNetwork,
-  type NicheProfile,
 } from '@phage-explorer/core';
 
 // =============================================================================

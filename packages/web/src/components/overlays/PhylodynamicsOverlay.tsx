@@ -9,8 +9,7 @@
  * Hotkey: Ctrl+Shift+Y (phylod[Y]namics)
  */
 
-import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react';
-import { usePhageStore } from '@phage-explorer/state';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import type { PhageFull } from '@phage-explorer/core';
 import type { PhageRepository } from '../../db';
 import { useTheme } from '../../hooks/useTheme';
@@ -48,7 +47,8 @@ export function PhylodynamicsOverlay({
   const [loading, setLoading] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>('tree');
   const [result, setResult] = useState<PhylodynamicsResult | null>(null);
-  const [useDemoData, setUseDemoData] = useState(true);
+  const [useDemoData] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   // Track if overlay is open to avoid stale closure issues
   const wasOpenRef = useRef(false);
@@ -77,6 +77,7 @@ export function PhylodynamicsOverlay({
     }
 
     setLoading(true);
+    setError(null);
 
     // Use demo data for now (real data would come from repository)
     const runAnalysis = async () => {
@@ -100,7 +101,8 @@ export function PhylodynamicsOverlay({
 
         setResult(analysisResult);
       } catch (err) {
-        console.error('Phylodynamics analysis failed:', err);
+        setResult(null);
+        setError(err instanceof Error ? err.message : 'Phylodynamics analysis failed.');
       } finally {
         setLoading(false);
       }
@@ -522,6 +524,8 @@ export function PhylodynamicsOverlay({
         {/* Canvas area */}
         {loading ? (
           <AnalysisPanelSkeleton />
+        ) : error ? (
+          <div style={{ padding: '1rem', color: colors.error }}>{error}</div>
         ) : !result ? (
           <div style={{ padding: '2rem', textAlign: 'center', color: colors.textMuted }}>
             No analysis data available.
