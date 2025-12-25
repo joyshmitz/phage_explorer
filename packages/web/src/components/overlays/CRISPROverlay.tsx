@@ -76,6 +76,7 @@ export function CRISPROverlay({ repository, phage }: CRISPROverlayProps): React.
     if (!repository || !phage) {
       setSequence('');
       setAnalysis(null);
+      setLoading(false);
       return;
     }
 
@@ -83,6 +84,7 @@ export function CRISPROverlay({ repository, phage }: CRISPROverlayProps): React.
     const cached = sequenceCache.current.get(phageId);
     if (cached) {
       setSequence(cached);
+      setLoading(false);
       return;
     }
 

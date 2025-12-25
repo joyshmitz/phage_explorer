@@ -183,6 +183,7 @@ export function FoldQuickviewOverlay({
     if (cached) {
       setCorpus(cached.embeddings);
       setCorpusSource(cached.source);
+      setLoading(false);
       return;
     }
 

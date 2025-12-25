@@ -105,6 +105,7 @@ export function AnomalyOverlay({
     if (!isOpen('anomaly')) return;
     if (!repository || !currentPhage) {
       setSequence('');
+      setLoading(false);
       return;
     }
 
@@ -113,6 +114,7 @@ export function AnomalyOverlay({
     const cached = sequenceCache.current.get(phageId);
     if (cached) {
       setSequence(cached);
+      setLoading(false);
       return;
     }
 

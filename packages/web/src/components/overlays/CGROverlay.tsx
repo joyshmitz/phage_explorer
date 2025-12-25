@@ -80,6 +80,7 @@ export function CGROverlay({ repository, currentPhage }: CGROverlayProps): React
     if (!isOpen('cgr')) return;
     if (!repository || !currentPhage) {
       setSequence('');
+      setLoading(false);
       return;
     }
 
@@ -88,6 +89,7 @@ export function CGROverlay({ repository, currentPhage }: CGROverlayProps): React
     const cached = sequenceCache.current.get(phageId);
     if (cached) {
       setSequence(cached);
+      setLoading(false);
       return;
     }
 
