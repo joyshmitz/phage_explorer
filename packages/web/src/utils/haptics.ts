@@ -35,6 +35,18 @@ function supportsVibration(): boolean {
   return typeof navigator !== 'undefined' && 'vibrate' in navigator;
 }
 
+function hasUserActivation(): boolean {
+  if (typeof navigator === 'undefined') return false;
+
+  const activation = (navigator as unknown as { userActivation?: { hasBeenActive?: boolean } }).userActivation;
+  if (activation && typeof activation.hasBeenActive === 'boolean') {
+    return activation.hasBeenActive;
+  }
+
+  // If the browser doesn't expose user activation state, assume OK.
+  return true;
+}
+
 // Check if user prefers reduced motion
 function prefersReducedMotion(): boolean {
   if (typeof window === 'undefined') return false;
@@ -50,6 +62,9 @@ export function haptic(pattern: HapticPattern = 'medium'): void {
 
   // Skip if device doesn't support vibration
   if (!supportsVibration()) return;
+
+  // Skip until user interacts with the page (avoids noisy console errors in Chromium)
+  if (!hasUserActivation()) return;
 
   try {
     const vibrationPattern = HAPTIC_PATTERNS[pattern];

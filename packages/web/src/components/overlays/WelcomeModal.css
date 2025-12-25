@@ -236,14 +236,17 @@
 .welcome-footer__skip {
   background: none;
   border: none;
-  color: var(--color-text-muted);
+  color: var(--color-text-dim);
   cursor: pointer;
   font-size: var(--text-sm);
+  font-weight: var(--font-medium);
   padding: var(--space-2);
 }
 
 .welcome-footer__skip:hover {
   color: var(--color-text);
+  text-decoration: underline;
+  text-underline-offset: 3px;
 }
 
 .welcome-footer__skip:focus-visible {
