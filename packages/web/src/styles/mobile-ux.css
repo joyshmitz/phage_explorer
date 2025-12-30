@@ -60,6 +60,17 @@ html {
   .fx-layer {
     display: none !important;
   }
+
+  /* Isolate fixed/sticky surfaces to reduce mobile repaint jank. */
+  .app-header,
+  .control-deck,
+  .fab,
+  .bottom-sheet__container,
+  .bottom-sheet__backdrop {
+    backface-visibility: hidden;
+    transform: translateZ(0);
+    contain: paint;
+  }
 }
 
 /* Allow elastic overscroll on lists and content areas */

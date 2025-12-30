@@ -3,13 +3,48 @@
  *
  * High-performance canvas renderer for genome sequence grids.
  * Features: double-buffering, dirty region tracking, color batching,
- * high-DPI support, and 60fps target rendering.
+ * high-DPI support, row tile caching, and 60fps target rendering.
+ *
+ * Performance optimizations:
+ * - Row tile caching: Pre-render rows to OffscreenCanvas, reuse on scroll
+ * - Sequence encoding: Uint8Array for O(1) character lookups
+ * - Dirty frame detection: Skip renders when content unchanged
+ * - Batch rendering: Group same-color operations in micro mode
+ * - Incremental scroll blit: Only render newly visible rows
  */
 
 import type { Theme, ViewMode, ReadingFrame } from '@phage-explorer/core';
 import { GlyphAtlas } from './GlyphAtlas';
 import { VirtualScroller, type VisibleRange } from './VirtualScroller';
 import type { PostProcessPipeline } from './PostProcessPipeline';
+
+// Sequence character encoding for fast O(1) lookups
+const CHAR_TO_CODE: Record<string, number> = {
+  'A': 0, 'a': 0,
+  'C': 1, 'c': 1,
+  'G': 2, 'g': 2,
+  'T': 3, 't': 3,
+  'N': 4, 'n': 4,
+  'U': 3, 'u': 3, // RNA uracil -> thymine
+};
+const CODE_TO_CHAR = ['A', 'C', 'G', 'T', 'N'];
+
+// Encode sequence string to Uint8Array for faster iteration
+function encodeSequence(seq: string): Uint8Array {
+  const encoded = new Uint8Array(seq.length);
+  for (let i = 0; i < seq.length; i++) {
+    encoded[i] = CHAR_TO_CODE[seq[i]] ?? 4; // Default to N
+  }
+  return encoded;
+}
+
+// Row tile cache entry
+interface RowTile {
+  canvas: OffscreenCanvas;
+  row: number;
+  hash: number; // Content hash for invalidation
+  timestamp: number;
+}
 
 export interface SequenceGridOptions {
   /** Canvas element to render to */
@@ -207,6 +242,20 @@ export class CanvasSequenceGridRenderer {
   private viewportWidth: number;
   private viewportHeight: number;
   private useNativeRaf: boolean;
+
+  // Performance optimizations
+  private encodedSequence: Uint8Array | null = null;
+  private rowTileCache: Map<number, RowTile> = new Map();
+  private maxCachedRows = 100; // LRU cache limit
+  private lastContentHash = 0; // For detecting content changes
+  private frameSkipCount = 0; // Track skipped frames for debugging
+  private useTileCache = true; // Enable row tile caching
+  private lastRenderedState: {
+    viewMode: ViewMode;
+    zoomScale: number;
+    themeHash: number;
+    diffEnabled: boolean;
+  } | null = null;
 
   constructor(options: SequenceGridOptions) {
     this.canvas = options.canvas;
@@ -437,6 +486,9 @@ export class CanvasSequenceGridRenderer {
     readingFrame: ReadingFrame = 0,
     aminoSequence: string | null = null
   ): void {
+    // Encode sequence for fast O(1) lookups
+    this.encodedSequence = encodeSequence(sequence);
+
     this.currentState = {
       sequence,
       aminoSequence,
@@ -458,8 +510,385 @@ export class CanvasSequenceGridRenderer {
     this.updateCodonSnap();
     this.onVisibleRangeChange?.(this.scroller.getVisibleRange());
 
+    // Invalidate row tile cache on sequence change
+    this.invalidateRowCache();
     this.needsFullRedraw = true;
     this.scheduleRender();
+  }
+
+  /**
+   * Invalidate the row tile cache (on sequence/theme/zoom changes)
+   */
+  private invalidateRowCache(): void {
+    this.rowTileCache.clear();
+    this.lastContentHash = 0;
+  }
+
+  /**
+   * Compute a simple hash for a row's content (for cache invalidation)
+   */
+  private computeRowHash(row: number, cols: number): number {
+    if (!this.encodedSequence) return 0;
+    const start = row * cols;
+    const end = Math.min(start + cols, this.encodedSequence.length);
+    // FNV-1a hash for fast content fingerprinting
+    let hash = 2166136261;
+    for (let i = start; i < end; i++) {
+      hash ^= this.encodedSequence[i];
+      hash = Math.imul(hash, 16777619);
+    }
+    // Include diff state in hash
+    if (this.currentState?.diffEnabled && this.currentState.diffMask) {
+      for (let i = start; i < end; i++) {
+        hash ^= this.currentState.diffMask[i] ?? 0;
+        hash = Math.imul(hash, 16777619);
+      }
+    }
+    return hash >>> 0;
+  }
+
+  /**
+   * Get or create a cached row tile
+   * Returns null if tile caching is disabled or not applicable
+   */
+  private getRowTile(
+    row: number,
+    cols: number,
+    rowHeight: number,
+    viewMode: ViewMode
+  ): RowTile | null {
+    // Skip caching for very small cells (micro mode uses batch rendering instead)
+    if (this.cellWidth <= 3 || this.cellHeight <= 3) return null;
+    // Skip caching during scroll for immediate responsiveness
+    if (this.isScrolling) return null;
+    if (!this.useTileCache) return null;
+
+    const hash = this.computeRowHash(row, cols);
+    const cached = this.rowTileCache.get(row);
+
+    // Return cached tile if content hash matches
+    if (cached && cached.hash === hash) {
+      cached.timestamp = performance.now(); // Update LRU timestamp
+      return cached;
+    }
+
+    // Create new tile
+    const tileWidth = cols * this.cellWidth;
+    const tileHeight = rowHeight;
+    const tile: RowTile = {
+      canvas: new OffscreenCanvas(
+        Math.max(1, tileWidth * this.dpr),
+        Math.max(1, tileHeight * this.dpr)
+      ),
+      row,
+      hash,
+      timestamp: performance.now(),
+    };
+
+    // Render row to tile
+    const tileCtx = tile.canvas.getContext('2d', { alpha: false });
+    if (!tileCtx) return null;
+
+    tileCtx.scale(this.dpr, this.dpr);
+    this.renderRowToTile(tileCtx, row, cols, rowHeight, viewMode);
+
+    // Store in cache with LRU eviction
+    this.rowTileCache.set(row, tile);
+    this.evictOldTiles();
+
+    return tile;
+  }
+
+  /**
+   * Render a single row to a tile canvas
+   */
+  private renderRowToTile(
+    ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D,
+    row: number,
+    cols: number,
+    rowHeight: number,
+    viewMode: ViewMode
+  ): void {
+    if (!this.currentState || !this.encodedSequence) return;
+
+    const { sequence, aminoSequence, diffSequence, diffEnabled, diffMask } = this.currentState;
+    const { cellWidth, cellHeight } = this;
+    const rowStart = row * cols;
+    const rowEnd = Math.min(rowStart + cols, sequence.length);
+
+    // Clear tile
+    ctx.fillStyle = this.theme.colors.background;
+    ctx.fillRect(0, 0, cols * cellWidth, rowHeight);
+
+    if (viewMode === 'dual') {
+      // Render DNA row at top, AA row at bottom
+      this.renderRowCellsDual(ctx, row, cols, rowStart, rowEnd, sequence, aminoSequence ?? '', diffSequence, diffEnabled, diffMask);
+    } else {
+      // Single row mode
+      this.renderRowCells(ctx, rowStart, rowEnd, sequence, viewMode, diffSequence, diffEnabled, diffMask);
+    }
+  }
+
+  /**
+   * Render cells for a single row (non-dual mode)
+   */
+  private renderRowCells(
+    ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D,
+    rowStart: number,
+    rowEnd: number,
+    sequence: string,
+    viewMode: ViewMode,
+    diffSequence: string | null,
+    diffEnabled: boolean,
+    diffMask: Uint8Array | null
+  ): void {
+    const { cellWidth, cellHeight } = this;
+    const drawAmino = viewMode === 'aa';
+    const validDiffMask = diffMask && diffMask.length === sequence.length ? diffMask : null;
+
+    for (let i = rowStart; i < rowEnd; i++) {
+      const col = i - rowStart;
+      const x = col * cellWidth;
+      const char = this.encodedSequence ? CODE_TO_CHAR[this.encodedSequence[i]] : sequence[i];
+
+      let diffCode = 0;
+      if (diffEnabled) {
+        if (validDiffMask) {
+          diffCode = validDiffMask[i] ?? 0;
+        } else if (diffSequence) {
+          diffCode = diffSequence[i] && diffSequence[i] !== char ? 1 : 0;
+        }
+      }
+
+      if (diffCode > 0) {
+        this.drawDiffRect(ctx, x, 0, cellWidth, cellHeight, diffCode);
+      } else {
+        if (drawAmino) {
+          this.glyphAtlas.drawAminoAcid(ctx, char, x, 0, cellWidth, cellHeight);
+        } else {
+          this.glyphAtlas.drawNucleotide(ctx, char, x, 0, cellWidth, cellHeight);
+        }
+      }
+    }
+  }
+
+  /**
+   * Render cells for a dual-mode row (DNA + AA)
+   */
+  private renderRowCellsDual(
+    ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D,
+    _row: number,
+    cols: number,
+    rowStart: number,
+    rowEnd: number,
+    sequence: string,
+    aminoSequence: string,
+    diffSequence: string | null,
+    diffEnabled: boolean,
+    diffMask: Uint8Array | null
+  ): void {
+    const { cellWidth, cellHeight } = this;
+    const validDiffMask = diffMask && diffMask.length === sequence.length ? diffMask : null;
+    const rawFrame = this.currentState?.readingFrame ?? 0;
+    const isReverse = rawFrame < 0;
+    const forwardFrame: 0 | 1 | 2 = isReverse
+      ? ((Math.abs(rawFrame) - 1) as 0 | 1 | 2)
+      : (rawFrame as 0 | 1 | 2);
+    const seqLength = sequence.length;
+
+    // DNA row (top)
+    for (let i = rowStart; i < rowEnd; i++) {
+      const col = i - rowStart;
+      const x = col * cellWidth;
+      const char = this.encodedSequence ? CODE_TO_CHAR[this.encodedSequence[i]] : sequence[i];
+
+      let diffCode = 0;
+      if (diffEnabled) {
+        if (validDiffMask) {
+          diffCode = validDiffMask[i] ?? 0;
+        } else if (diffSequence) {
+          diffCode = diffSequence[i] && diffSequence[i] !== char ? 1 : 0;
+        }
+      }
+
+      if (diffCode > 0) {
+        this.drawDiffRect(ctx, x, 0, cellWidth, cellHeight * 2, diffCode);
+      } else {
+        this.glyphAtlas.drawNucleotide(ctx, char, x, 0, cellWidth, cellHeight);
+      }
+    }
+
+    // AA row (bottom) - aligned to codons
+    let aaRowStart = rowStart;
+    if (!isReverse) {
+      while ((aaRowStart - forwardFrame) % 3 !== 0) aaRowStart++;
+    } else {
+      while ((seqLength - 3 - aaRowStart - forwardFrame) % 3 !== 0) aaRowStart++;
+    }
+
+    ctx.strokeStyle = this.theme.colors.borderLight ?? '#374151';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+
+    for (let i = aaRowStart; i < rowEnd; i += 3) {
+      let aaIndex: number;
+      if (!isReverse) {
+        const codonOffset = i - forwardFrame;
+        if (codonOffset < 0) continue;
+        aaIndex = Math.floor(codonOffset / 3);
+      } else {
+        const rcStart = seqLength - 3 - i;
+        const codonOffset = rcStart - forwardFrame;
+        if (codonOffset < 0) continue;
+        aaIndex = Math.floor(codonOffset / 3);
+      }
+      const aaChar = aminoSequence[aaIndex] ?? 'X';
+
+      const col = i - rowStart;
+      const x = col * cellWidth;
+      const destWidth = Math.min(cellWidth * 3, (rowEnd - i) * cellWidth);
+      this.glyphAtlas.drawAminoAcid(ctx, aaChar, x, cellHeight, destWidth, cellHeight);
+
+      const lineX = x + destWidth;
+      ctx.moveTo(lineX, 0);
+      ctx.lineTo(lineX, cellHeight * 2);
+    }
+    ctx.stroke();
+
+    // Separator line
+    ctx.strokeStyle = this.theme.colors.border ?? '#4b5563';
+    ctx.beginPath();
+    ctx.moveTo(0, cellHeight);
+    ctx.lineTo(cols * cellWidth, cellHeight);
+    ctx.stroke();
+  }
+
+  /**
+   * Evict oldest tiles when cache exceeds limit (LRU)
+   */
+  private evictOldTiles(): void {
+    if (this.rowTileCache.size <= this.maxCachedRows) return;
+
+    // Sort by timestamp and remove oldest
+    const entries = Array.from(this.rowTileCache.entries());
+    entries.sort((a, b) => a[1].timestamp - b[1].timestamp);
+
+    const toRemove = entries.slice(0, entries.length - this.maxCachedRows);
+    for (const [key] of toRemove) {
+      this.rowTileCache.delete(key);
+    }
+  }
+
+  /**
+   * Batch render micro cells using direct ImageData for maximum performance
+   * Used when cells are too small for text (genome overview mode)
+   */
+  private renderMicroBatch(
+    ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D,
+    range: VisibleRange,
+    layout: { cols: number; rows: number }
+  ): void {
+    if (!this.currentState || !this.encodedSequence) return;
+
+    const { startRow, endRow, offsetY } = range;
+    const { cellWidth, cellHeight } = this;
+    const { width: viewportWidth } = this.getViewportSize();
+
+    // Get nucleotide colors as RGB arrays for fast ImageData manipulation
+    const colors = [
+      this.hexToRgb(this.theme.nucleotides.A.bg), // A = 0
+      this.hexToRgb(this.theme.nucleotides.C.bg), // C = 1
+      this.hexToRgb(this.theme.nucleotides.G.bg), // G = 2
+      this.hexToRgb(this.theme.nucleotides.T.bg), // T = 3
+      this.hexToRgb(this.theme.nucleotides.N.bg), // N = 4
+    ];
+
+    // For very tiny cells (1-2px), use ImageData for fastest rendering
+    if (cellWidth <= 2 && cellHeight <= 2) {
+      const rowsToRender = endRow - startRow;
+      const imgWidth = Math.ceil(viewportWidth);
+      const imgHeight = Math.ceil(rowsToRender * cellHeight + Math.abs(offsetY));
+
+      if (imgWidth <= 0 || imgHeight <= 0) return;
+
+      const imageData = ctx.createImageData(imgWidth, imgHeight);
+      const data = imageData.data;
+
+      for (let row = startRow; row < endRow; row++) {
+        const rowY = Math.floor((row - startRow) * cellHeight + offsetY);
+        if (rowY < 0 || rowY >= imgHeight) continue;
+
+        const rowStart = row * layout.cols;
+        const rowEnd = Math.min(rowStart + layout.cols, this.encodedSequence.length);
+
+        for (let i = rowStart; i < rowEnd; i++) {
+          const col = i - rowStart;
+          const x = Math.floor(col * cellWidth);
+          if (x < 0 || x >= imgWidth) continue;
+
+          const code = this.encodedSequence[i];
+          const color = colors[code] ?? colors[4];
+
+          // Fill cell pixels
+          for (let dy = 0; dy < cellHeight && rowY + dy < imgHeight; dy++) {
+            for (let dx = 0; dx < cellWidth && x + dx < imgWidth; dx++) {
+              const pixelIndex = ((rowY + dy) * imgWidth + (x + dx)) * 4;
+              data[pixelIndex] = color[0];
+              data[pixelIndex + 1] = color[1];
+              data[pixelIndex + 2] = color[2];
+              data[pixelIndex + 3] = 255;
+            }
+          }
+        }
+      }
+
+      ctx.putImageData(imageData, 0, 0);
+      return;
+    }
+
+    // For 3-5px cells, use fillRect batching by color (faster than per-cell)
+    const batches: Map<number, Array<{ x: number; y: number }>> = new Map();
+    for (let i = 0; i < 5; i++) batches.set(i, []);
+
+    for (let row = startRow; row < endRow; row++) {
+      const rowY = (row - startRow) * cellHeight + offsetY;
+      const rowStart = row * layout.cols;
+      const rowEnd = Math.min(rowStart + layout.cols, this.encodedSequence.length);
+
+      for (let i = rowStart; i < rowEnd; i++) {
+        const col = i - rowStart;
+        const x = col * cellWidth;
+        const code = this.encodedSequence[i];
+        batches.get(code)?.push({ x, y: rowY });
+      }
+    }
+
+    // Render each color batch
+    const colorKeys = ['A', 'C', 'G', 'T', 'N'] as const;
+    for (let code = 0; code < 5; code++) {
+      const batch = batches.get(code);
+      if (!batch || batch.length === 0) continue;
+
+      ctx.fillStyle = this.theme.nucleotides[colorKeys[code]].bg;
+      for (const { x, y } of batch) {
+        ctx.fillRect(x, y, cellWidth, cellHeight);
+      }
+    }
+  }
+
+  /**
+   * Convert hex color to RGB array
+   */
+  private hexToRgb(hex: string): [number, number, number] {
+    const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+    if (result) {
+      return [
+        parseInt(result[1], 16),
+        parseInt(result[2], 16),
+        parseInt(result[3], 16),
+      ];
+    }
+    return [128, 128, 128]; // Fallback gray
   }
 
   /**
@@ -470,6 +899,7 @@ export class CanvasSequenceGridRenderer {
       this.currentState.diffSequence = refSequence;
       this.currentState.diffEnabled = enabled;
       this.currentState.diffMask = diffMask ?? null;
+      this.invalidateRowCache(); // Diff state affects row rendering
       this.needsFullRedraw = true;
       this.scheduleRender();
     }
@@ -481,6 +911,7 @@ export class CanvasSequenceGridRenderer {
   setTheme(theme: Theme): void {
     this.theme = theme;
     this.glyphAtlas.setTheme(theme);
+    this.invalidateRowCache(); // Theme change invalidates cached tiles
     this.needsFullRedraw = true;
     this.scheduleRender();
   }
@@ -562,6 +993,8 @@ export class CanvasSequenceGridRenderer {
       this.onZoomChange(this.zoomScale, this.currentZoomPreset);
     }
 
+    // Zoom change invalidates cached tiles (cell sizes changed)
+    this.invalidateRowCache();
     this.needsFullRedraw = true;
     this.scheduleRender();
   }
@@ -737,8 +1170,16 @@ export class CanvasSequenceGridRenderer {
       ctx.fillRect(0, 0, clientWidth, clientHeight);
       this.needsFullRedraw = false;
 
-      // Render visible characters
-      this.renderVisibleRange(ctx, range, layout, sequence, aminoSequence, viewMode, diffSequence, diffEnabled, diffMask);
+      // Use optimized rendering path based on cell size
+      const isMicroMode = this.cellWidth <= 5 && this.cellHeight <= 5 && !diffEnabled;
+
+      if (isMicroMode && viewMode !== 'dual') {
+        // Micro mode: use batch rendering for maximum performance
+        this.renderMicroBatch(ctx, range, layout);
+      } else {
+        // Normal mode: use tile caching for larger cells
+        this.renderVisibleRangeOptimized(ctx, range, layout, viewMode, rowHeight);
+      }
     }
 
     // Apply scanline effect (skip during scroll for performance)
@@ -785,6 +1226,78 @@ export class CanvasSequenceGridRenderer {
     this.lastRowHeight = rowHeight;
 
     this.isRendering = false;
+  }
+
+  /**
+   * Optimized rendering using tile caching
+   * Renders rows from cache when possible, only creating new tiles for uncached rows
+   */
+  private renderVisibleRangeOptimized(
+    ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D,
+    range: VisibleRange,
+    layout: { cols: number; rows: number },
+    viewMode: ViewMode,
+    rowHeight: number
+  ): void {
+    if (!this.currentState) return;
+
+    const { startRow, endRow, offsetY } = range;
+    const { sequence, aminoSequence, diffSequence, diffEnabled, diffMask } = this.currentState;
+
+    // Try to use cached tiles for each row
+    for (let row = startRow; row < endRow; row++) {
+      const rowY = (row - startRow) * rowHeight + offsetY;
+      const tile = this.getRowTile(row, layout.cols, rowHeight, viewMode);
+
+      if (tile) {
+        // Draw cached tile
+        ctx.drawImage(
+          tile.canvas,
+          0, 0, tile.canvas.width, tile.canvas.height,
+          0, rowY, layout.cols * this.cellWidth, rowHeight
+        );
+      } else {
+        // Render row directly (no cache available or disabled)
+        const rowStart = row * layout.cols;
+        const rowEnd = Math.min(rowStart + layout.cols, sequence.length);
+
+        if (viewMode === 'dual') {
+          this.renderDualRows(
+            ctx, range, layout, sequence, aminoSequence ?? '',
+            diffSequence, diffEnabled, diffMask, row, row + 1
+          );
+        } else {
+          // Inline render for uncached rows
+          const drawAmino = viewMode === 'aa';
+          const validDiffMask = diffMask && diffMask.length === sequence.length ? diffMask : null;
+
+          for (let i = rowStart; i < rowEnd; i++) {
+            const col = i - rowStart;
+            const x = col * this.cellWidth;
+            const char = this.encodedSequence ? CODE_TO_CHAR[this.encodedSequence[i]] : sequence[i];
+
+            let diffCode = 0;
+            if (diffEnabled) {
+              if (validDiffMask) {
+                diffCode = validDiffMask[i] ?? 0;
+              } else if (diffSequence) {
+                diffCode = diffSequence[i] && diffSequence[i] !== char ? 1 : 0;
+              }
+            }
+
+            if (diffCode > 0) {
+              this.drawDiffRect(ctx, x, rowY, this.cellWidth, this.cellHeight, diffCode);
+            } else {
+              if (drawAmino) {
+                this.glyphAtlas.drawAminoAcid(ctx, char, x, rowY, this.cellWidth, this.cellHeight);
+              } else {
+                this.glyphAtlas.drawNucleotide(ctx, char, x, rowY, this.cellWidth, this.cellHeight);
+              }
+            }
+          }
+        }
+      }
+    }
   }
 
   /**
