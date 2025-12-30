@@ -26,6 +26,7 @@ const STEP_LABELS: Record<WelcomeStep, string> = {
   level: 'Experience Level',
   primer: 'Quick Start',
 };
+const TOUR_START_DELAY_MS = 240;
 
 interface StepIndicatorProps {
   currentStep: WelcomeStep;
@@ -119,7 +120,7 @@ export function WelcomeModal(): React.ReactElement | null {
     setHasSeenWelcome(true);
     close('welcome');
     setBeginnerModeEnabled(true);
-    setTimeout(() => startTour('welcome'), 100);
+    setTimeout(() => startTour('welcome'), TOUR_START_DELAY_MS);
   }, [setHasSeenWelcome, close, setBeginnerModeEnabled, startTour]);
 
   const handleBack = useCallback(() => {
@@ -142,6 +143,45 @@ export function WelcomeModal(): React.ReactElement | null {
       size="lg"
       showBackdrop={true}
       onClose={handleFinish}
+      footer={(
+        <div className="welcome-footer">
+          <button
+            type="button"
+            onClick={handleFinish}
+            className="welcome-footer__skip"
+          >
+            Skip
+          </button>
+
+          <div className="welcome-footer__actions">
+            {step !== 'intro' && (
+              <button
+                type="button"
+                onClick={handleBack}
+                className="welcome-btn--secondary"
+              >
+                Back
+              </button>
+            )}
+            {step === 'primer' && (
+              <button
+                type="button"
+                onClick={handleTour}
+                className="welcome-btn--tour"
+              >
+                Take Tour
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={handleNext}
+              className="welcome-btn--primary"
+            >
+              {step === 'primer' ? 'Get Started' : 'Next'}
+            </button>
+          </div>
+        </div>
+      )}
     >
       <div className="welcome-modal">
         {/* Step Progress Indicator */}
@@ -229,45 +269,6 @@ export function WelcomeModal(): React.ReactElement | null {
             <KeyboardPrimer />
           </div>
         )}
-
-        {/* Footer Controls */}
-        <div className="welcome-footer">
-          <button
-            type="button"
-            onClick={handleFinish}
-            className="welcome-footer__skip"
-          >
-            Skip
-          </button>
-
-          <div className="welcome-footer__actions">
-            {step !== 'intro' && (
-              <button
-                type="button"
-                onClick={handleBack}
-                className="welcome-btn--secondary"
-              >
-                Back
-              </button>
-            )}
-            {step === 'primer' && (
-              <button
-                type="button"
-                onClick={handleTour}
-                className="welcome-btn--tour"
-              >
-                Take Tour
-              </button>
-            )}
-            <button
-              type="button"
-              onClick={handleNext}
-              className="welcome-btn--primary"
-            >
-              {step === 'primer' ? 'Get Started' : 'Next'}
-            </button>
-          </div>
-        </div>
       </div>
     </Overlay>
   );

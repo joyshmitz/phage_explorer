@@ -1,11 +1,12 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Overlay } from './Overlay';
 import { useOverlay } from './OverlayProvider';
 import { useTheme } from '../../hooks/useTheme';
 import { useReducedMotion } from '../../hooks/useReducedMotion';
 import { useBeginnerMode } from '../../education';
 import { useWebPreferences } from '../../store/createWebStore';
-import { IconContrast, IconLearn, IconSettings } from '../ui';
+import { useDatabase } from '../../hooks/useDatabase';
+import { IconContrast, IconLearn, IconSettings, IconDatabase } from '../ui';
 
 export function SettingsOverlay(): React.ReactElement | null {
   const { close } = useOverlay();
@@ -20,6 +21,9 @@ export function SettingsOverlay(): React.ReactElement | null {
   const glow = useWebPreferences((s) => s.glow);
   const setGlow = useWebPreferences((s) => s.setGlow);
 
+  const { reload, isFetching } = useDatabase();
+  const [reloadStatus, setReloadStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
+
   const {
     isEnabled: beginnerModeEnabled,
     enable: enableBeginnerMode,
@@ -31,6 +35,20 @@ export function SettingsOverlay(): React.ReactElement | null {
       disableBeginnerMode();
     } else {
       enableBeginnerMode();
+    }
+  };
+
+  const handleReloadDatabase = async () => {
+    setReloadStatus('loading');
+    try {
+      await reload();
+      setReloadStatus('success');
+      // Reload the page to reinitialize with fresh data
+      setTimeout(() => {
+        window.location.reload();
+      }, 500);
+    } catch {
+      setReloadStatus('error');
     }
   };
 
@@ -169,6 +187,41 @@ export function SettingsOverlay(): React.ReactElement | null {
                 aria-label={beginnerModeEnabled ? 'Disable Beginner Mode' : 'Enable Beginner Mode'}
               >
                 {beginnerModeEnabled ? 'Disable' : 'Enable'}
+              </button>
+            </div>
+          </div>
+        </section>
+
+        <section
+          aria-label="Database settings"
+          className="panel panel-compact settings-section"
+        >
+          <div className="settings-row settings-row--top">
+            <div className="settings-row-text">
+              <div className="settings-section-header">
+                <IconDatabase size={16} />
+                <h3 className="settings-section-title">Database</h3>
+              </div>
+              <p className="settings-paragraph">
+                The phage database is cached locally for offline access. If you&apos;re missing phages or seeing
+                stale data, reload the database to fetch the latest version.
+              </p>
+              <p className="settings-meta">
+                {reloadStatus === 'loading' && 'Downloading latest database...'}
+                {reloadStatus === 'success' && 'Database updated! Reloading...'}
+                {reloadStatus === 'error' && 'Failed to reload database. Check your connection.'}
+                {reloadStatus === 'idle' && '24 phages available in the current database.'}
+              </p>
+            </div>
+            <div className="settings-row-actions">
+              <button
+                type="button"
+                className="btn"
+                onClick={handleReloadDatabase}
+                disabled={reloadStatus === 'loading' || isFetching}
+                aria-label="Reload database from server"
+              >
+                {reloadStatus === 'loading' || isFetching ? 'Reloading...' : 'Reload Database'}
               </button>
             </div>
           </div>

@@ -17,6 +17,7 @@ import { AnalysisPanelSkeleton } from '../ui/Skeleton';
 import { ScatterCanvas } from './primitives/ScatterCanvas';
 import { computePhasePortrait, translateSequence } from '@phage-explorer/core';
 import type { DominantProperty, PortraitPoint } from '@phage-explorer/core';
+import { usePhageStore } from '@phage-explorer/state';
 import type { ScatterPoint, ScatterHover } from './primitives/types';
 
 // Color mapping for dominant properties
@@ -70,6 +71,8 @@ export function PhasePortraitOverlay({ repository, currentPhage }: PhasePortrait
   const { theme } = useTheme();
   const colors = theme.colors;
   const { isOpen, toggle } = useOverlay();
+  const viewMode = usePhageStore((s) => s.viewMode);
+  const setScrollPosition = usePhageStore((s) => s.setScrollPosition);
   const sequenceCache = useRef<Map<number, string>>(new Map());
   const [sequence, setSequence] = useState<string>('');
   const [loading, setLoading] = useState(false);
@@ -108,16 +111,27 @@ export function PhasePortraitOverlay({ repository, currentPhage }: PhasePortrait
       return;
     }
 
+    let cancelled = false;
     setLoading(true);
     repository
       .getFullGenomeLength(phageId)
       .then((length: number) => repository.getSequenceWindow(phageId, 0, length))
       .then((seq: string) => {
+        if (cancelled) return;
         sequenceCache.current.set(phageId, seq);
         setSequence(seq);
       })
-      .catch(() => setSequence(''))
-      .finally(() => setLoading(false));
+      .catch(() => {
+        if (cancelled) return;
+        setSequence('');
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
   }, [isOpen, repository, currentPhage]);
 
   // Translate sequence and compute phase portrait
@@ -178,9 +192,10 @@ export function PhasePortraitOverlay({ repository, currentPhage }: PhasePortrait
   const handleClick = useCallback((hover: ScatterHover | null) => {
     if (hover?.point?.data) {
       const point = hover.point.data as PortraitPoint;
-      console.log(`Navigate to amino acid position ${point.start}`);
+      const target = viewMode === 'aa' ? point.start : point.start * 3;
+      setScrollPosition(target);
     }
-  }, []);
+  }, [setScrollPosition, viewMode]);
 
   if (!isOpen('phasePortrait')) return null;
 

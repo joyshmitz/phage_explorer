@@ -21,6 +21,7 @@ import {
   DINUCLEOTIDES,
 } from '@phage-explorer/core';
 import type { BiasDecomposition, BiasProjection } from '@phage-explorer/core';
+import { usePhageStore } from '@phage-explorer/state';
 import type { ScatterPoint, ScatterHover } from './primitives/types';
 
 // Color scale for GC content
@@ -84,6 +85,8 @@ export function BiasDecompositionOverlay({
   const { theme } = useTheme();
   const colors = theme.colors;
   const { isOpen, toggle } = useOverlay();
+  const viewMode = usePhageStore((s) => s.viewMode);
+  const setScrollPosition = usePhageStore((s) => s.setScrollPosition);
   const sequenceCache = useRef<Map<number, string>>(new Map());
   const [sequence, setSequence] = useState<string>('');
   const [loading, setLoading] = useState(false);
@@ -214,9 +217,10 @@ export function BiasDecompositionOverlay({
   const handleClick = useCallback((hover: ScatterHover | null) => {
     if (hover?.point?.data) {
       const data = hover.point.data as { pos: number };
-      console.log(`Navigate to position ${data.pos}`);
+      const target = viewMode === 'aa' ? Math.floor(data.pos / 3) : data.pos;
+      setScrollPosition(target);
     }
-  }, []);
+  }, [setScrollPosition, viewMode]);
 
   if (!isOpen('biasDecomposition')) return null;
 

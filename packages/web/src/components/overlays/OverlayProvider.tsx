@@ -29,9 +29,16 @@ export function useMobile(): boolean {
     const mediaQuery = window.matchMedia(`(max-width: ${MOBILE_BREAKPOINT}px)`);
     setIsMobile(mediaQuery.matches);
 
-    const handler = (e: MediaQueryListEvent) => setIsMobile(e.matches);
-    mediaQuery.addEventListener('change', handler);
-    return () => mediaQuery.removeEventListener('change', handler);
+    const handler = (e: MediaQueryListEvent | MediaQueryList) => setIsMobile(e.matches);
+
+    // Safari < 14 doesn't support addEventListener/removeEventListener on MediaQueryList.
+    if (typeof mediaQuery.addEventListener === 'function') {
+      mediaQuery.addEventListener('change', handler);
+      return () => mediaQuery.removeEventListener('change', handler);
+    }
+
+    mediaQuery.addListener(handler);
+    return () => mediaQuery.removeListener(handler);
   }, []);
 
   return isMobile;

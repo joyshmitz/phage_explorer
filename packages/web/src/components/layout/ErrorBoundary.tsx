@@ -34,6 +34,12 @@ export class ErrorBoundary extends Component<Props, State> {
     window.location.reload();
   };
 
+  private openExternal(url: string): void {
+    // Prevent reverse tabnabbing (window.opener) when opening external sites.
+    const opened = window.open(url, '_blank', 'noopener,noreferrer');
+    if (opened) opened.opener = null;
+  }
+
   render(): ReactNode {
     if (this.state.hasError) {
       if (this.props.fallback) {
@@ -110,7 +116,7 @@ export class ErrorBoundary extends Component<Props, State> {
               </button>
               <button
                 type="button"
-                onClick={() => window.open('https://github.com/Dicklesworthstone/phage_explorer/issues', '_blank')}
+                onClick={() => this.openExternal('https://github.com/Dicklesworthstone/phage_explorer/issues')}
                 style={{
                   padding: '0.75rem 1.5rem',
                   backgroundColor: 'transparent',

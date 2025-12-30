@@ -51,6 +51,22 @@ const NOVELTY_COLORS: Record<string, string> = {
   well_characterized: '#27ae60',
 };
 
+function hashString(input: string): number {
+  let hash = 2166136261;
+  for (let i = 0; i < input.length; i++) {
+    hash ^= input.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return hash >>> 0;
+}
+
+function seededUnit(seed: number): number {
+  let t = seed + 0x6d2b79f5;
+  t = Math.imul(t ^ (t >>> 15), t | 1);
+  t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+  return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+}
+
 export function EnvironmentalProvenanceOverlay({
   currentPhage,
 }: EnvironmentalProvenanceOverlayProps): React.ReactElement | null {
@@ -98,6 +114,8 @@ export function EnvironmentalProvenanceOverlay({
     setDataSource('loading');
     setApiMessage('');
 
+    let cancelled = false;
+
     const runAnalysis = async () => {
       try {
         lastAnalyzedKeyRef.current = phageKey;
@@ -106,6 +124,7 @@ export function EnvironmentalProvenanceOverlay({
         const cacheKey = generateCacheKey('provenance', { phageKey, phageName });
         const cached = getCached<{ result: ProvenanceResult; source: 'real' | 'demo' }>(cacheKey);
         if (cached) {
+          if (cancelled) return;
           setResult(cached.result);
           setDataSource(cached.source);
           setApiMessage(cached.source === 'real' ? 'Data loaded from cache' : '');
@@ -118,6 +137,7 @@ export function EnvironmentalProvenanceOverlay({
         try {
           setApiMessage('Searching Serratus database...');
           const serratusResult = await searchPhageRelated(phageName, 50);
+          if (cancelled) return;
 
           if (serratusResult.success && serratusResult.data.matches.length > 0) {
             // Extract SRA run IDs
@@ -125,10 +145,12 @@ export function EnvironmentalProvenanceOverlay({
               .map(m => m.run_id)
               .filter(id => id && (id.startsWith('SRR') || id.startsWith('ERR') || id.startsWith('DRR')));
 
-            if (runIds.length > 0) {
-              setApiMessage(`Fetching metadata for ${runIds.length} SRA runs...`);
+            const uniqueRunIds = Array.from(new Set(runIds));
+            if (uniqueRunIds.length > 0) {
+              setApiMessage(`Fetching metadata for ${uniqueRunIds.length} SRA runs...`);
               // Limit to first 20 runs to avoid rate limiting
-              const metadataResult = await fetchSRARunMetadataBatch(runIds.slice(0, 20), 3);
+              const metadataResult = await fetchSRARunMetadataBatch(uniqueRunIds.slice(0, 20), 3);
+              if (cancelled) return;
 
               if (metadataResult.success && metadataResult.data.length > 0) {
                 // Process into provenance format
@@ -138,7 +160,7 @@ export function EnvironmentalProvenanceOverlay({
                 const realHits = provenanceData.locations.map((loc, i) => ({
                   metagenomeId: `SRA-${i + 1}`,
                   source: 'other' as const, // SRA data doesn't fit other source categories
-                  containment: Math.min(0.95, 0.3 + Math.random() * 0.5), // Simulated containment
+                  containment: Math.min(0.95, 0.3 + seededUnit(hashString(`${phageKey}:${loc.name}:${loc.isolationSources[0] ?? 'unknown'}:${i}`)) * 0.5),
                   biome: mapIsolationSourceToBiome(loc.isolationSources[0]),
                   location: {
                     latitude: loc.latitude,
@@ -150,6 +172,7 @@ export function EnvironmentalProvenanceOverlay({
 
                 if (realHits.length > 0) {
                   const analysisResult = analyzeProvenance(realHits);
+                  if (cancelled) return;
                   setResult(analysisResult);
                   setDataSource('real');
                   setApiMessage(`Found ${provenanceData.totalSamples} real samples from ${provenanceData.locations.length} locations`);
@@ -167,6 +190,7 @@ export function EnvironmentalProvenanceOverlay({
 
         // Fallback to demo data if real API didn't work
         if (!usedRealData) {
+          if (cancelled) return;
           setApiMessage('Using demonstration data (API unavailable or no matches found)');
           const hits = generateDemoProvenanceData(phageKey);
           const analysisResult = analyzeProvenance(hits);
@@ -177,15 +201,22 @@ export function EnvironmentalProvenanceOverlay({
           setCache(cacheKey, { result: analysisResult, source: 'demo' as const }, { ttl: 60 * 60 * 1000 });
         }
       } catch (err) {
+        if (cancelled) return;
         setResult(null);
         setDataSource('error');
         setError(err instanceof Error ? err.message : 'Provenance analysis failed.');
       } finally {
-        setLoading(false);
+        if (!cancelled) {
+          setLoading(false);
+        }
       }
     };
 
     runAnalysis();
+
+    return () => {
+      cancelled = true;
+    };
   }, [overlayIsOpen, result, currentPhage]);
 
   // Helper to map isolation source to BiomeType

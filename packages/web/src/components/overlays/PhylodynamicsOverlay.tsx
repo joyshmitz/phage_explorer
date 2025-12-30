@@ -61,6 +61,7 @@ export function PhylodynamicsOverlay({
 
   // Track if overlay is open to avoid stale closure issues
   const wasOpenRef = useRef(false);
+  const lastAnalyzedKeyRef = useRef<string | null>(null);
 
   // Hotkey: Ctrl+Shift+Y (phylod[Y]namics)
   useHotkey(
@@ -80,25 +81,27 @@ export function PhylodynamicsOverlay({
       return;
     }
 
-    if (!justOpened && result) {
-      // Already have data and didn't just open
-      return;
-    }
+    const phageKey = String(currentPhage?.id ?? 'demo');
+    const phageName = currentPhage?.name ?? 'bacteriophage';
+    const shouldRun = justOpened || lastAnalyzedKeyRef.current !== phageKey || !result;
+    if (!shouldRun) return;
 
     setLoading(true);
     setError(null);
     setDataSource('loading');
     setApiMessage('');
 
+    let cancelled = false;
+
     const runAnalysis = async () => {
       try {
-        const phageKey = currentPhage?.id ?? 'demo';
-        const phageName = currentPhage?.name ?? 'bacteriophage';
+        lastAnalyzedKeyRef.current = phageKey;
 
         // Check cache first
         const cacheKey = generateCacheKey('phylodynamics', { phageKey, phageName });
         const cached = getCached<{ result: PhylodynamicsResult; source: 'real' | 'demo'; count: number }>(cacheKey);
         if (cached) {
+          if (cancelled) return;
           setResult(cached.result);
           setDataSource(cached.source);
           setSequenceCount(cached.count);
@@ -117,6 +120,7 @@ export function PhylodynamicsOverlay({
           // Try each search term until we get results
           for (const term of searchTerms) {
             const ncbiResult = await fetchDatedPhageSequences(term, 30);
+            if (cancelled) return;
 
             if (ncbiResult.success && ncbiResult.data.sequences.length >= 5) {
               setApiMessage(`Found ${ncbiResult.data.sequences.length} dated sequences. Building phylogeny...`);
@@ -137,6 +141,7 @@ export function PhylodynamicsOverlay({
                 runSelection: true,
               });
 
+              if (cancelled) return;
               setResult(analysisResult);
               setDataSource('real');
               setSequenceCount(ncbiResult.data.sequences.length);
@@ -154,6 +159,7 @@ export function PhylodynamicsOverlay({
 
         // Fallback to demo data if real API didn't work
         if (!usedRealData) {
+          if (cancelled) return;
           setApiMessage('Using demonstration data (no dated sequences found or API unavailable)');
 
           // Generate synthetic dated sequences using phage ID as seed for consistency
@@ -167,6 +173,7 @@ export function PhylodynamicsOverlay({
             runSelection: true,
           });
 
+          if (cancelled) return;
           setResult(analysisResult);
           setDataSource('demo');
           setSequenceCount(15);
@@ -175,15 +182,22 @@ export function PhylodynamicsOverlay({
           setCache(cacheKey, { result: analysisResult, source: 'demo' as const, count: 15 }, { ttl: 60 * 60 * 1000 });
         }
       } catch (err) {
+        if (cancelled) return;
         setResult(null);
         setDataSource('error');
         setError(err instanceof Error ? err.message : 'Phylodynamics analysis failed.');
       } finally {
-        setLoading(false);
+        if (!cancelled) {
+          setLoading(false);
+        }
       }
     };
 
     runAnalysis();
+
+    return () => {
+      cancelled = true;
+    };
   }, [isOpen, result, currentPhage]);
 
   // Generate pseudo-sequence from accession for analysis

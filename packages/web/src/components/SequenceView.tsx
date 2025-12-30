@@ -165,6 +165,19 @@ function SequenceViewBase({
     });
   }, [reducedMotion, scanlines, scanlineIntensity, glow]);
 
+  const postProcessOptions = useMemo(
+    () => ({
+      reducedMotion,
+      enableScanlines: scanlines,
+      enableBloom: glow,
+      enableChromaticAberration: scanlines,
+      scanlineIntensity,
+      bloomIntensity: glow ? 0.4 : 0,
+      aberrationOffset: scanlines ? 1.5 : 0,
+    }),
+    [reducedMotion, scanlines, scanlineIntensity, glow]
+  );
+
   // Update pipeline options when preferences change
   useEffect(() => {
     if (postProcess) {
@@ -206,6 +219,7 @@ function SequenceViewBase({
     scanlines,
     glow,
     postProcess,
+    postProcessOptions,
     reducedMotion,
     enablePinchZoom: true,
     snapToCodon,
@@ -513,7 +527,8 @@ function SequenceViewBase({
         border: `1px solid ${colors.border}`,
         borderRadius: '6px',
         backgroundColor: colors.background,
-        overflow: 'hidden',
+        overflowX: 'auto',
+        overflowY: 'hidden',
       }}
       role="region"
       aria-label="Sequence viewer"

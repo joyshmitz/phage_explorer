@@ -206,7 +206,7 @@ interface CommandPaletteProps {
 export function CommandPalette({ commands: customCommands, context: propContext }: CommandPaletteProps): React.ReactElement | null {
   const { theme, setTheme, availableThemes } = useTheme();
   const colors = theme.colors;
-  const { isOpen, toggle, open, close } = useOverlay();
+  const { isOpen, toggle, open, close, isMobile } = useOverlay();
   const paletteOpen = isOpen('commandPalette');
   const [query, setQuery] = useState('');
   const [selectedIndex, setSelectedIndex] = useState(0);
@@ -777,9 +777,17 @@ export function CommandPalette({ commands: customCommands, context: propContext 
       title="COMMAND PALETTE"
       hotkey=":"
       size="md"
-      position="top"
+      position={isMobile ? 'bottom' : 'top'}
     >
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+      <div
+        style={{
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '0.5rem',
+          height: isMobile ? '100%' : undefined,
+          minHeight: isMobile ? 0 : undefined,
+        }}
+      >
         {/* Experience level filter */}
         <div
           role="group"
@@ -857,7 +865,11 @@ export function CommandPalette({ commands: customCommands, context: propContext 
           role="listbox"
           aria-label="Available commands"
           className="scrollable-y"
-          style={{ maxHeight: '400px' }}
+          style={
+            isMobile
+              ? { flex: 1, minHeight: 0 }
+              : { maxHeight: '400px' }
+          }
         >
           {/* Recent commands section (only show when no query) */}
           {showRecent && (
@@ -958,7 +970,8 @@ export function CommandPalette({ commands: customCommands, context: propContext 
           id="command-palette-hints"
           style={{
             display: 'flex',
-            gap: '1rem',
+            flexWrap: 'wrap',
+            gap: '0.75rem 1rem',
             padding: '0.5rem',
             borderTop: `1px solid ${colors.borderLight}`,
             color: colors.textMuted,

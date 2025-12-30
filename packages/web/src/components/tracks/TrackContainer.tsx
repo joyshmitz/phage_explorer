@@ -5,7 +5,7 @@
  * SequenceGrid's horizontal scroll position and zoom level.
  */
 
-import React, { createContext, useContext, useMemo, useState, useCallback, type ReactNode } from 'react';
+import React, { createContext, useContext, useMemo, useState, useCallback, useEffect, type ReactNode } from 'react';
 import { usePhageStore } from '@phage-explorer/state';
 import { useTheme } from '../../hooks/useTheme';
 
@@ -81,6 +81,7 @@ export function TrackContainer({
   const [containerWidth, setContainerWidth] = useState(800);
   const [isLoading, setLoading] = useState(false);
   const [collapsed, setCollapsed] = useState(defaultCollapsed);
+  const [containerEl, setContainerEl] = useState<HTMLDivElement | null>(null);
 
   // Calculate derived values
   // Base zoom scale - could be enhanced to sync with SequenceGrid's zoom
@@ -97,18 +98,21 @@ export function TrackContainer({
 
   // Container ref callback for measuring width
   const containerRef = useCallback((node: HTMLDivElement | null) => {
-    if (node) {
-      const observer = new ResizeObserver((entries) => {
-        const entry = entries[0];
-        if (entry) {
-          setContainerWidth(entry.contentRect.width);
-        }
-      });
-      observer.observe(node);
-      setContainerWidth(node.clientWidth);
-      return () => observer.disconnect();
-    }
+    setContainerEl(node);
   }, []);
+
+  useEffect(() => {
+    if (!containerEl) return;
+    const observer = new ResizeObserver((entries) => {
+      const entry = entries[0];
+      if (entry) {
+        setContainerWidth(entry.contentRect.width);
+      }
+    });
+    observer.observe(containerEl);
+    setContainerWidth(containerEl.clientWidth);
+    return () => observer.disconnect();
+  }, [containerEl]);
 
   // Build context value
   const contextValue = useMemo<TrackContextValue>(() => ({
