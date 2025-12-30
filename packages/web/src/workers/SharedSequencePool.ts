@@ -85,8 +85,10 @@ export class SharedSequencePool {
     this.sharedAvailable = isSharedArrayBufferAvailable();
 
     if (this.sharedAvailable) {
-      console.log('[SharedSequencePool] SharedArrayBuffer available - zero-copy mode enabled');
-    } else {
+      if (import.meta.env.DEV) {
+        console.log('[SharedSequencePool] SharedArrayBuffer available - zero-copy mode enabled');
+      }
+    } else if (import.meta.env.DEV) {
       console.warn(
         '[SharedSequencePool] SharedArrayBuffer unavailable - using ArrayBuffer fallback. ' +
           'Ensure COOP/COEP headers are set for optimal performance.'

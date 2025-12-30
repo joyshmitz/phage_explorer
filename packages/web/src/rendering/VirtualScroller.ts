@@ -88,6 +88,7 @@ export class VirtualScroller {
   private state: ScrollState;
   private animationFrameId: number | null = null;
   private onScrollCallback: ((range: VisibleRange) => void) | null = null;
+  private useNativeRaf: boolean;
 
   // Layout calculations
   private cols: number = 0;
@@ -105,6 +106,7 @@ export class VirtualScroller {
       isAnimating: false,
     };
     this.recalculateLayout();
+    this.useNativeRaf = typeof globalThis.requestAnimationFrame === 'function';
   }
 
   /**
@@ -290,6 +292,30 @@ export class VirtualScroller {
   }
 
   /**
+   * Handle wheel deltas directly (worker-safe alternative to WheelEvent)
+   */
+  handleWheelDelta(deltaX: number, deltaY: number, deltaMode: 0 | 1 | 2 = 0): void {
+    let dx = deltaX;
+    let dy = deltaY;
+
+    if (deltaMode === 1) {
+      dx *= this.options.itemWidth;
+      dy *= this.options.itemHeight;
+    } else if (deltaMode === 2) {
+      dx *= this.options.viewportWidth;
+      dy *= this.options.viewportHeight;
+    }
+
+    if (this.options.momentum) {
+      this.state.velocityX = dx * 0.3;
+      this.state.velocityY = dy * 0.3;
+      this.startMomentum();
+    } else {
+      this.scrollBy(dx, dy);
+    }
+  }
+
+  /**
    * Handle touch start
    */
   handleTouchStart(event: TouchEvent): void {
@@ -305,6 +331,20 @@ export class VirtualScroller {
     this.lastTouchTime = performance.now();
 
     // Stop any ongoing momentum
+    this.stopMomentum();
+  }
+
+  /**
+   * Handle touch start with raw coordinates (worker-safe)
+   */
+  handleTouchStartPoint(x: number, y: number): void {
+    this.touchStartX = x;
+    this.touchStartY = y;
+    this.touchStartScrollX = this.state.scrollX;
+    this.touchStartScrollY = this.state.scrollY;
+    this.lastTouchX = x;
+    this.lastTouchY = y;
+    this.lastTouchTime = performance.now();
     this.stopMomentum();
   }
 
@@ -341,6 +381,34 @@ export class VirtualScroller {
     this.state.velocityY = vy;
     this.lastTouchX = touch.clientX;
     this.lastTouchY = touch.clientY;
+    this.lastTouchTime = now;
+  }
+
+  /**
+   * Handle touch move with raw coordinates (worker-safe)
+   */
+  handleTouchMovePoint(x: number, y: number): void {
+    const now = performance.now();
+    const dt = Math.max(1, now - this.lastTouchTime);
+
+    const instantVx = (this.lastTouchX - x) / dt * 16.67;
+    const instantVy = (this.lastTouchY - y) / dt * 16.67;
+
+    const smoothing = 0.4;
+    const vx = this.state.velocityX * (1 - smoothing) + instantVx * smoothing;
+    const vy = this.state.velocityY * (1 - smoothing) + instantVy * smoothing;
+
+    const deltaX = this.touchStartX - x;
+    const deltaY = this.touchStartY - y;
+    this.scrollTo(
+      this.touchStartScrollX + deltaX,
+      this.touchStartScrollY + deltaY
+    );
+
+    this.state.velocityX = vx;
+    this.state.velocityY = vy;
+    this.lastTouchX = x;
+    this.lastTouchY = y;
     this.lastTouchTime = now;
   }
 
@@ -405,7 +473,7 @@ export class VirtualScroller {
     }
 
     // Continue animation
-    this.animationFrameId = requestAnimationFrame(this.animateMomentum);
+    this.animationFrameId = this.requestRaf(this.animateMomentum);
   };
 
   /**
@@ -416,7 +484,7 @@ export class VirtualScroller {
     this.state.velocityX = 0;
     this.state.velocityY = 0;
     if (this.animationFrameId !== null) {
-      cancelAnimationFrame(this.animationFrameId);
+      this.cancelRaf(this.animationFrameId);
       this.animationFrameId = null;
     }
   }
@@ -570,6 +638,21 @@ export class VirtualScroller {
   dispose(): void {
     this.stopMomentum();
     this.onScrollCallback = null;
+  }
+
+  private requestRaf(callback: FrameRequestCallback): number {
+    if (this.useNativeRaf) {
+      return globalThis.requestAnimationFrame(callback);
+    }
+    return globalThis.setTimeout(() => callback(performance.now()), 16);
+  }
+
+  private cancelRaf(handle: number): void {
+    if (this.useNativeRaf) {
+      globalThis.cancelAnimationFrame(handle);
+      return;
+    }
+    globalThis.clearTimeout(handle);
   }
 }
 

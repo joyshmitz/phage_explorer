@@ -13,7 +13,7 @@ import type { PostProcessPipeline } from './PostProcessPipeline';
 
 export interface SequenceGridOptions {
   /** Canvas element to render to */
-  canvas: HTMLCanvasElement;
+  canvas: HTMLCanvasElement | OffscreenCanvas;
   /** Initial theme */
   theme: Theme;
   /** Cell width in CSS pixels */
@@ -34,6 +34,12 @@ export interface SequenceGridOptions {
   zoomScale?: number;
   /** Enable pinch-to-zoom on mobile */
   enablePinchZoom?: boolean;
+  /** Explicit viewport width (required for OffscreenCanvas) */
+  viewportWidth?: number;
+  /** Explicit viewport height (required for OffscreenCanvas) */
+  viewportHeight?: number;
+  /** Explicit device pixel ratio (worker-safe) */
+  devicePixelRatio?: number;
   /** Callback when zoom changes */
   onZoomChange?: (scale: number, preset: ZoomPreset) => void;
   /** Callback when visible range changes (scroll/resize/momentum) */
@@ -148,8 +154,8 @@ function getDefaultZoomScale(viewportWidth: number): number {
 }
 
 export class CanvasSequenceGridRenderer {
-  private canvas: HTMLCanvasElement;
-  private ctx: CanvasRenderingContext2D;
+  private canvas: HTMLCanvasElement | OffscreenCanvas;
+  private ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D;
   private backBuffer: OffscreenCanvas | null = null;
   private backCtx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D | null = null;
 
@@ -192,11 +198,20 @@ export class CanvasSequenceGridRenderer {
   private paused = false;
   private isScrolling = false;
   private scrollEndTimer: ReturnType<typeof setTimeout> | null = null;
+  private lastRenderRange: VisibleRange | null = null;
+  private lastRenderLayout: { cols: number; rows: number } | null = null;
+  private lastScrollY: number | null = null;
+  private lastScrollX: number | null = null;
+  private lastViewport: { width: number; height: number } | null = null;
+  private lastRowHeight: number = 0;
+  private viewportWidth: number;
+  private viewportHeight: number;
+  private useNativeRaf: boolean;
 
   constructor(options: SequenceGridOptions) {
     this.canvas = options.canvas;
     this.theme = options.theme;
-    this.scanlines = options.scanlines ?? true;
+    this.scanlines = options.scanlines ?? false;
     this.glow = options.glow ?? false;
     this.postProcess = options.postProcess;
     this.reducedMotion = options.reducedMotion ?? false;
@@ -205,14 +220,15 @@ export class CanvasSequenceGridRenderer {
     this.onVisibleRangeChange = options.onVisibleRangeChange;
     this.snapToCodon = options.snapToCodon ?? false;
     this.densityMode = options.densityMode ?? 'standard';
+    this.useNativeRaf = typeof globalThis.requestAnimationFrame === 'function';
 
     // Get device pixel ratio for high-DPI
-    const rawDpr = window.devicePixelRatio || 1;
+    const rawDpr = options.devicePixelRatio ?? (typeof window !== 'undefined' ? window.devicePixelRatio : 1);
     this.dpr = isMobileDevice() ? Math.min(rawDpr, 2) : rawDpr;
 
     // Initialize zoom scale - use mobile-aware default if not specified
     // This ensures mobile users start with readable cell sizes
-    const defaultZoom = getDefaultZoomScale(this.canvas.clientWidth);
+    const defaultZoom = getDefaultZoomScale(options.viewportWidth ?? (this.isDomCanvas() ? this.canvas.clientWidth : 0));
     this.zoomScale = options.zoomScale ?? defaultZoom;
     this.currentZoomPreset = getZoomPresetForScale(this.zoomScale);
 
@@ -222,8 +238,8 @@ export class CanvasSequenceGridRenderer {
       this.baseCellHeight = options.cellHeight;
     } else {
       const responsiveSize = getResponsiveCellSize(
-        this.canvas.clientWidth,
-        this.canvas.clientHeight,
+        options.viewportWidth ?? this.getViewportSize().width,
+        options.viewportHeight ?? this.getViewportSize().height,
         this.densityMode
       );
       this.baseCellWidth = responsiveSize.width;
@@ -252,8 +268,8 @@ export class CanvasSequenceGridRenderer {
       totalItems: 0,
       itemWidth: this.cellWidth,
       itemHeight: this.rowHeight,
-      viewportWidth: this.canvas.clientWidth,
-      viewportHeight: this.canvas.clientHeight,
+      viewportWidth: options.viewportWidth ?? this.getViewportSize().width,
+      viewportHeight: options.viewportHeight ?? this.getViewportSize().height,
     });
     this.updateCodonSnap();
 
@@ -276,16 +292,21 @@ export class CanvasSequenceGridRenderer {
     });
 
     // Initialize canvas size
-    this.resize();
+    const initialViewport = this.getViewportSize(options.viewportWidth, options.viewportHeight);
+    this.viewportWidth = initialViewport.width;
+    this.viewportHeight = initialViewport.height;
+    this.resize(initialViewport.width, initialViewport.height);
   }
 
   /**
    * Resize canvas to match container and handle DPI
    */
-  resize(): void {
-    const rect = this.canvas.getBoundingClientRect();
+  resize(widthOverride?: number, heightOverride?: number): void {
+    const rect = this.getViewportSize(widthOverride, heightOverride);
     const width = rect.width;
     const height = rect.height;
+    this.viewportWidth = width;
+    this.viewportHeight = height;
 
     // Recalculate responsive BASE cell sizes with orientation awareness
     const responsiveSize = getResponsiveCellSize(width, height, this.densityMode);
@@ -326,7 +347,7 @@ export class CanvasSequenceGridRenderer {
   setDensityMode(mode: 'compact' | 'standard'): void {
     if (this.densityMode === mode) return;
     this.densityMode = mode;
-    const rect = this.canvas.getBoundingClientRect();
+    const rect = this.getViewportSize();
     const width = rect.width;
     const height = rect.height;
     const responsiveSize = getResponsiveCellSize(width, height, this.densityMode);
@@ -469,6 +490,24 @@ export class CanvasSequenceGridRenderer {
    */
   setReducedMotion(reduced: boolean): void {
     this.reducedMotion = reduced;
+    this.needsFullRedraw = true;
+    this.scheduleRender();
+  }
+
+  /**
+   * Toggle scanlines effect without reconstructing renderer
+   */
+  setScanlines(enabled: boolean): void {
+    this.scanlines = enabled;
+    this.needsFullRedraw = true;
+    this.scheduleRender();
+  }
+
+  /**
+   * Toggle glow effect without reconstructing renderer
+   */
+  setGlow(enabled: boolean): void {
+    this.glow = enabled;
     this.needsFullRedraw = true;
     this.scheduleRender();
   }
@@ -617,7 +656,7 @@ export class CanvasSequenceGridRenderer {
   scheduleRender(): void {
     if (this.animationFrameId !== null || this.paused) return;
 
-    this.animationFrameId = requestAnimationFrame(() => {
+    this.animationFrameId = this.requestRaf(() => {
       this.animationFrameId = null;
       if (!this.paused) {
         this.render();
@@ -631,7 +670,7 @@ export class CanvasSequenceGridRenderer {
   pause(): void {
     this.paused = true;
     if (this.animationFrameId !== null) {
-      cancelAnimationFrame(this.animationFrameId);
+      this.cancelRaf(this.animationFrameId);
       this.animationFrameId = null;
     }
   }
@@ -658,8 +697,7 @@ export class CanvasSequenceGridRenderer {
    */
   private render(): void {
     if (this.isRendering || !this.currentState) return;
-    const clientWidth = this.canvas.clientWidth || 0;
-    const clientHeight = this.canvas.clientHeight || 0;
+    const { width: clientWidth, height: clientHeight } = this.getViewportSize();
     if (clientWidth === 0 || clientHeight === 0) {
       // Canvas not laid out yet; skip this frame
       return;
@@ -674,16 +712,34 @@ export class CanvasSequenceGridRenderer {
     const range = this.scroller.getVisibleRange();
     const layout = this.scroller.getLayout();
 
-    // Always clear the back buffer before drawing to prevent ghosting during scroll.
-    // The old approach only cleared on needsFullRedraw, but during scrolling the offsetY
-    // changes frame-to-frame, leaving stale pixels at row edges. Clearing every frame
-    // with the background color is cheap and eliminates flickering.
-    ctx.fillStyle = this.theme.colors.background;
-    ctx.fillRect(0, 0, this.canvas.clientWidth, this.canvas.clientHeight);
-    this.needsFullRedraw = false;
+    const rowHeight = viewMode === 'dual' ? this.cellHeight * 2 : this.cellHeight;
 
-    // Render visible characters
-    this.renderVisibleRange(ctx, range, layout, sequence, aminoSequence, viewMode, diffSequence, diffEnabled, diffMask);
+    // Attempt incremental scroll blit for smoother scrolling (renders only new rows).
+    const didScrollBlit = this.tryScrollBlit(
+      ctx,
+      range,
+      layout,
+      rowHeight,
+      sequence,
+      aminoSequence,
+      viewMode,
+      diffSequence,
+      diffEnabled,
+      diffMask
+    );
+
+    if (!didScrollBlit) {
+      // Always clear the back buffer before drawing to prevent ghosting during scroll.
+      // The old approach only cleared on needsFullRedraw, but during scrolling the offsetY
+      // changes frame-to-frame, leaving stale pixels at row edges. Clearing every frame
+      // with the background color is cheap and eliminates flickering.
+      ctx.fillStyle = this.theme.colors.background;
+      ctx.fillRect(0, 0, clientWidth, clientHeight);
+      this.needsFullRedraw = false;
+
+      // Render visible characters
+      this.renderVisibleRange(ctx, range, layout, sequence, aminoSequence, viewMode, diffSequence, diffEnabled, diffMask);
+    }
 
     // Apply scanline effect (skip during scroll for performance)
     if (this.scanlines && !this.reducedMotion && !this.isScrolling) {
@@ -720,6 +776,14 @@ export class CanvasSequenceGridRenderer {
       }
     }
 
+    // Track last render state for incremental scroll blits.
+    this.lastRenderRange = range;
+    this.lastRenderLayout = layout;
+    this.lastScrollY = this.getScrollY(range, rowHeight);
+    this.lastScrollX = this.getScrollX(range, layout.cols, this.cellWidth);
+    this.lastViewport = { width: clientWidth, height: clientHeight };
+    this.lastRowHeight = rowHeight;
+
     this.isRendering = false;
   }
 
@@ -735,14 +799,18 @@ export class CanvasSequenceGridRenderer {
     viewMode: ViewMode,
     diffSequence: string | null,
     diffEnabled: boolean,
-    diffMask: Uint8Array | null
+    diffMask: Uint8Array | null,
+    rowStartOverride?: number,
+    rowEndOverride?: number
   ): void {
     const { cellWidth, cellHeight } = this;
     const rowHeight = viewMode === 'dual' ? cellHeight * 2 : cellHeight;
     const { offsetY, startRow, endRow } = range;
+    const renderStartRow = rowStartOverride ?? startRow;
+    const renderEndRow = rowEndOverride ?? endRow;
 
     if (viewMode === 'dual') {
-      this.renderDualRows(ctx, range, layout, sequence, aminoSequence ?? '', diffSequence, diffEnabled, diffMask);
+      this.renderDualRows(ctx, range, layout, sequence, aminoSequence ?? '', diffSequence, diffEnabled, diffMask, renderStartRow, renderEndRow);
       return;
     }
 
@@ -763,7 +831,7 @@ export class CanvasSequenceGridRenderer {
     let currentAlpha = 1.0;
 
     // Render row by row
-    for (let row = startRow; row < endRow; row++) {
+    for (let row = renderStartRow; row < renderEndRow; row++) {
       const rowY = (row - startRow) * rowHeight + offsetY;
       const rowStart = row * layout.cols;
       const rowEnd = Math.min(rowStart + layout.cols, sequence.length);
@@ -967,11 +1035,15 @@ export class CanvasSequenceGridRenderer {
     aminoSequence: string,
     diffSequence: string | null,
     diffEnabled: boolean,
-    diffMask: Uint8Array | null
+    diffMask: Uint8Array | null,
+    rowStartOverride?: number,
+    rowEndOverride?: number
   ): void {
     const { cellWidth, cellHeight } = this;
     const rowHeight = cellHeight * 2;
     const { offsetY, startRow, endRow } = range;
+    const renderStartRow = rowStartOverride ?? startRow;
+    const renderEndRow = rowEndOverride ?? endRow;
     const rawFrame = this.currentState?.readingFrame ?? 0;
     const isReverse = rawFrame < 0;
     const forwardFrame: 0 | 1 | 2 = isReverse
@@ -982,7 +1054,7 @@ export class CanvasSequenceGridRenderer {
 
     let currentAlpha = 1.0;
 
-    for (let row = startRow; row < endRow; row++) {
+    for (let row = renderStartRow; row < renderEndRow; row++) {
       const rowY = (row - startRow) * rowHeight + offsetY;
       const rowStart = row * layout.cols;
       const rowEnd = Math.min(rowStart + layout.cols, sequence.length);
@@ -1133,6 +1205,110 @@ export class CanvasSequenceGridRenderer {
     this.scroller.setSnapToMultiple(rowsPerSnap);
   }
 
+  private getScrollY(range: VisibleRange, rowHeight: number): number {
+    return range.startRow * rowHeight - range.offsetY;
+  }
+
+  private getScrollX(range: VisibleRange, cols: number, itemWidth: number): number {
+    const startCol = range.startIndex - range.startRow * cols;
+    return startCol * itemWidth - range.offsetX;
+  }
+
+  private tryScrollBlit(
+    ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D,
+    range: VisibleRange,
+    layout: { cols: number; rows: number },
+    rowHeight: number,
+    sequence: string,
+    aminoSequence: string | null,
+    viewMode: ViewMode,
+    diffSequence: string | null,
+    diffEnabled: boolean,
+    diffMask: Uint8Array | null
+  ): boolean {
+    if (this.needsFullRedraw || !this.isScrolling) return false;
+    if (!this.lastRenderRange || !this.lastRenderLayout || !this.lastViewport) return false;
+    const { width: clientWidth, height: clientHeight } = this.getViewportSize();
+    if (clientWidth === 0 || clientHeight === 0) return false;
+    if (this.lastViewport.width !== clientWidth || this.lastViewport.height !== clientHeight) return false;
+    if (this.lastRowHeight !== rowHeight) return false;
+    if (this.lastRenderLayout.cols !== layout.cols || this.lastRenderLayout.rows !== layout.rows) return false;
+
+    const currentScrollY = this.getScrollY(range, rowHeight);
+    const lastScrollY = this.lastScrollY ?? currentScrollY;
+    const deltaY = lastScrollY - currentScrollY;
+    if (Math.abs(deltaY) < 0.5) return false;
+    if (Math.abs(deltaY) >= clientHeight) return false;
+
+    const currentScrollX = this.getScrollX(range, layout.cols, this.cellWidth);
+    const lastScrollX = this.lastScrollX ?? currentScrollX;
+    const deltaX = lastScrollX - currentScrollX;
+    if (Math.abs(deltaX) > 0.5) return false;
+
+    // Shift previous frame into the back buffer. Use the main canvas as source.
+    // NOTE: This may include post-process artifacts from the last non-scroll frame,
+    // but we skip heavy effects while scrolling, so this keeps motion smooth.
+    const source = this.canvas;
+    ctx.drawImage(
+      source,
+      0,
+      0,
+      source.width,
+      source.height,
+      0,
+      deltaY,
+      clientWidth,
+      clientHeight
+    );
+
+    // Clear the newly exposed region and redraw only the affected rows.
+    ctx.fillStyle = this.theme.colors.background;
+    const exposedHeight = Math.min(clientHeight, Math.abs(deltaY));
+    const rowsToRender = Math.min(
+      range.endRow - range.startRow,
+      Math.ceil(exposedHeight / Math.max(1, rowHeight)) + 1
+    );
+
+    if (deltaY < 0) {
+      // Scrolling down: new content appears at the bottom
+      ctx.fillRect(0, clientHeight - exposedHeight, clientWidth, exposedHeight);
+      const renderStart = Math.max(range.startRow, range.endRow - rowsToRender);
+      this.renderVisibleRange(
+        ctx,
+        range,
+        layout,
+        sequence,
+        aminoSequence,
+        viewMode,
+        diffSequence,
+        diffEnabled,
+        diffMask,
+        renderStart,
+        range.endRow
+      );
+    } else {
+      // Scrolling up: new content appears at the top
+      ctx.fillRect(0, 0, clientWidth, exposedHeight);
+      const renderEnd = Math.min(range.endRow, range.startRow + rowsToRender);
+      this.renderVisibleRange(
+        ctx,
+        range,
+        layout,
+        sequence,
+        aminoSequence,
+        viewMode,
+        diffSequence,
+        diffEnabled,
+        diffMask,
+        range.startRow,
+        renderEnd
+      );
+    }
+
+    this.needsFullRedraw = false;
+    return true;
+  }
+
   private gcd(a: number, b: number): number {
     let x = Math.abs(a);
     let y = Math.abs(b);
@@ -1148,8 +1324,7 @@ export class CanvasSequenceGridRenderer {
    * Render scanline overlay effect
    */
   private renderScanlines(ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D): void {
-    const width = this.canvas.clientWidth;
-    const height = this.canvas.clientHeight;
+    const { width, height } = this.getViewportSize();
 
     this.ensureScanlinePattern(ctx);
     if (this.scanlinePattern) {
@@ -1159,7 +1334,7 @@ export class CanvasSequenceGridRenderer {
     }
 
     // Fallback: draw individual scanlines (should be rare).
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.03)';
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.015)';
     for (let y = 0; y < height; y += 2) {
       ctx.fillRect(0, y, width, 1);
     }
@@ -1167,16 +1342,19 @@ export class CanvasSequenceGridRenderer {
 
   private ensureScanlinePattern(ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D): void {
     if (this.scanlinePattern && this.scanlinePatternCtx === ctx) return;
-    if (typeof document === 'undefined') return;
-
-    const patternCanvas = document.createElement('canvas');
+    const patternCanvas = typeof document !== 'undefined'
+      ? document.createElement('canvas')
+      : typeof OffscreenCanvas !== 'undefined'
+        ? new OffscreenCanvas(1, 2)
+        : null;
+    if (!patternCanvas) return;
     patternCanvas.width = 1;
     patternCanvas.height = 2;
     const patternCtx = patternCanvas.getContext('2d');
     if (!patternCtx) return;
 
     patternCtx.clearRect(0, 0, 1, 2);
-    patternCtx.fillStyle = 'rgba(0, 0, 0, 0.03)';
+    patternCtx.fillStyle = 'rgba(0, 0, 0, 0.015)';
     patternCtx.fillRect(0, 0, 1, 1);
 
     this.scanlinePattern = ctx.createPattern(patternCanvas, 'repeat');
@@ -1203,6 +1381,13 @@ export class CanvasSequenceGridRenderer {
   }
 
   /**
+   * Handle wheel deltas (worker-safe)
+   */
+  handleWheelDelta(deltaX: number, deltaY: number, deltaMode: 0 | 1 | 2 = 0): void {
+    this.scroller.handleWheelDelta(deltaX, deltaY, deltaMode);
+  }
+
+  /**
    * Handle touch start (for mobile scrolling or pinch-to-zoom)
    */
   handleTouchStart(event: TouchEvent): void {
@@ -1214,6 +1399,22 @@ export class CanvasSequenceGridRenderer {
     // One finger = scroll
     if (event.touches.length === 1) {
       this.scroller.handleTouchStart(event);
+    }
+  }
+
+  /**
+   * Handle touch start with points (worker-safe)
+   */
+  handleTouchStartPoints(points: Array<{ x: number; y: number }>): void {
+    if (points.length === 2) {
+      this.isPinching = true;
+      this.pinchStartScale = this.zoomScale;
+      this.pinchStartDistance = this.getPointDistance(points[0], points[1]);
+      this.scroller.stopMomentum();
+      return;
+    }
+    if (points.length === 1) {
+      this.scroller.handleTouchStartPoint(points[0].x, points[0].y);
     }
   }
 
@@ -1234,6 +1435,23 @@ export class CanvasSequenceGridRenderer {
   }
 
   /**
+   * Handle touch move with points (worker-safe)
+   */
+  handleTouchMovePoints(points: Array<{ x: number; y: number }>): void {
+    if (this.isPinching && points.length === 2) {
+      const currentDistance = this.getPointDistance(points[0], points[1]);
+      const scaleRatio = currentDistance / Math.max(1, this.pinchStartDistance);
+      const newScale = this.pinchStartScale * scaleRatio;
+      this.setZoomScale(newScale);
+      return;
+    }
+    if (!this.isPinching && points.length === 1) {
+      this.scroller.handleTouchMovePoint(points[0].x, points[0].y);
+      this.scheduleRender();
+    }
+  }
+
+  /**
    * Handle touch end (for mobile momentum or end pinch)
    */
   handleTouchEnd(event: TouchEvent): void {
@@ -1243,6 +1461,23 @@ export class CanvasSequenceGridRenderer {
       return;
     }
     this.scroller.handleTouchEnd();
+  }
+
+  /**
+   * Handle touch end (worker-safe)
+   */
+  handleTouchEndPoints(): void {
+    if (this.isPinching) {
+      this.handlePinchEnd();
+      return;
+    }
+    this.scroller.handleTouchEnd();
+  }
+
+  private getPointDistance(p1: { x: number; y: number }, p2: { x: number; y: number }): number {
+    const dx = p2.x - p1.x;
+    const dy = p2.y - p1.y;
+    return Math.sqrt(dx * dx + dy * dy);
   }
 
   /**
@@ -1292,16 +1527,72 @@ export class CanvasSequenceGridRenderer {
   }
 
   /**
+   * Get layout info
+   */
+  getLayout(): { cols: number; rows: number; totalHeight: number; totalWidth: number } {
+    return this.scroller.getLayout();
+  }
+
+  /**
+   * Get current cell metrics
+   */
+  getCellMetrics(): { cellWidth: number; cellHeight: number; rowHeight: number } {
+    return {
+      cellWidth: this.cellWidth,
+      cellHeight: this.cellHeight,
+      rowHeight: this.rowHeight,
+    };
+  }
+
+  /**
    * Cleanup
    */
   dispose(): void {
     if (this.animationFrameId !== null) {
-      cancelAnimationFrame(this.animationFrameId);
+      this.cancelRaf(this.animationFrameId);
     }
     if (this.scrollEndTimer !== null) {
       clearTimeout(this.scrollEndTimer);
     }
     this.scroller.dispose();
+  }
+
+  private requestRaf(callback: FrameRequestCallback): number {
+    if (this.useNativeRaf) {
+      return globalThis.requestAnimationFrame(callback);
+    }
+    return globalThis.setTimeout(() => callback(performance.now()), 16);
+  }
+
+  private cancelRaf(handle: number): void {
+    if (this.useNativeRaf) {
+      globalThis.cancelAnimationFrame(handle);
+      return;
+    }
+    globalThis.clearTimeout(handle);
+  }
+
+  private getViewportSize(widthOverride?: number, heightOverride?: number): { width: number; height: number } {
+    const width = widthOverride ?? (this.viewportWidth ?? 0);
+    const height = heightOverride ?? (this.viewportHeight ?? 0);
+
+    if (width && height) {
+      return { width, height };
+    }
+
+    if (this.isDomCanvas()) {
+      const rect = this.canvas.getBoundingClientRect();
+      return { width: rect.width, height: rect.height };
+    }
+
+    return {
+      width: (this.canvas.width ?? 0) / Math.max(1, this.dpr),
+      height: (this.canvas.height ?? 0) / Math.max(1, this.dpr),
+    };
+  }
+
+  private isDomCanvas(): this is { canvas: HTMLCanvasElement } {
+    return typeof (this.canvas as HTMLCanvasElement).getBoundingClientRect === 'function';
   }
 }
 

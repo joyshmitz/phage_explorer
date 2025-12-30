@@ -10,6 +10,7 @@ import type React from 'react';
 import type { Theme, ViewMode, ReadingFrame } from '@phage-explorer/core';
 import { translateSequence, reverseComplement } from '@phage-explorer/core';
 import { CanvasSequenceGridRenderer, type VisibleRange, type ZoomLevel, type ZoomPreset, type PostProcessPipeline } from '../rendering';
+import type { PostProcessOptions } from '../rendering/PostProcessPipeline';
 
 export interface UseSequenceGridOptions {
   theme: Theme;
@@ -35,6 +36,10 @@ export interface UseSequenceGridOptions {
   onZoomChange?: (scale: number, preset: ZoomPreset) => void;
   /** Density mode: compact favors more cells/letters per viewport */
   densityMode?: 'compact' | 'standard';
+  /** Enable OffscreenCanvas worker renderer when available */
+  useWorkerRenderer?: boolean;
+  /** Post-process pipeline options (worker-safe) */
+  postProcessOptions?: PostProcessOptions;
 }
 
 /**
@@ -109,9 +114,10 @@ export function useSequenceGrid(options: UseSequenceGridOptions): UseSequenceGri
     diffEnabled = false,
     diffMask = null,
     diffPositions = [],
-    scanlines = true,
+    scanlines = false,
     glow = false,
     postProcess,
+    postProcessOptions,
     reducedMotion = false,
     initialZoomScale: initialZoomScaleOption,
     enablePinchZoom = true,
@@ -121,6 +127,34 @@ export function useSequenceGrid(options: UseSequenceGridOptions): UseSequenceGri
     densityMode = detectMobileDevice() ? 'compact' : 'standard',
   } = options;
 
+  const useWorkerRenderer = useMemo(() => {
+    if (typeof window === 'undefined') return false;
+    const offscreenSupported = typeof OffscreenCanvas !== 'undefined'
+      && typeof (HTMLCanvasElement.prototype as unknown as { transferControlToOffscreen?: () => OffscreenCanvas }).transferControlToOffscreen === 'function';
+    if (!offscreenSupported) return false;
+    if ((navigator as Navigator).webdriver) return false;
+    return options.useWorkerRenderer ?? true;
+  }, [options.useWorkerRenderer]);
+
+  const resolvedPostProcessOptions = useMemo<PostProcessOptions | null>(() => {
+    if (postProcessOptions) return postProcessOptions;
+    if (!scanlines && !glow) return null;
+    return {
+      reducedMotion,
+      enableScanlines: scanlines,
+      enableBloom: glow,
+      enableChromaticAberration: scanlines,
+    };
+  }, [postProcessOptions, scanlines, glow, reducedMotion]);
+
+  const postProcessOptionsRef = useRef<PostProcessOptions | null>(resolvedPostProcessOptions);
+  useEffect(() => {
+    postProcessOptionsRef.current = resolvedPostProcessOptions;
+    if (useWorkerRenderer && workerRef.current) {
+      workerRef.current.postMessage({ type: 'setPostProcess', options: resolvedPostProcessOptions });
+    }
+  }, [resolvedPostProcessOptions, useWorkerRenderer]);
+
   const initialZoomScaleRef = useRef<number | null>(null);
   if (initialZoomScaleRef.current === null) {
     initialZoomScaleRef.current = initialZoomScaleOption ?? getMobileAwareZoom();
@@ -129,6 +163,20 @@ export function useSequenceGrid(options: UseSequenceGridOptions): UseSequenceGri
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const rendererRef = useRef<CanvasSequenceGridRenderer | null>(null);
+  const workerRef = useRef<Worker | null>(null);
+  const workerStateRef = useRef<{
+    visibleRange: VisibleRange | null;
+    layout: { cols: number; rows: number; totalHeight: number; totalWidth: number } | null;
+    scrollPosition: number;
+    zoomPreset: ZoomPreset | null;
+    cellMetrics: { cellWidth: number; cellHeight: number; rowHeight: number } | null;
+  }>({
+    visibleRange: null,
+    layout: null,
+    scrollPosition: 0,
+    zoomPreset: null,
+    cellMetrics: null,
+  });
   const [visibleRange, setVisibleRange] = useState<VisibleRange | null>(null);
   const [scrollPosition, setScrollPosition] = useState(0);
   const [zoomScale, setZoomScaleState] = useState(initialZoomScale);
@@ -197,10 +245,242 @@ export function useSequenceGrid(options: UseSequenceGridOptions): UseSequenceGri
     }
   }, [onZoomChange]);
 
+  // Initialize OffscreenCanvas worker renderer (if supported)
+  useEffect(() => {
+    if (!useWorkerRenderer) return;
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const worker = new Worker(
+      new URL('../workers/sequence-render.worker.ts', import.meta.url),
+      { type: 'module' }
+    );
+    workerRef.current = worker;
+
+    const offscreen = canvas.transferControlToOffscreen();
+    const viewport = {
+      width: canvas.clientWidth,
+      height: canvas.clientHeight,
+    };
+
+    const handleMessage = (event: MessageEvent<any>) => {
+      const msg = event.data;
+      if (!msg || typeof msg !== 'object') return;
+      if (msg.type === 'visibleRange') {
+        workerStateRef.current.visibleRange = msg.range ?? null;
+        workerStateRef.current.layout = msg.layout ?? null;
+        workerStateRef.current.cellMetrics = msg.cellMetrics ?? null;
+        workerStateRef.current.scrollPosition = msg.scrollPosition ?? 0;
+        handleVisibleRangeFromRenderer(msg.range);
+      } else if (msg.type === 'zoom') {
+        workerStateRef.current.zoomPreset = msg.preset ?? null;
+        handleZoomChange(msg.scale, msg.preset);
+      } else if (msg.type === 'error' && msg.message) {
+        // If worker fails, fall back to main thread on next render
+        console.error('[SequenceGridWorker]', msg.message);
+      }
+    };
+
+    worker.addEventListener('message', handleMessage);
+
+    // Proxy object to preserve renderer interface for the hook
+    const proxy = {
+      resize: (width?: number, height?: number) => {
+        if (!workerRef.current) return;
+        if (typeof width !== 'number' || typeof height !== 'number') {
+          const rect = canvas.getBoundingClientRect();
+          workerRef.current.postMessage({ type: 'resize', width: rect.width, height: rect.height });
+          return;
+        }
+        workerRef.current.postMessage({ type: 'resize', width, height });
+      },
+      setSequence: (seq: string, mode: ViewMode, frame: ReadingFrame, aa: string | null) => {
+        workerRef.current?.postMessage({ type: 'setSequence', sequence: seq, viewMode: mode, readingFrame: frame, aminoSequence: aa });
+      },
+      setDiffMode: (refSeq: string | null, enabled: boolean, mask?: Uint8Array | null) => {
+        workerRef.current?.postMessage({ type: 'setDiff', diffSequence: refSeq, diffEnabled: enabled, diffMask: mask ?? null });
+      },
+      setTheme: (nextTheme: Theme) => {
+        workerRef.current?.postMessage({ type: 'setTheme', theme: nextTheme });
+      },
+      setReducedMotion: (flag: boolean) => {
+        workerRef.current?.postMessage({ type: 'setReducedMotion', reducedMotion: flag });
+      },
+      setScanlines: (enabled: boolean) => {
+        workerRef.current?.postMessage({ type: 'setEffects', scanlines: enabled, glow });
+      },
+      setGlow: (enabled: boolean) => {
+        workerRef.current?.postMessage({ type: 'setEffects', scanlines, glow: enabled });
+      },
+      setSnapToCodon: (flag: boolean) => {
+        workerRef.current?.postMessage({ type: 'setSnapToCodon', enabled: flag });
+      },
+      setDensityMode: (mode: 'compact' | 'standard') => {
+        workerRef.current?.postMessage({ type: 'setDensityMode', mode });
+      },
+      setPostProcess: () => {
+        workerRef.current?.postMessage({ type: 'setPostProcess', options: postProcessOptionsRef.current });
+      },
+      handleWheel: (event: WheelEvent) => {
+        event.preventDefault();
+        workerRef.current?.postMessage({
+          type: 'wheel',
+          deltaX: event.deltaX,
+          deltaY: event.deltaY,
+          deltaMode: event.deltaMode as 0 | 1 | 2,
+        });
+      },
+      handleTouchStart: (event: TouchEvent) => {
+        if (event.touches.length === 0) return;
+        const points = Array.from(event.touches).map((touch) => ({
+          x: touch.clientX,
+          y: touch.clientY,
+        }));
+        workerRef.current?.postMessage({ type: 'touchStart', points });
+      },
+      handleTouchMove: (event: TouchEvent) => {
+        if (event.touches.length === 0) return;
+        event.preventDefault();
+        const points = Array.from(event.touches).map((touch) => ({
+          x: touch.clientX,
+          y: touch.clientY,
+        }));
+        workerRef.current?.postMessage({ type: 'touchMove', points });
+      },
+      handleTouchEnd: () => {
+        workerRef.current?.postMessage({ type: 'touchEnd' });
+      },
+      scrollToPosition: (position: number, center: boolean = true) => {
+        workerRef.current?.postMessage({ type: 'scrollTo', position, center });
+      },
+      scrollToStart: () => {
+        workerRef.current?.postMessage({ type: 'scrollToStart' });
+      },
+      scrollToEnd: () => {
+        workerRef.current?.postMessage({ type: 'scrollToEnd' });
+      },
+      getIndexAtPoint: (x: number, y: number): number | null => {
+        const state = workerStateRef.current;
+        if (!state.visibleRange || !state.layout || !state.cellMetrics) return null;
+        const { cols } = state.layout;
+        const { startRow, startIndex, offsetX, offsetY } = state.visibleRange;
+        const cellWidth = state.cellMetrics.cellWidth;
+        const rowHeight = state.cellMetrics.rowHeight;
+        const scrollX = (startIndex - startRow * cols) * cellWidth - offsetX;
+        const scrollY = startRow * rowHeight - offsetY;
+        const absoluteX = scrollX + x;
+        const absoluteY = scrollY + y;
+        const col = Math.floor(absoluteX / cellWidth);
+        const row = Math.floor(absoluteY / rowHeight);
+        if (col < 0 || row < 0 || col >= cols || row >= state.layout.rows) return null;
+        const idx = row * cols + col;
+        if (idx >= sequence.length) return null;
+        return idx >= 0 ? idx : null;
+      },
+      getScrollPosition: () => workerStateRef.current.scrollPosition,
+      getVisibleRange: () => workerStateRef.current.visibleRange ?? null,
+      getZoomPreset: () => workerStateRef.current.zoomPreset ?? null,
+      setZoomScale: (scale: number) => {
+        workerRef.current?.postMessage({ type: 'zoomScale', scale });
+      },
+      zoomIn: (factor = 1.3) => {
+        workerRef.current?.postMessage({ type: 'zoomIn', factor });
+      },
+      zoomOut: (factor = 1.3) => {
+        workerRef.current?.postMessage({ type: 'zoomOut', factor });
+      },
+      setZoomLevel: (level: ZoomLevel) => {
+        workerRef.current?.postMessage({ type: 'zoomLevel', level });
+      },
+      pause: () => {
+        workerRef.current?.postMessage({ type: 'pause' });
+      },
+      resume: () => {
+        workerRef.current?.postMessage({ type: 'resume' });
+      },
+      markDirty: () => {
+        workerRef.current?.postMessage({ type: 'markDirty' });
+      },
+      dispose: () => {
+        workerRef.current?.postMessage({ type: 'dispose' });
+      },
+    } as unknown as CanvasSequenceGridRenderer;
+
+    rendererRef.current = proxy;
+
+    worker.postMessage(
+      {
+        type: 'init',
+        canvas: offscreen,
+        theme,
+        viewport,
+        options: {
+          scanlines,
+          glow,
+          reducedMotion,
+          zoomScale: initialZoomScale,
+          enablePinchZoom,
+          snapToCodon,
+          densityMode,
+          devicePixelRatio: window.devicePixelRatio || 1,
+          postProcess: resolvedPostProcessOptions,
+        },
+      },
+      [offscreen]
+    );
+
+    const handleResize = () => {
+      const rect = canvas.getBoundingClientRect();
+      worker.postMessage({ type: 'resize', width: rect.width, height: rect.height });
+    };
+
+    const resizeObserver = new ResizeObserver(handleResize);
+    resizeObserver.observe(canvas);
+
+    const handleOrientationChange = () => {
+      setOrientation(window.innerWidth >= window.innerHeight ? 'landscape' : 'portrait');
+      setIsMobile(detectMobileDevice());
+      handleResize();
+    };
+
+    window.addEventListener('orientationchange', handleOrientationChange);
+    window.addEventListener('resize', handleOrientationChange);
+
+    const handleWheel = (e: WheelEvent) => proxy.handleWheel(e);
+    const handleTouchStart = (e: TouchEvent) => proxy.handleTouchStart(e);
+    const handleTouchMove = (e: TouchEvent) => proxy.handleTouchMove(e);
+    const handleTouchEnd = (e: TouchEvent) => proxy.handleTouchEnd(e);
+
+    canvas.addEventListener('wheel', handleWheel, { passive: false });
+    canvas.addEventListener('touchstart', handleTouchStart, { passive: true });
+    canvas.addEventListener('touchmove', handleTouchMove, { passive: false });
+    canvas.addEventListener('touchend', handleTouchEnd, { passive: true });
+
+    return () => {
+      if (pendingUiSyncRafRef.current !== null) {
+        cancelAnimationFrame(pendingUiSyncRafRef.current);
+        pendingUiSyncRafRef.current = null;
+      }
+      resizeObserver.disconnect();
+      window.removeEventListener('orientationchange', handleOrientationChange);
+      window.removeEventListener('resize', handleOrientationChange);
+      canvas.removeEventListener('wheel', handleWheel);
+      canvas.removeEventListener('touchstart', handleTouchStart);
+      canvas.removeEventListener('touchmove', handleTouchMove);
+      canvas.removeEventListener('touchend', handleTouchEnd);
+      worker.removeEventListener('message', handleMessage);
+      worker.postMessage({ type: 'dispose' });
+      worker.terminate();
+      workerRef.current = null;
+      rendererRef.current = null;
+    };
+  }, [useWorkerRenderer]);
+
   // Initialize renderer when canvas is available
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
+    if (useWorkerRenderer) return;
 
     // Create renderer with zoom options
     const renderer = new CanvasSequenceGridRenderer({
@@ -281,7 +561,7 @@ export function useSequenceGrid(options: UseSequenceGridOptions): UseSequenceGri
       renderer.dispose();
       rendererRef.current = null;
     };
-  }, [scanlines, glow, postProcess, reducedMotion, initialZoomScale, enablePinchZoom, handleZoomChange, handleVisibleRangeFromRenderer, commitUiState]); // Recreate when visual pipeline changes
+  }, [useWorkerRenderer, scanlines, glow, postProcess, reducedMotion, initialZoomScale, enablePinchZoom, handleZoomChange, handleVisibleRangeFromRenderer, commitUiState]); // Recreate when visual pipeline changes
 
   // Stop rendering when canvas is offscreen (battery/GPU saver, especially on mobile)
   useEffect(() => {
@@ -397,6 +677,16 @@ export function useSequenceGrid(options: UseSequenceGridOptions): UseSequenceGri
   useEffect(() => {
     rendererRef.current?.setReducedMotion(reducedMotion);
   }, [reducedMotion]);
+
+  // Update scanline/glow toggles without recreating renderer
+  useEffect(() => {
+    if (useWorkerRenderer && workerRef.current) {
+      workerRef.current.postMessage({ type: 'setEffects', scanlines, glow });
+      return;
+    }
+    rendererRef.current?.setScanlines?.(scanlines);
+    rendererRef.current?.setGlow?.(glow);
+  }, [scanlines, glow, useWorkerRenderer]);
 
   // Update post-process pipeline without reconstructing renderer
   useEffect(() => {

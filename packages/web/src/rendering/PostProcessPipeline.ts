@@ -26,7 +26,7 @@ export class PostProcessPipeline {
       enableScanlines: true,
       enableBloom: true,
       enableChromaticAberration: true,
-      scanlineIntensity: 0.15,
+      scanlineIntensity: 0.06,
       bloomIntensity: 0.4,
       aberrationOffset: 1.5,
       ...opts,
@@ -124,7 +124,7 @@ export class PostProcessPipeline {
    * @param destination The destination canvas to render the final result to
    * @returns boolean True if processing occurred, false if skipped (e.g. reduced motion)
    */
-  process(source: TexImageSource, destination: HTMLCanvasElement): boolean {
+  process(source: TexImageSource, destination: HTMLCanvasElement | OffscreenCanvas): boolean {
     if (this.opts.reducedMotion || (!this.opts.enableScanlines && !this.opts.enableChromaticAberration && !this.opts.enableBloom)) {
       return false;
     }

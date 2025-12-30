@@ -42,7 +42,7 @@ export class PostProcessingPipeline {
       enableScanlines: options.enableScanlines ?? true,
       enableBloom: options.enableBloom ?? true,
       enableAberration: options.enableAberration ?? true,
-      intensity: options.intensity ?? 1.0,
+      intensity: options.intensity ?? 0.6,
     };
 
     const gl = this.canvas.getContext('webgl2', {
