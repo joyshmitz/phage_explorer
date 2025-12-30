@@ -12,7 +12,8 @@
 
 import { test, expect, type Page, type CDPSession } from '@playwright/test';
 
-const BASE_URL = 'http://localhost:5173';
+const BASE_URL = process.env.PLAYWRIGHT_BASE_URL ?? 'http://localhost:5173';
+const PERF_ENABLED = process.env.PLAYWRIGHT_PERF === '1';
 
 // Mobile device configurations
 const MOBILE_DEVICES = {
@@ -225,6 +226,7 @@ async function getMemoryMetrics(page: Page): Promise<MemoryMetrics | null> {
 // ============================================================================
 
 test.describe('Low-End Device Performance', () => {
+  test.skip(!PERF_ENABLED, 'Set PLAYWRIGHT_PERF=1 to run performance benchmarks');
   test.describe.configure({ mode: 'serial' });
 
   test('Performance on low-end mobile (CPU 6x slowdown)', async ({ page }) => {
@@ -326,6 +328,7 @@ test.describe('Low-End Device Performance', () => {
 // ============================================================================
 
 test.describe('Mid-Range Device Performance', () => {
+  test.skip(!PERF_ENABLED, 'Set PLAYWRIGHT_PERF=1 to run performance benchmarks');
   test('Performance on mid-range mobile', async ({ page }) => {
     const cdpSession = await getCDPSession(page);
     const device = MOBILE_DEVICES.midRange;
@@ -338,7 +341,7 @@ test.describe('Mid-Range Device Performance', () => {
       console.log(`\n=== ${device.name} Performance Test ===`);
 
       const startTime = Date.now();
-      await page.goto(BASE_URL, { waitUntil: 'networkidle', timeout: 30000 });
+      await page.goto(BASE_URL, { waitUntil: 'domcontentloaded', timeout: 30000 });
       const loadTime = Date.now() - startTime;
 
       await page.waitForTimeout(1000);
@@ -374,6 +377,7 @@ test.describe('Mid-Range Device Performance', () => {
 // ============================================================================
 
 test.describe('Flagship Device Performance', () => {
+  test.skip(!PERF_ENABLED, 'Set PLAYWRIGHT_PERF=1 to run performance benchmarks');
   test('Performance on flagship mobile', async ({ page }) => {
     const cdpSession = await getCDPSession(page);
     const device = MOBILE_DEVICES.flagship;
@@ -385,7 +389,7 @@ test.describe('Flagship Device Performance', () => {
       console.log(`\n=== ${device.name} Performance Test ===`);
 
       const startTime = Date.now();
-      await page.goto(BASE_URL, { waitUntil: 'networkidle' });
+      await page.goto(BASE_URL, { waitUntil: 'domcontentloaded', timeout: 30000 });
       const loadTime = Date.now() - startTime;
 
       const metrics = await collectWebVitals(page);
@@ -417,6 +421,7 @@ test.describe('Flagship Device Performance', () => {
 // ============================================================================
 
 test.describe('Mobile Interaction Performance', () => {
+  test.skip(!PERF_ENABLED, 'Set PLAYWRIGHT_PERF=1 to run performance benchmarks');
   test('Touch scroll responsiveness', async ({ page }) => {
     const cdpSession = await getCDPSession(page);
     const device = MOBILE_DEVICES.midRange;
@@ -425,7 +430,7 @@ test.describe('Mobile Interaction Performance', () => {
       await page.setViewportSize(device.viewport);
       await configureDevice(cdpSession, device);
 
-      await page.goto(BASE_URL, { waitUntil: 'networkidle' });
+      await page.goto(BASE_URL, { waitUntil: 'domcontentloaded', timeout: 30000 });
       await page.waitForTimeout(2000);
 
       console.log('\n=== Touch Scroll Test ===');
@@ -495,7 +500,7 @@ test.describe('Mobile Interaction Performance', () => {
       await page.setViewportSize(device.viewport);
       await configureDevice(cdpSession, device);
 
-      await page.goto(BASE_URL, { waitUntil: 'networkidle' });
+      await page.goto(BASE_URL, { waitUntil: 'domcontentloaded', timeout: 30000 });
       await page.waitForTimeout(1000);
 
       console.log('\n=== Mobile Navigation Test ===');
@@ -533,6 +538,7 @@ test.describe('Mobile Interaction Performance', () => {
 // ============================================================================
 
 test.describe('Mobile Memory Management', () => {
+  test.skip(!PERF_ENABLED, 'Set PLAYWRIGHT_PERF=1 to run performance benchmarks');
   test('Memory usage during extended mobile session', async ({ page }) => {
     const cdpSession = await getCDPSession(page);
     const device = MOBILE_DEVICES.midRange;
@@ -541,7 +547,7 @@ test.describe('Mobile Memory Management', () => {
       await page.setViewportSize(device.viewport);
       await configureDevice(cdpSession, device);
 
-      await page.goto(BASE_URL, { waitUntil: 'networkidle' });
+      await page.goto(BASE_URL, { waitUntil: 'domcontentloaded', timeout: 30000 });
       await page.waitForTimeout(2000);
 
       console.log('\n=== Mobile Memory Stress Test ===');
@@ -610,6 +616,7 @@ test.describe('Mobile Memory Management', () => {
 // ============================================================================
 
 test.describe('Tablet Performance', () => {
+  test.skip(!PERF_ENABLED, 'Set PLAYWRIGHT_PERF=1 to run performance benchmarks');
   test('Performance on tablet viewport', async ({ page }) => {
     const cdpSession = await getCDPSession(page);
     const device = MOBILE_DEVICES.tablet;
@@ -622,7 +629,7 @@ test.describe('Tablet Performance', () => {
       console.log(`Viewport: ${device.viewport.width}x${device.viewport.height}`);
 
       const startTime = Date.now();
-      await page.goto(BASE_URL, { waitUntil: 'networkidle' });
+      await page.goto(BASE_URL, { waitUntil: 'domcontentloaded', timeout: 30000 });
       const loadTime = Date.now() - startTime;
 
       const metrics = await collectWebVitals(page);

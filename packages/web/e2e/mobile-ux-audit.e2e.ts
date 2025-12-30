@@ -79,10 +79,23 @@ async function getOverflowingElements(page: Page): Promise<string[]> {
   });
 }
 
+async function gotoApp(page: Page, options: { dismissWelcome?: boolean } = {}): Promise<void> {
+  await page.goto('/', { waitUntil: 'domcontentloaded', timeout: 30000 });
+  await page.waitForSelector('#root > div', { timeout: 30000 });
+  await page.waitForTimeout(250);
+
+  if (options.dismissWelcome === false) return;
+
+  const skip = page.locator('.welcome-footer__skip');
+  if (await skip.isVisible().catch(() => false)) {
+    await skip.click().catch(() => {});
+    await page.locator('.overlay-welcome').waitFor({ state: 'hidden' }).catch(() => {});
+  }
+}
+
 test.describe('Mobile Layout & Overflow', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/');
-    await page.waitForLoadState('networkidle');
+    await gotoApp(page);
   });
 
   test('no horizontal scrollbar on body', async ({ page }) => {
@@ -158,10 +171,20 @@ test.describe('Mobile Layout & Overflow', () => {
     const truncatedElements = await page.evaluate(() => {
       const issues: string[] = [];
       document.querySelectorAll('*').forEach((el) => {
+        if (el instanceof SVGElement) return;
+        if (el.classList.contains('sr-only') || el.closest('.sr-only')) return;
         const style = window.getComputedStyle(el);
+        const hasText = Boolean(el.textContent && el.textContent.trim().length > 0);
+        const isVisible =
+          style.display !== 'none' &&
+          style.visibility !== 'hidden' &&
+          (el as HTMLElement).getClientRects().length > 0;
+        if (!hasText || !isVisible) return;
+
         if (style.overflow === 'hidden' && style.whiteSpace === 'nowrap') {
           if (style.textOverflow !== 'ellipsis') {
-            issues.push(el.tagName.toLowerCase() + (el.className ? `.${el.className}` : ''));
+            const className = typeof el.className === 'string' ? el.className : '';
+            issues.push(el.tagName.toLowerCase() + (className ? `.${className}` : ''));
           }
         }
       });
@@ -179,8 +202,7 @@ test.describe('Mobile Layout & Overflow', () => {
 
 test.describe('Touch Targets (WCAG 2.5.5)', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/');
-    await page.waitForLoadState('networkidle');
+    await gotoApp(page);
   });
 
   test('all buttons meet 44x44 minimum touch target', async ({ page }) => {
@@ -245,7 +267,9 @@ test.describe('Touch Targets (WCAG 2.5.5)', () => {
     await page.keyboard.press(':');
     await page.waitForSelector('.overlay-commandPalette', { state: 'visible' });
 
-    const closeButton = page.locator('.overlay-commandPalette button[aria-label="Close overlay"]');
+    const bottomSheetClose = page.locator('.bottom-sheet__close').first();
+    const desktopClose = page.locator('.overlay-commandPalette button[aria-label="Close overlay"]');
+    const closeButton = (await bottomSheetClose.isVisible().catch(() => false)) ? bottomSheetClose : desktopClose;
     await expect(closeButton).toBeVisible();
 
     const { width, height } = await getElementDimensions(closeButton);
@@ -289,8 +313,7 @@ test.describe('Touch Targets (WCAG 2.5.5)', () => {
 
 test.describe('Overlays & Modals on Mobile', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/');
-    await page.waitForLoadState('networkidle');
+    await gotoApp(page);
   });
 
   test('command palette opens as bottom sheet on phones', async ({ page }) => {
@@ -313,6 +336,54 @@ test.describe('Overlays & Modals on Mobile', () => {
     await page.keyboard.press('Escape');
   });
 
+  test('bottom sheet locks body scroll and restores', async ({ page }) => {
+    if (!isPhoneViewport(page)) {
+      test.skip();
+      return;
+    }
+
+    await page.keyboard.press(':');
+    await page.waitForSelector('.bottom-sheet__container', { state: 'visible' });
+
+    const pointerCoarse = await page.evaluate(() => window.matchMedia('(pointer: coarse)').matches);
+    const bodyStyleOpen = await page.evaluate(() => {
+      const body = document.body;
+      return {
+        overflow: body.style.overflow,
+        position: body.style.position,
+        top: body.style.top,
+      };
+    });
+
+    expect(bodyStyleOpen.overflow).toBe('hidden');
+    if (pointerCoarse) {
+      expect(bodyStyleOpen.position).toBe('fixed');
+      expect(bodyStyleOpen.top).toMatch(/^-?\d+px$/);
+    }
+
+    const bottomSheetClose = page.locator('.bottom-sheet__close').first();
+    if (await bottomSheetClose.isVisible().catch(() => false)) {
+      await bottomSheetClose.click();
+    } else {
+      await page.keyboard.press('Escape');
+    }
+
+    await page.waitForSelector('.bottom-sheet__container', { state: 'hidden' });
+
+    const bodyStyleClosed = await page.evaluate(() => {
+      const body = document.body;
+      return {
+        overflow: body.style.overflow,
+        position: body.style.position,
+        top: body.style.top,
+      };
+    });
+
+    expect(bodyStyleClosed.overflow).not.toBe('hidden');
+    expect(bodyStyleClosed.position).not.toBe('fixed');
+    expect(bodyStyleClosed.top).toBe('');
+  });
+
   test('overlays do not exceed viewport height', async ({ page }) => {
     // Open settings overlay
     await page.keyboard.press(':');
@@ -333,13 +404,23 @@ test.describe('Overlays & Modals on Mobile', () => {
     await page.keyboard.press(':');
     await page.waitForSelector('.overlay-commandPalette', { state: 'visible' });
 
-    const content = page.locator('.overlay-commandPalette .scrollable-y, .overlay-commandPalette [style*="overflow"]');
-    if (await content.count() > 0) {
-      const isScrollable = await content.first().evaluate((el) => {
+    const isBottomSheet = await page.locator('.bottom-sheet__container').isVisible().catch(() => false);
+    if (isBottomSheet) {
+      const scrollSurface = page.locator('.bottom-sheet__content').first();
+      const isScrollable = await scrollSurface.evaluate((el) => {
         const style = window.getComputedStyle(el);
         return style.overflowY === 'auto' || style.overflowY === 'scroll';
       });
       expect(isScrollable).toBe(true);
+    } else {
+      const content = page.locator('.overlay-commandPalette .scrollable-y, .overlay-commandPalette [style*="overflow"]');
+      if (await content.count() > 0) {
+        const isScrollable = await content.first().evaluate((el) => {
+          const style = window.getComputedStyle(el);
+          return style.overflowY === 'auto' || style.overflowY === 'scroll';
+        });
+        expect(isScrollable).toBe(true);
+      }
     }
 
     await page.keyboard.press('Escape');
@@ -350,8 +431,7 @@ test.describe('Overlays & Modals on Mobile', () => {
     await page.evaluate(() => {
       localStorage.clear();
     });
-    await page.reload();
-    await page.waitForLoadState('networkidle');
+    await gotoApp(page, { dismissWelcome: false });
 
     const welcomeModal = page.locator('.overlay-welcome, [class*="welcome"]');
     if (await welcomeModal.count() > 0) {
@@ -375,8 +455,7 @@ test.describe('Overlays & Modals on Mobile', () => {
 
 test.describe('Control Deck (Mobile)', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/');
-    await page.waitForLoadState('networkidle');
+    await gotoApp(page);
   });
 
   test('control deck is visible only on phones', async ({ page }) => {
@@ -442,23 +521,26 @@ test.describe('Control Deck (Mobile)', () => {
       return;
     }
 
-    const controlDeck = page.locator('.control-deck');
-    const appBody = page.locator('.app-body');
+    const layout = await page.evaluate(() => {
+      const controlDeck = document.querySelector<HTMLElement>('.control-deck');
+      const appBody = document.querySelector<HTMLElement>('.app-body');
+      if (!controlDeck || !appBody) return null;
+      const deckHeight = controlDeck.getBoundingClientRect().height;
+      const paddingBottom = parseFloat(window.getComputedStyle(appBody).paddingBottom) || 0;
+      return { deckHeight, paddingBottom };
+    });
 
-    const deckBox = await controlDeck.boundingBox();
-    const bodyBox = await appBody.boundingBox();
-
-    if (deckBox && bodyBox) {
-      // Content should end before control deck starts
-      expect(bodyBox.y + bodyBox.height).toBeLessThanOrEqual(deckBox.y + 10);
+    expect(layout).not.toBeNull();
+    if (layout) {
+      // Ensure the scroll container reserves at least the control deck height so content isn't obscured.
+      expect(layout.paddingBottom).toBeGreaterThanOrEqual(layout.deckHeight - 1);
     }
   });
 });
 
 test.describe('Typography & Readability', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/');
-    await page.waitForLoadState('networkidle');
+    await gotoApp(page);
   });
 
   test('base font size is at least 16px on mobile', async ({ page }) => {
@@ -479,10 +561,15 @@ test.describe('Typography & Readability', () => {
     const smallTextElements = await page.evaluate(() => {
       const issues: string[] = [];
       document.querySelectorAll('*').forEach((el) => {
+        if (!(el instanceof HTMLElement)) return;
+        if (el.classList.contains('sr-only') || el.closest('.sr-only')) return;
         const style = window.getComputedStyle(el);
-        const fontSize = parseInt(style.fontSize, 10);
+        const fontSize = parseFloat(style.fontSize);
         const hasText = el.textContent && el.textContent.trim().length > 0;
-        const isVisible = style.display !== 'none' && style.visibility !== 'hidden';
+        const isVisible =
+          style.display !== 'none' &&
+          style.visibility !== 'hidden' &&
+          el.getClientRects().length > 0;
 
         if (hasText && isVisible && fontSize < 10 && fontSize > 0) {
           issues.push(`${el.tagName}: ${fontSize}px`);
@@ -522,17 +609,23 @@ test.describe('Typography & Readability', () => {
 
 test.describe('Navigation & Scrolling', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/');
-    await page.waitForLoadState('networkidle');
+    await gotoApp(page);
   });
 
   test('page is scrollable when content exceeds viewport', async ({ page }) => {
     // This depends on content, so we just verify no scroll lock issues
-    const overflowY = await page.evaluate(() => {
-      return window.getComputedStyle(document.body).overflowY;
+    const scrollLock = await page.evaluate(() => {
+      const bodyOverflowY = window.getComputedStyle(document.body).overflowY;
+      const appBody = document.querySelector<HTMLElement>('.app-body');
+      const appBodyOverflowY = appBody ? window.getComputedStyle(appBody).overflowY : 'visible';
+      return {
+        bodyOverflowY,
+        appBodyOverflowY,
+        isLocked: bodyOverflowY === 'hidden' && appBodyOverflowY === 'hidden',
+      };
     });
 
-    expect(overflowY).not.toBe('hidden');
+    expect(scrollLock.isLocked).toBe(false);
   });
 
   test('lists are vertically scrollable', async ({ page }) => {
@@ -570,8 +663,7 @@ test.describe('Navigation & Scrolling', () => {
 
 test.describe('Landscape Mode', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/');
-    await page.waitForLoadState('networkidle');
+    await gotoApp(page);
   });
 
   test('control deck collapses in landscape on phones', async ({ page }) => {
@@ -613,8 +705,7 @@ test.describe('Landscape Mode', () => {
 
 test.describe('Header & Footer', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/');
-    await page.waitForLoadState('networkidle');
+    await gotoApp(page);
   });
 
   test('header content fits on mobile', async ({ page }) => {
@@ -668,8 +759,7 @@ test.describe('Header & Footer', () => {
 
 test.describe('Visual Regressions', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/');
-    await page.waitForLoadState('networkidle');
+    await gotoApp(page);
   });
 
   test('capture homepage screenshot', async ({ page }) => {
@@ -694,8 +784,7 @@ test.describe('Visual Regressions', () => {
 
 test.describe('Specific Bug Checks', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/');
-    await page.waitForLoadState('networkidle');
+    await gotoApp(page);
   });
 
   test('badges do not overflow container', async ({ page }) => {

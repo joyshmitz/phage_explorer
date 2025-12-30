@@ -1,5 +1,7 @@
 import { test } from '@playwright/test';
 
+const LIVE_ENABLED = process.env.PLAYWRIGHT_LIVE === '1';
+
 // Capture at many viewport sizes for thorough analysis
 const viewports = [
   { name: 'desktop-4k', width: 2560, height: 1440 },
@@ -16,8 +18,10 @@ const viewports = [
 
 for (const vp of viewports) {
   test(`capture ${vp.name} (${vp.width}x${vp.height})`, async ({ page }) => {
+    test.skip(!LIVE_ENABLED, 'Set PLAYWRIGHT_LIVE=1 to run live-site screenshot capture');
     await page.setViewportSize({ width: vp.width, height: vp.height });
-    await page.goto('https://phage-explorer.vercel.app', { waitUntil: 'networkidle', timeout: 60000 });
+    await page.goto('https://phage-explorer.vercel.app', { waitUntil: 'domcontentloaded', timeout: 60000 });
+    await page.waitForSelector('#root', { timeout: 30000 }).catch(() => {});
     await page.waitForTimeout(3000);
 
     // Viewport screenshot

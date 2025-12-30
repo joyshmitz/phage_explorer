@@ -15,6 +15,7 @@ import { test, expect, type Page, type CDPSession } from '@playwright/test';
 
 // Base URL for tests - uses Playwright's baseURL from config
 const BASE_URL = process.env.PLAYWRIGHT_BASE_URL ?? 'http://localhost:5173';
+const PERF_ENABLED = process.env.PLAYWRIGHT_PERF === '1';
 
 // import * as path from 'path';
 
@@ -208,11 +209,12 @@ async function clearNetworkThrottling(cdpSession: CDPSession): Promise<void> {
 // ============================================================================
 
 test.describe('Performance Benchmarks', () => {
+  test.skip(!PERF_ENABLED, 'Set PLAYWRIGHT_PERF=1 to run performance benchmarks');
   test.describe.configure({ mode: 'serial' }); // Run benchmarks sequentially
 
   test('Load Time - Fast Connection', async ({ page }) => {
     // Navigate and collect metrics
-    await page.goto(BASE_URL, { waitUntil: 'networkidle' });
+    await page.goto(BASE_URL, { waitUntil: 'domcontentloaded', timeout: 30000 });
 
     // Wait for app to fully initialize
     await page.waitForSelector('[data-testid="app-ready"], .sequence-viewer, #root > div', {
@@ -280,7 +282,7 @@ test.describe('Performance Benchmarks', () => {
   });
 
   test('Scroll FPS Profiling', async ({ page }) => {
-    await page.goto(BASE_URL, { waitUntil: 'networkidle' });
+    await page.goto(BASE_URL, { waitUntil: 'domcontentloaded', timeout: 30000 });
     await page.waitForTimeout(2000);
 
     // Find scrollable content area
@@ -321,7 +323,7 @@ test.describe('Performance Benchmarks', () => {
   });
 
   test('Memory Usage Baseline', async ({ page }) => {
-    await page.goto(BASE_URL, { waitUntil: 'networkidle' });
+    await page.goto(BASE_URL, { waitUntil: 'domcontentloaded', timeout: 30000 });
     await page.waitForTimeout(3000);
 
     const memoryBaseline = await getMemoryMetrics(page);
@@ -347,7 +349,7 @@ test.describe('Performance Benchmarks', () => {
   });
 
   test('Memory Usage - Extended Session Simulation', async ({ page }) => {
-    await page.goto(BASE_URL, { waitUntil: 'networkidle' });
+    await page.goto(BASE_URL, { waitUntil: 'domcontentloaded', timeout: 30000 });
     await page.waitForTimeout(2000);
 
     const memoryReadings: number[] = [];
@@ -410,7 +412,7 @@ test.describe('Performance Benchmarks', () => {
   });
 
   test('Analysis Computation Timing - GC Skew', async ({ page }) => {
-    await page.goto(BASE_URL, { waitUntil: 'networkidle' });
+    await page.goto(BASE_URL, { waitUntil: 'domcontentloaded', timeout: 30000 });
     await page.waitForTimeout(2000);
 
     // Trigger GC Skew overlay and measure time
@@ -437,7 +439,7 @@ test.describe('Performance Benchmarks', () => {
   });
 
   test('Analysis Computation Timing - Complexity', async ({ page }) => {
-    await page.goto(BASE_URL, { waitUntil: 'networkidle' });
+    await page.goto(BASE_URL, { waitUntil: 'domcontentloaded', timeout: 30000 });
     await page.waitForTimeout(2000);
 
     // Trigger complexity overlay and measure time
@@ -464,7 +466,7 @@ test.describe('Performance Benchmarks', () => {
   });
 
   test('Comparison Mode Timing', async ({ page }) => {
-    await page.goto(BASE_URL, { waitUntil: 'networkidle' });
+    await page.goto(BASE_URL, { waitUntil: 'domcontentloaded', timeout: 30000 });
     await page.waitForTimeout(2000);
 
     // Navigate to have multiple phages loaded
@@ -501,6 +503,7 @@ test.describe('Performance Benchmarks', () => {
 });
 
 test.describe('Performance Regression Guards', () => {
+  test.skip(!PERF_ENABLED, 'Set PLAYWRIGHT_PERF=1 to run performance benchmarks');
   test('Bundle Size Check', async ({ page }) => {
     const responses: { url: string; size: number }[] = [];
 
@@ -514,7 +517,7 @@ test.describe('Performance Regression Guards', () => {
       }
     });
 
-    await page.goto(BASE_URL, { waitUntil: 'networkidle' });
+    await page.goto(BASE_URL, { waitUntil: 'domcontentloaded', timeout: 30000 });
     await page.waitForTimeout(2000);
 
     // Calculate totals
@@ -541,7 +544,7 @@ test.describe('Performance Regression Guards', () => {
   });
 
   test('No Memory Leaks During Navigation', async ({ page }) => {
-    await page.goto(BASE_URL, { waitUntil: 'networkidle' });
+    await page.goto(BASE_URL, { waitUntil: 'domcontentloaded', timeout: 30000 });
     await page.waitForTimeout(2000);
 
     const initialMemory = await getMemoryMetrics(page);

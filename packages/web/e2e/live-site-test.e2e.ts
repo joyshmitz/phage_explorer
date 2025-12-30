@@ -8,12 +8,14 @@
 import { test, expect, type ConsoleMessage } from '@playwright/test';
 
 const LIVE_URL = 'https://phage-explorer.org';
+const LIVE_ENABLED = process.env.PLAYWRIGHT_LIVE === '1';
 const SCREENSHOT_DIR = 'screenshots/live-test';
 
 // Collect JS errors during test
 const jsErrors: string[] = [];
 
 test.describe('Live Site Verification', () => {
+  test.skip(!LIVE_ENABLED, 'Set PLAYWRIGHT_LIVE=1 to run live-site verification');
   test.beforeEach(async ({ page }) => {
     // Collect console errors
     page.on('console', (msg: ConsoleMessage) => {
@@ -33,7 +35,7 @@ test.describe('Live Site Verification', () => {
     await page.setViewportSize({ width: 1920, height: 1080 });
 
     // Navigate to site
-    await page.goto(LIVE_URL, { waitUntil: 'networkidle' });
+    await page.goto(LIVE_URL, { waitUntil: 'domcontentloaded', timeout: 60000 });
 
     // Wait for app to initialize
     await page.waitForTimeout(3000);
@@ -71,7 +73,7 @@ test.describe('Live Site Verification', () => {
     await page.setViewportSize({ width: 393, height: 852 });
 
     // Navigate to site
-    await page.goto(LIVE_URL, { waitUntil: 'networkidle' });
+    await page.goto(LIVE_URL, { waitUntil: 'domcontentloaded', timeout: 60000 });
 
     // Wait for app to initialize
     await page.waitForTimeout(3000);
@@ -109,7 +111,7 @@ test.describe('Live Site Verification', () => {
     await page.setViewportSize({ width: 1024, height: 768 });
 
     // Navigate to site
-    await page.goto(LIVE_URL, { waitUntil: 'networkidle' });
+    await page.goto(LIVE_URL, { waitUntil: 'domcontentloaded', timeout: 60000 });
 
     // Wait for app to initialize
     await page.waitForTimeout(3000);

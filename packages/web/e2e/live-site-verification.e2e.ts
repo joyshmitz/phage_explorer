@@ -5,22 +5,27 @@
  * of all key features for visual verification.
  */
 
-import { test, expect } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
 
 const SITE_URL = 'https://phage-explorer.org';
+const LIVE_ENABLED = process.env.PLAYWRIGHT_LIVE === '1';
 const SCREENSHOT_DIR = 'screenshots';
 
+async function gotoSite(page: Page): Promise<void> {
+  await page.goto(SITE_URL, { waitUntil: 'domcontentloaded', timeout: 60000 });
+  await page.waitForSelector('#root', { timeout: 30000 });
+  await page.waitForTimeout(500);
+}
+
 test.describe('Phage Explorer Live Site Verification', () => {
+  test.skip(!LIVE_ENABLED, 'Set PLAYWRIGHT_LIVE=1 to run live-site verification');
   test.beforeEach(async ({ page }) => {
     // Set viewport for consistent screenshots
     await page.setViewportSize({ width: 1440, height: 900 });
   });
 
   test('01-homepage-loads', async ({ page }) => {
-    await page.goto(SITE_URL);
-
-    // Wait for app to load
-    await page.waitForLoadState('networkidle');
+    await gotoSite(page);
 
     // Take initial screenshot
     await page.screenshot({
@@ -33,8 +38,7 @@ test.describe('Phage Explorer Live Site Verification', () => {
   });
 
   test('02-welcome-modal', async ({ page }) => {
-    await page.goto(SITE_URL);
-    await page.waitForLoadState('networkidle');
+    await gotoSite(page);
 
     // Check for welcome modal (might appear for new visitors)
     const welcomeModal = page.locator('.welcome-modal, [role="dialog"]');
@@ -53,8 +57,7 @@ test.describe('Phage Explorer Live Site Verification', () => {
   });
 
   test('03-sequence-view', async ({ page }) => {
-    await page.goto(SITE_URL);
-    await page.waitForLoadState('networkidle');
+    await gotoSite(page);
     await page.waitForTimeout(2000); // Wait for data to load
 
     // Dismiss any modals
@@ -68,8 +71,7 @@ test.describe('Phage Explorer Live Site Verification', () => {
   });
 
   test('04-phage-selector', async ({ page }) => {
-    await page.goto(SITE_URL);
-    await page.waitForLoadState('networkidle');
+    await gotoSite(page);
     await page.waitForTimeout(1500);
     await page.keyboard.press('Escape');
 
@@ -86,8 +88,7 @@ test.describe('Phage Explorer Live Site Verification', () => {
   });
 
   test('05-control-deck', async ({ page }) => {
-    await page.goto(SITE_URL);
-    await page.waitForLoadState('networkidle');
+    await gotoSite(page);
     await page.waitForTimeout(1500);
     await page.keyboard.press('Escape');
 
@@ -98,8 +99,7 @@ test.describe('Phage Explorer Live Site Verification', () => {
   });
 
   test('06-settings-overlay', async ({ page }) => {
-    await page.goto(SITE_URL);
-    await page.waitForLoadState('networkidle');
+    await gotoSite(page);
     await page.waitForTimeout(1500);
     await page.keyboard.press('Escape');
 
@@ -117,8 +117,7 @@ test.describe('Phage Explorer Live Site Verification', () => {
   });
 
   test('07-search-overlay', async ({ page }) => {
-    await page.goto(SITE_URL);
-    await page.waitForLoadState('networkidle');
+    await gotoSite(page);
     await page.waitForTimeout(1500);
     await page.keyboard.press('Escape');
 
@@ -136,8 +135,7 @@ test.describe('Phage Explorer Live Site Verification', () => {
   });
 
   test('08-help-overlay', async ({ page }) => {
-    await page.goto(SITE_URL);
-    await page.waitForLoadState('networkidle');
+    await gotoSite(page);
     await page.waitForTimeout(1500);
     await page.keyboard.press('Escape');
 
@@ -155,8 +153,7 @@ test.describe('Phage Explorer Live Site Verification', () => {
   });
 
   test('09-3d-model-view', async ({ page }) => {
-    await page.goto(SITE_URL);
-    await page.waitForLoadState('networkidle');
+    await gotoSite(page);
     await page.waitForTimeout(1500);
     await page.keyboard.press('Escape');
 
@@ -173,8 +170,7 @@ test.describe('Phage Explorer Live Site Verification', () => {
   });
 
   test('10-analysis-menu', async ({ page }) => {
-    await page.goto(SITE_URL);
-    await page.waitForLoadState('networkidle');
+    await gotoSite(page);
     await page.waitForTimeout(1500);
     await page.keyboard.press('Escape');
 
@@ -192,8 +188,7 @@ test.describe('Phage Explorer Live Site Verification', () => {
   });
 
   test('11-complexity-analysis', async ({ page }) => {
-    await page.goto(SITE_URL);
-    await page.waitForLoadState('networkidle');
+    await gotoSite(page);
     await page.waitForTimeout(1500);
     await page.keyboard.press('Escape');
 
@@ -208,8 +203,7 @@ test.describe('Phage Explorer Live Site Verification', () => {
   });
 
   test('12-gc-skew-analysis', async ({ page }) => {
-    await page.goto(SITE_URL);
-    await page.waitForLoadState('networkidle');
+    await gotoSite(page);
     await page.waitForTimeout(1500);
     await page.keyboard.press('Escape');
 
@@ -224,8 +218,7 @@ test.describe('Phage Explorer Live Site Verification', () => {
   });
 
   test('13-zoom-interaction', async ({ page }) => {
-    await page.goto(SITE_URL);
-    await page.waitForLoadState('networkidle');
+    await gotoSite(page);
     await page.waitForTimeout(1500);
     await page.keyboard.press('Escape');
 
@@ -253,8 +246,7 @@ test.describe('Phage Explorer Live Site Verification', () => {
     // Set mobile viewport
     await page.setViewportSize({ width: 390, height: 844 }); // iPhone 14 Pro
 
-    await page.goto(SITE_URL);
-    await page.waitForLoadState('networkidle');
+    await gotoSite(page);
     await page.waitForTimeout(2000);
     await page.keyboard.press('Escape');
 
@@ -267,8 +259,7 @@ test.describe('Phage Explorer Live Site Verification', () => {
     // Set mobile viewport
     await page.setViewportSize({ width: 390, height: 844 });
 
-    await page.goto(SITE_URL);
-    await page.waitForLoadState('networkidle');
+    await gotoSite(page);
     await page.waitForTimeout(2000);
     await page.keyboard.press('Escape');
     await page.waitForTimeout(500);
@@ -286,8 +277,7 @@ test.describe('Phage Explorer Live Site Verification', () => {
   });
 
   test('17-dark-theme-verification', async ({ page }) => {
-    await page.goto(SITE_URL);
-    await page.waitForLoadState('networkidle');
+    await gotoSite(page);
     await page.waitForTimeout(1500);
     await page.keyboard.press('Escape');
 
@@ -305,8 +295,7 @@ test.describe('Phage Explorer Live Site Verification', () => {
   });
 
   test('18-comparison-overlay', async ({ page }) => {
-    await page.goto(SITE_URL);
-    await page.waitForLoadState('networkidle');
+    await gotoSite(page);
     await page.waitForTimeout(1500);
     await page.keyboard.press('Escape');
 
@@ -324,8 +313,7 @@ test.describe('Phage Explorer Live Site Verification', () => {
   });
 
   test('19-command-palette', async ({ page }) => {
-    await page.goto(SITE_URL);
-    await page.waitForLoadState('networkidle');
+    await gotoSite(page);
     await page.waitForTimeout(1500);
     await page.keyboard.press('Escape');
 
@@ -345,8 +333,7 @@ test.describe('Phage Explorer Live Site Verification', () => {
   test('20-final-overview', async ({ page }) => {
     await page.setViewportSize({ width: 1920, height: 1080 });
 
-    await page.goto(SITE_URL);
-    await page.waitForLoadState('networkidle');
+    await gotoSite(page);
     await page.waitForTimeout(2000);
     await page.keyboard.press('Escape');
     await page.waitForTimeout(500);
