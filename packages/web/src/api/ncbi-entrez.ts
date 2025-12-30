@@ -354,16 +354,17 @@ export async function fetchDatedPhageSequences(
     .filter(r => r.collection_date)
     .map(r => {
       const date = parseCollectionDate(r.collection_date!);
+      if (!date) return null;
       return {
         accession: r.accession,
         organism: r.organism,
-        collectionDate: date || new Date(),
+        collectionDate: date,
         country: r.country,
         host: r.host,
         sequenceLength: r.sequence_length,
       };
     })
-    .filter(s => s.collectionDate.getTime() > 0)
+    .filter((s): s is PhylodynamicsData['sequences'][number] => !!s)
     .sort((a, b) => a.collectionDate.getTime() - b.collectionDate.getTime());
 
   if (sequences.length === 0) {

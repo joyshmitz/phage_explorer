@@ -11,7 +11,22 @@
 import type { SerratusSequenceMatch, SerratusSearchResponse, APIResult } from './types';
 
 const SERRATUS_API_BASE = 'https://api.serratus.io';
-const SERRATUS_AUTH = btoa('serratus:serratus'); // Basic auth credentials
+const RAW_SERRATUS_AUTH = import.meta.env.VITE_SERRATUS_AUTH ?? '';
+const SERRATUS_AUTH = typeof btoa === 'function' && RAW_SERRATUS_AUTH
+  ? btoa(RAW_SERRATUS_AUTH)
+  : '';
+
+function buildSerratusHeaders(): HeadersInit {
+  const headers: HeadersInit = { 'Accept': 'application/json' };
+  if (SERRATUS_AUTH) {
+    headers['Authorization'] = `Basic ${SERRATUS_AUTH}`;
+  }
+  return headers;
+}
+
+function escapeODataString(input: string): string {
+  return input.replace(/'/g, "''");
+}
 
 /**
  * Search Serratus database for sequences matching a viral family
@@ -26,15 +41,12 @@ export async function searchByFamily(
   try {
     // Serratus uses a SQL-like query interface
     // Query the nfamily table for matches to a viral family
-    const query = encodeURIComponent(`family_name eq '${familyName}'`);
+    const query = encodeURIComponent(`family_name eq '${escapeODataString(familyName)}'`);
     const url = `${SERRATUS_API_BASE}/data/nfamily?$filter=${query}&$top=${limit}`;
 
     const response = await fetch(url, {
       method: 'GET',
-      headers: {
-        'Authorization': `Basic ${SERRATUS_AUTH}`,
-        'Accept': 'application/json',
-      },
+      headers: buildSerratusHeaders(),
     });
 
     if (!response.ok) {
@@ -85,14 +97,11 @@ export async function searchByFamily(
  */
 export async function getRunDetails(sraId: string): Promise<APIResult<SerratusSequenceMatch[]>> {
   try {
-    const url = `${SERRATUS_API_BASE}/data/nsequence?$filter=run_id eq '${sraId}'`;
+    const url = `${SERRATUS_API_BASE}/data/nsequence?$filter=run_id eq '${escapeODataString(sraId)}'`;
 
     const response = await fetch(url, {
       method: 'GET',
-      headers: {
-        'Authorization': `Basic ${SERRATUS_AUTH}`,
-        'Accept': 'application/json',
-      },
+      headers: buildSerratusHeaders(),
     });
 
     if (!response.ok) {
@@ -152,16 +161,13 @@ export async function searchPhageRelated(
 
   try {
     // Build a compound query for phage families
-    const familyFilters = phageFamilies.map(f => `family_name eq '${f}'`).join(' or ');
+    const familyFilters = phageFamilies.map(f => `family_name eq '${escapeODataString(f)}'`).join(' or ');
     const query = encodeURIComponent(familyFilters);
     const url = `${SERRATUS_API_BASE}/data/nfamily?$filter=${query}&$top=${limit}`;
 
     const response = await fetch(url, {
       method: 'GET',
-      headers: {
-        'Authorization': `Basic ${SERRATUS_AUTH}`,
-        'Accept': 'application/json',
-      },
+      headers: buildSerratusHeaders(),
     });
 
     if (!response.ok) {
@@ -213,15 +219,12 @@ export async function getSRARunsForFamily(
   limit: number = 200
 ): Promise<APIResult<string[]>> {
   try {
-    const query = encodeURIComponent(`family_name eq '${familyName}' and score ge ${minScore}`);
+    const query = encodeURIComponent(`family_name eq '${escapeODataString(familyName)}' and score ge ${minScore}`);
     const url = `${SERRATUS_API_BASE}/data/nfamily?$filter=${query}&$top=${limit}&$select=run_id`;
 
     const response = await fetch(url, {
       method: 'GET',
-      headers: {
-        'Authorization': `Basic ${SERRATUS_AUTH}`,
-        'Accept': 'application/json',
-      },
+      headers: buildSerratusHeaders(),
     });
 
     if (!response.ok) {
