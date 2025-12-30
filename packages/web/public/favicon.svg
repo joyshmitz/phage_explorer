@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <defs>
+    <linearGradient id="capsid" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#22c55e"/>
+      <stop offset="100%" stop-color="#16a34a"/>
+    </linearGradient>
+  </defs>
+  <!-- Icosahedral capsid (phage head) -->
+  <polygon points="16,2 26,7 26,17 16,22 6,17 6,7" fill="url(#capsid)" stroke="#15803d" stroke-width="1"/>
+  <!-- Tail tube -->
+  <rect x="14" y="22" width="4" height="6" fill="#22c55e" rx="0.5"/>
+  <!-- Tail fibers -->
+  <path d="M10 28 L16 31 L22 28" stroke="#22c55e" stroke-width="2" fill="none" stroke-linecap="round"/>
+  <!-- DNA highlight -->
+  <circle cx="12" cy="10" r="1.5" fill="#bbf7d0" opacity="0.6"/>
+</svg>
