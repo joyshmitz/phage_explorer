@@ -711,7 +711,7 @@
   }
 
   .quick-stat__label {
-    font-size: 9px;
+    font-size: 10px;
   }
 
   .quick-stat__value {
@@ -721,6 +721,13 @@
   /* Hide separator on last visible item to prevent cut-off appearance */
   .quick-stat:not(:last-child)::after {
     opacity: 0.3;
+  }
+}
+
+@media (hover: none) and (pointer: coarse) {
+  .quick-stats {
+    background: var(--color-background-alt);
+    background-attachment: scroll;
   }
 }
 

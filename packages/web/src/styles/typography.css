@@ -84,6 +84,13 @@
   --font-features-code: 'calt' 1, 'liga' 1, 'zero' 1, 'ss01' 1;
 }
 
+/* Mobile: avoid sub-10px text (15px root makes 0.64rem ≈ 9.6px) */
+@media (max-width: 640px) {
+  :root {
+    --text-2xs: 0.67rem; /* ≈ 10.05px at 15px root */
+  }
+}
+
 /* Base typography */
 html {
   font-family: var(--font-mono);

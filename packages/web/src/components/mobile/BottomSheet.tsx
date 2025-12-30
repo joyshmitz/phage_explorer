@@ -16,6 +16,7 @@
 import React, {
   useCallback,
   useEffect,
+  useId,
   useRef,
   useState,
   type ReactNode,
@@ -69,6 +70,25 @@ const SNAP_HEIGHTS: Record<SnapPoint, number> = {
 /** Velocity threshold to trigger snap on release (px/ms) */
 const VELOCITY_THRESHOLD = 0.5;
 
+function isLikelyTouchDevice(): boolean {
+  if (typeof window === 'undefined') return false;
+  const hasTouch =
+    'ontouchstart' in window ||
+    (typeof navigator !== 'undefined' && (navigator.maxTouchPoints ?? 0) > 0);
+  const canMatchMedia = typeof window.matchMedia === 'function';
+  const pointerCoarse = canMatchMedia && window.matchMedia('(pointer: coarse)').matches;
+  const hoverNone = canMatchMedia && window.matchMedia('(hover: none)').matches;
+  const narrowViewport = window.innerWidth <= 768;
+  return hasTouch && (pointerCoarse || hoverNone || narrowViewport);
+}
+
+function shouldIgnoreDragTarget(event: Event | undefined): boolean {
+  if (!event) return false;
+  const target = event.target;
+  if (!(target instanceof HTMLElement)) return false;
+  return Boolean(target.closest('button, a, input, textarea, select, [data-no-drag]'));
+}
+
 // =============================================================================
 // Component
 // =============================================================================
@@ -90,6 +110,13 @@ export function BottomSheet({
   const containerRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const reducedMotion = useReducedMotion();
+  const reactId = useId();
+  const titleId = `bottom-sheet-title-${reactId}`;
+  const isOpenRef = useRef(isOpen);
+  const closeRequestSeqRef = useRef(0);
+  const closeRequestTimeoutRef = useRef<number | null>(null);
+  const unmountTimeoutRef = useRef<number | null>(null);
+  const [shouldRender, setShouldRender] = useState(isOpen);
 
   // Current snap point state
   const [snapPoint, setSnapPoint] = useState<SnapPoint>(initialSnapPoint);
@@ -141,8 +168,15 @@ export function BottomSheet({
 
   // Animate sheet position based on snap point
   const animateToSnapPoint = useCallback(
-    (point: SnapPoint, immediate = false) => {
+    (point: SnapPoint, immediate = false, notifyOnClose = true) => {
       const targetY = getTranslatePercentForSnapPoint(point);
+      const requestSeq = ++closeRequestSeqRef.current;
+      const shouldNotifyClose = point === 'closed' && notifyOnClose;
+
+      if (closeRequestTimeoutRef.current) {
+        window.clearTimeout(closeRequestTimeoutRef.current);
+        closeRequestTimeoutRef.current = null;
+      }
 
       if (immediate || reducedMotion) {
         api.set({ y: targetY });
@@ -161,13 +195,35 @@ export function BottomSheet({
       setSnapPoint(point);
       onSnapPointChange?.(point);
 
-      if (point === 'closed') {
-        // Small delay before calling onClose to allow animation
-        setTimeout(() => onClose(), reducedMotion ? 0 : 200);
+      if (shouldNotifyClose) {
+        // Delay calling onClose so parents that unmount can let the animation finish.
+        // Keep this as a timeout because react-spring's controller does not provide a reliable promise in all modes.
+        closeRequestTimeoutRef.current = window.setTimeout(() => {
+          closeRequestTimeoutRef.current = null;
+          if (closeRequestSeqRef.current !== requestSeq) return;
+          if (isOpenRef.current) onClose();
+        }, immediate || reducedMotion ? 0 : 220);
       }
     },
     [api, backdropApi, getTranslatePercentForSnapPoint, onClose, onSnapPointChange, reducedMotion]
   );
+
+  useEffect(() => {
+    isOpenRef.current = isOpen;
+  }, [isOpen]);
+
+  useEffect(() => {
+    return () => {
+      if (closeRequestTimeoutRef.current) {
+        window.clearTimeout(closeRequestTimeoutRef.current);
+        closeRequestTimeoutRef.current = null;
+      }
+      if (unmountTimeoutRef.current) {
+        window.clearTimeout(unmountTimeoutRef.current);
+        unmountTimeoutRef.current = null;
+      }
+    };
+  }, []);
 
   // Find nearest snap point based on current position and velocity
   const findNearestSnapPoint = useCallback(
@@ -206,8 +262,9 @@ export function BottomSheet({
   );
 
   // Drag gesture handler
-  const bind = useDrag(
+  const bindDrag = useDrag(
     ({
+      event,
       movement: [, my],
       velocity: [, vy],
       direction: [, dy],
@@ -216,18 +273,19 @@ export function BottomSheet({
       last,
       memo,
     }) => {
+      if (shouldIgnoreDragTarget(event)) {
+        return memo ?? spring.y.get();
+      }
       if (!swipeToDismiss && dy > 0) {
         // If swipe to dismiss is disabled, don't allow downward drag
         return;
       }
 
       // On first touch, store initial y position
-      if (first) {
-        return spring.y.get();
-      }
+      if (first) return spring.y.get();
 
       const initialY = memo ?? spring.y.get();
-      const windowHeight = window.innerHeight;
+      const windowHeight = window.visualViewport?.height ?? window.innerHeight;
 
       // Calculate new Y position (as percentage)
       // spring.y is a percentage of the sheet height (translateY(%)).
@@ -298,22 +356,147 @@ export function BottomSheet({
   useEffect(() => {
     if (isOpen) {
       haptics.medium();
+      if (unmountTimeoutRef.current) {
+        window.clearTimeout(unmountTimeoutRef.current);
+        unmountTimeoutRef.current = null;
+      }
+      setShouldRender(true);
       animateToSnapPoint(initialSnapPoint);
-    } else {
-      animateToSnapPoint('closed', true);
+      return;
     }
-  }, [isOpen, initialSnapPoint, animateToSnapPoint]);
+
+    if (unmountTimeoutRef.current) {
+      window.clearTimeout(unmountTimeoutRef.current);
+      unmountTimeoutRef.current = null;
+    }
+    // Parent-driven close: animate out, but do not call onClose again.
+    animateToSnapPoint('closed', false, false);
+    unmountTimeoutRef.current = window.setTimeout(() => {
+      unmountTimeoutRef.current = null;
+      setShouldRender(false);
+    }, reducedMotion ? 0 : 200);
+  }, [animateToSnapPoint, initialSnapPoint, isOpen, reducedMotion]);
+
+  // Keep snap position aligned with visual viewport changes (mobile address bar, keyboard)
+  useEffect(() => {
+    if (!shouldRender) return;
+
+    let rafId = 0;
+    const handleViewportChange = () => {
+      if (rafId) {
+        cancelAnimationFrame(rafId);
+      }
+      rafId = requestAnimationFrame(() => {
+        rafId = 0;
+        animateToSnapPoint(snapPoint, true, false);
+      });
+    };
+
+    const vv = window.visualViewport;
+    if (vv) {
+      vv.addEventListener('resize', handleViewportChange);
+      vv.addEventListener('scroll', handleViewportChange);
+    } else {
+      window.addEventListener('resize', handleViewportChange);
+    }
+
+    return () => {
+      if (rafId) {
+        cancelAnimationFrame(rafId);
+      }
+      if (vv) {
+        vv.removeEventListener('resize', handleViewportChange);
+        vv.removeEventListener('scroll', handleViewportChange);
+      } else {
+        window.removeEventListener('resize', handleViewportChange);
+      }
+    };
+  }, [animateToSnapPoint, shouldRender, snapPoint]);
 
   // Lock body scroll when open
   useEffect(() => {
-    if (isOpen) {
-      const originalOverflow = document.body.style.overflow;
-      document.body.style.overflow = 'hidden';
-      return () => {
-        document.body.style.overflow = originalOverflow;
-      };
+    if (!shouldRender) return;
+
+    const body = document.body;
+    const originalOverflow = body.style.overflow;
+    const originalPosition = body.style.position;
+    const originalTop = body.style.top;
+    const originalLeft = body.style.left;
+    const originalRight = body.style.right;
+    const originalWidth = body.style.width;
+    const originalPaddingRight = body.style.paddingRight;
+    const shouldFixBody = isLikelyTouchDevice();
+    const scrollY = window.scrollY;
+
+    body.style.overflow = 'hidden';
+    if (shouldFixBody) {
+      body.style.position = 'fixed';
+      body.style.top = `-${scrollY}px`;
+      body.style.left = '0';
+      body.style.right = '0';
+      body.style.width = '100%';
+      body.style.paddingRight = '0';
     }
-  }, [isOpen]);
+    const appBody = document.querySelector<HTMLElement>('.app-body');
+    const originalAppBodyOverflow = appBody?.style.overflow ?? null;
+    const originalAppBodyOverscroll = appBody?.style.overscrollBehaviorY ?? null;
+    if (appBody) {
+      appBody.style.overflow = 'hidden';
+      appBody.style.overscrollBehaviorY = 'none';
+    }
+    return () => {
+      if (originalOverflow) {
+        body.style.overflow = originalOverflow;
+      } else {
+        body.style.removeProperty('overflow');
+      }
+      if (originalPosition) {
+        body.style.position = originalPosition;
+      } else {
+        body.style.removeProperty('position');
+      }
+      if (originalTop) {
+        body.style.top = originalTop;
+      } else {
+        body.style.removeProperty('top');
+      }
+      if (originalLeft) {
+        body.style.left = originalLeft;
+      } else {
+        body.style.removeProperty('left');
+      }
+      if (originalRight) {
+        body.style.right = originalRight;
+      } else {
+        body.style.removeProperty('right');
+      }
+      if (originalWidth) {
+        body.style.width = originalWidth;
+      } else {
+        body.style.removeProperty('width');
+      }
+      if (originalPaddingRight) {
+        body.style.paddingRight = originalPaddingRight;
+      } else {
+        body.style.removeProperty('padding-right');
+      }
+      if (shouldFixBody) {
+        window.scrollTo(0, scrollY);
+      }
+      if (appBody) {
+        if (originalAppBodyOverflow === null) {
+          appBody.style.removeProperty('overflow');
+        } else {
+          appBody.style.overflow = originalAppBodyOverflow;
+        }
+        if (originalAppBodyOverscroll === null) {
+          appBody.style.removeProperty('overscroll-behavior-y');
+        } else {
+          appBody.style.overscrollBehaviorY = originalAppBodyOverscroll;
+        }
+      }
+    };
+  }, [shouldRender]);
 
   // Handle escape key
   useEffect(() => {
@@ -353,14 +536,16 @@ export function BottomSheet({
     animateToSnapPoint(snapPoint === 'full' ? 'half' : 'full');
   }, [snapPoint, animateToSnapPoint]);
 
-  if (!isOpen) return null;
+  if (!shouldRender) return null;
+
+  const dragBind = bindDrag();
 
   return createPortal(
     <div
-      className={`bottom-sheet ${isOpen ? 'is-open' : ''}`}
+      className={`bottom-sheet ${shouldRender ? 'is-open' : ''}`}
       role="dialog"
       aria-modal="true"
-      aria-labelledby={title ? 'bottom-sheet-title' : undefined}
+      aria-labelledby={title ? titleId : undefined}
     >
       {/* Animated Backdrop */}
       <animated.div
@@ -374,12 +559,16 @@ export function BottomSheet({
       <animated.div
         ref={containerRef}
         className="bottom-sheet__container"
-        style={{
-          transform: spring.y.to((y) => `translateY(${y}%)`),
-          minHeight: `${minHeight}vh`,
-          maxHeight: `${maxHeight}vh`,
-        }}
-        {...bind()}
+        style={
+          {
+            transform: spring.y.to((y) => `translateY(${y}%)`),
+            // Drive sizing via CSS vars so we can prefer `dvh` but fall back to `vh`.
+            ['--bottom-sheet-min-height-vh' as string]: `${minHeight}vh`,
+            ['--bottom-sheet-min-height-dvh' as string]: `${minHeight}dvh`,
+            ['--bottom-sheet-max-height-vh' as string]: `${maxHeight}vh`,
+            ['--bottom-sheet-max-height-dvh' as string]: `${maxHeight}dvh`,
+          } as React.CSSProperties
+        }
       >
         {/* Drag handle */}
         {showHandle && (
@@ -387,13 +576,14 @@ export function BottomSheet({
             className="bottom-sheet__handle"
             aria-hidden="true"
             onDoubleClick={handleExpand}
+            {...dragBind}
           />
         )}
 
         {/* Header */}
         {title && (
-          <header className="bottom-sheet__header">
-            <h2 id="bottom-sheet-title" className="bottom-sheet__title">
+          <header className="bottom-sheet__header" {...dragBind}>
+            <h2 id={titleId} className="bottom-sheet__title">
               {title}
             </h2>
             <button
@@ -401,6 +591,7 @@ export function BottomSheet({
               className="bottom-sheet__close"
               onClick={handleClose}
               aria-label="Close"
+              data-no-drag
             >
               <svg
                 width="16"
@@ -418,12 +609,20 @@ export function BottomSheet({
         )}
 
         {/* Content */}
-        <div ref={contentRef} className="bottom-sheet__content">
+        <div
+          ref={contentRef}
+          className="bottom-sheet__content"
+          onPointerDown={(e) => e.stopPropagation()}
+        >
           {children}
         </div>
 
         {/* Footer */}
-        {footer && <footer className="bottom-sheet__footer">{footer}</footer>}
+        {footer && (
+          <footer className="bottom-sheet__footer" onPointerDown={(e) => e.stopPropagation()}>
+            {footer}
+          </footer>
+        )}
 
         {/* Snap point indicator (visual only) */}
         <div

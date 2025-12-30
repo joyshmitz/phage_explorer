@@ -57,6 +57,7 @@ import { IconSettings } from './components/ui/icons';
 import { ActionToolbar } from './components/ActionToolbar';
 import { AnalysisSidebar } from './components/AnalysisSidebar';
 import { QuickStats } from './components/QuickStats';
+import { haptics } from './utils/haptics';
 
 /** Number of bases to show in the sequence preview */
 const SEQUENCE_PREVIEW_LENGTH = 500;
@@ -149,7 +150,6 @@ export default function App(): React.ReactElement {
   const glossaryOpenerRef = useRef<HTMLElement | null>(null);
   const wasGlossaryOpenRef = useRef(false);
   const glossaryTitleId = useId();
-  const enableBackgroundEffects = backgroundEffects && !reducedMotion;
   const geneHint = useMemo(() => {
     if (!beginnerModeEnabled || !selectedGene) return null;
 
@@ -188,8 +188,25 @@ export default function App(): React.ReactElement {
   }, []);
 
   const [{ isNarrow, isMobile, isLandscape, isWide }, setLayout] = useState(() => getLayoutSnapshot());
+  const enableBackgroundEffects = useMemo(
+    () => backgroundEffects && !reducedMotion && !isNarrow,
+    [backgroundEffects, reducedMotion, isNarrow]
+  );
 
   useLayoutEffect(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return;
+
+    const subscribeMediaQuery = (mql: MediaQueryList, listener: () => void) => {
+      // Safari < 14 doesn't support addEventListener/removeEventListener on MediaQueryList.
+      if (typeof mql.addEventListener === 'function') {
+        mql.addEventListener('change', listener);
+        return () => mql.removeEventListener('change', listener);
+      }
+
+      mql.addListener(listener);
+      return () => mql.removeListener(listener);
+    };
+
     const mobileMql = window.matchMedia(`(max-width: ${BREAKPOINT_PHONE_PX}px)`);
     const narrowMql = window.matchMedia(`(max-width: ${BREAKPOINT_NARROW_PX}px)`);
     const wideMql = window.matchMedia(`(min-width: ${BREAKPOINT_WIDE_PX}px)`);
@@ -206,17 +223,16 @@ export default function App(): React.ReactElement {
 
     updateLayout();
 
-    mobileMql.addEventListener('change', updateLayout);
-    narrowMql.addEventListener('change', updateLayout);
-    wideMql.addEventListener('change', updateLayout);
-    landscapeMql.addEventListener('change', updateLayout);
+    const unsubscribers = [
+      subscribeMediaQuery(mobileMql, updateLayout),
+      subscribeMediaQuery(narrowMql, updateLayout),
+      subscribeMediaQuery(wideMql, updateLayout),
+      subscribeMediaQuery(landscapeMql, updateLayout),
+    ];
     window.addEventListener('resize', updateLayout);
 
     return () => {
-      mobileMql.removeEventListener('change', updateLayout);
-      narrowMql.removeEventListener('change', updateLayout);
-      wideMql.removeEventListener('change', updateLayout);
-      landscapeMql.removeEventListener('change', updateLayout);
+      for (const unsubscribe of unsubscribers) unsubscribe();
       window.removeEventListener('resize', updateLayout);
     };
   }, []);
@@ -423,15 +439,12 @@ export default function App(): React.ReactElement {
         interactive.style.setProperty('--ripple-y', '50%');
       }
 
-      if (event.pointerType === 'touch' || event.pointerType === 'pen') {
-        const vibrate = (navigator as Navigator & { vibrate?: (pattern: number | number[]) => boolean }).vibrate;
-        if (typeof vibrate === 'function') {
-          try {
-            vibrate.call(navigator, [10]);
-          } catch {
-            // Ignore vibration errors (some browsers may block / throw).
-          }
-        }
+      const isTouchLike = event.pointerType === 'touch' || event.pointerType === 'pen';
+      const hapticsHandledByComponent = Boolean(
+        interactive.closest('.control-deck, .bottom-sheet, .fab, .action-drawer')
+      );
+      if (isTouchLike && !hapticsHandledByComponent) {
+        haptics.light();
       }
     };
 

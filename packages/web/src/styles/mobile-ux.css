@@ -55,6 +55,11 @@ html {
     backdrop-filter: none !important;
     -webkit-backdrop-filter: none !important;
   }
+
+  /* Hide heavy fixed FX layers on touch devices (prevents scroll flicker on large tablets). */
+  .fx-layer {
+    display: none !important;
+  }
 }
 
 /* Allow elastic overscroll on lists and content areas */

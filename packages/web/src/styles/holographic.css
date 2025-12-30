@@ -407,6 +407,17 @@
    ============================================================================= */
 
 @media (hover: none) and (pointer: coarse) {
+  /* iOS Safari can flicker during scroll when large animated backgrounds/shimmers are active. */
+  [data-theme="holographic"] .app-shell,
+  [data-theme="holographic"] .app-title,
+  [data-theme="holographic"] .list-item.active {
+    animation: none !important;
+  }
+
+  [data-theme="holographic"] .btn::before {
+    display: none;
+  }
+
   [data-theme="holographic"] .panel,
   [data-theme="holographic"] .detail-card,
   [data-theme="holographic"] .sequence-block,
