@@ -160,6 +160,7 @@ export function NicheNetworkOverlay(): React.ReactElement | null {
   const { isOpen, toggle } = useOverlay();
 
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [analysisResult, setAnalysisResult] = useState<NicheAnalysisResult | null>(null);
   const [selectedNode, setSelectedNode] = useState<string | null>(null);
   const [numNiches, setNumNiches] = useState(4);
@@ -185,6 +186,7 @@ export function NicheNetworkOverlay(): React.ReactElement | null {
     if (!overlayIsOpen) return;
 
     setLoading(true);
+    setError(null);
 
     // Use setTimeout to avoid blocking UI
     const timeoutId = setTimeout(() => {
@@ -201,7 +203,8 @@ export function NicheNetworkOverlay(): React.ReactElement | null {
 
         setAnalysisResult(result);
       } catch (error) {
-        console.error('Niche analysis failed:', error);
+        setAnalysisResult(null);
+        setError(error instanceof Error ? error.message : 'Niche analysis failed.');
       } finally {
         setLoading(false);
       }
@@ -231,12 +234,19 @@ export function NicheNetworkOverlay(): React.ReactElement | null {
       };
     });
 
-    const layoutEdges: LayoutEdge[] = network.edges.map(edge => ({
-      source: nodeIndexMap.get(edge.source) ?? 0,
-      target: nodeIndexMap.get(edge.target) ?? 0,
-      weight: edge.correlation,
-      type: edge.type,
-    }));
+    const layoutEdges: LayoutEdge[] = [];
+    for (const edge of network.edges) {
+      const source = nodeIndexMap.get(edge.source);
+      const target = nodeIndexMap.get(edge.target);
+      if (source == null || target == null) continue;
+      if (source === target) continue;
+      layoutEdges.push({
+        source,
+        target,
+        weight: edge.correlation,
+        type: edge.type,
+      });
+    }
 
     return { nodes: layoutNodes, edges: layoutEdges };
   }, [analysisResult]);
@@ -395,6 +405,23 @@ export function NicheNetworkOverlay(): React.ReactElement | null {
       size="xl"
     >
       <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+        {/* Educational simulation banner */}
+        <div
+          style={{
+            padding: '0.75rem',
+            backgroundColor: colors.info + '22',
+            border: `1px solid ${colors.info}`,
+            borderRadius: '4px',
+            color: colors.text,
+            fontSize: '0.85rem',
+          }}
+        >
+          <strong style={{ color: colors.info }}>EDUCATIONAL SIMULATION</strong>: This visualization
+          demonstrates NMF-based ecological niche inference using synthetic co-occurrence data.
+          Real niche analysis requires metagenomic abundance tables from environmental samples,
+          which are not available via public APIs.
+        </div>
+
         {/* Description */}
         <div
           style={{
@@ -470,6 +497,12 @@ export function NicheNetworkOverlay(): React.ReactElement | null {
 
         {loading ? (
           <AnalysisPanelSkeleton />
+        ) : error ? (
+          <div style={{ padding: '1rem', color: colors.error }}>{error}</div>
+        ) : !analysisResult ? (
+          <div style={{ padding: '2rem', textAlign: 'center', color: colors.textMuted }}>
+            No analysis data available.
+          </div>
         ) : (
           <div style={{ display: 'flex', gap: '1rem' }}>
             {/* Network Canvas */}
