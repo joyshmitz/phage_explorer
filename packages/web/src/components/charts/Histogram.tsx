@@ -25,7 +25,9 @@ export const Histogram: React.FC<HistogramProps> = ({
 
   useEffect(() => {
     const canvas = canvasRef.current;
-    if (!canvas || values.length === 0) return;
+    const safeBins = Math.max(1, Math.floor(bins));
+    const finiteValues = values.filter((v) => Number.isFinite(v));
+    if (!canvas || finiteValues.length === 0) return;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
@@ -36,13 +38,13 @@ export const Histogram: React.FC<HistogramProps> = ({
     canvas.style.height = `${height}px`;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
-    const min = Math.min(...values);
-    const max = Math.max(...values);
+    const min = Math.min(...finiteValues);
+    const max = Math.max(...finiteValues);
     const span = max === min ? 1 : max - min;
-    const binWidth = span / bins;
-    const hist = Array(bins).fill(0);
-    values.forEach(v => {
-      const idx = clamp(Math.floor((v - min) / binWidth), 0, bins - 1);
+    const binWidth = span / safeBins;
+    const hist = Array(safeBins).fill(0);
+    finiteValues.forEach(v => {
+      const idx = clamp(Math.floor((v - min) / binWidth), 0, safeBins - 1);
       hist[idx] += 1;
     });
     const maxCount = Math.max(...hist, 1);
@@ -50,7 +52,7 @@ export const Histogram: React.FC<HistogramProps> = ({
     const padding = { top: 6, right: 4, bottom: 10, left: 4 };
     const drawWidth = width - padding.left - padding.right;
     const drawHeight = height - padding.top - padding.bottom;
-    const barWidth = drawWidth / bins;
+    const barWidth = drawWidth / safeBins;
 
     ctx.clearRect(0, 0, width, height);
 
@@ -60,7 +62,7 @@ export const Histogram: React.FC<HistogramProps> = ({
       const h = (count / maxCount) * drawHeight;
       const x = padding.left + i * barWidth;
       const y = padding.top + (drawHeight - h);
-      ctx.fillRect(x, y, barWidth - 1, h);
+      ctx.fillRect(x, y, Math.max(0, barWidth - 1), h);
     });
 
     // Density line (simple moving average)

@@ -209,10 +209,7 @@ function findCruciforms(sequence: string, minStem: number = 6, maxLoop: number =
   const filtered: NonBDNAStructure[] = [];
   const sorted = results.sort((a, b) => b.score - a.score);
   for (const struct of sorted) {
-    const overlaps = filtered.some(
-      s => (struct.start >= s.start && struct.start < s.end) ||
-           (struct.end > s.start && struct.end <= s.end)
-    );
+    const overlaps = filtered.some((s) => struct.start < s.end && struct.end > s.start);
     if (!overlaps) {
       filtered.push(struct);
     }
@@ -340,21 +337,41 @@ export function NonBDNAOverlay({
       .finally(() => setLoading(false));
   }, [isOpen, repository, currentPhage]);
 
-  // Detect non-B-DNA structures
+  // Detect non-B-DNA structures.
+  //
+  // IMPORTANT (perf): keep heavy computations stable across UI tweaks.
+  // Cruciform detection is expensive; avoid recomputing it when the user only
+  // adjusts thresholds for the other tracks.
+  //
+  // Bead: phage_explorer-9fz6
+  const allG4 = useMemo(() => {
+    if (!sequence || sequence.length < 100) return [];
+    return findGQuadruplexes(sequence);
+  }, [sequence]);
+
+  const g4s = useMemo(() => {
+    return allG4.filter((s) => s.score >= g4Threshold);
+  }, [allG4, g4Threshold]);
+
+  const zdnas = useMemo(() => {
+    if (!sequence || sequence.length < 100) return [];
+    return findZDNARegions(sequence, 100, zdnaThreshold);
+  }, [sequence, zdnaThreshold]);
+
+  const cruciforms = useMemo(() => {
+    if (!sequence || sequence.length < 100) return [];
+    return findCruciforms(sequence);
+  }, [sequence]);
+
   const analysis = useMemo(() => {
     if (!sequence || sequence.length < 100) return null;
-
-    const g4s = findGQuadruplexes(sequence).filter(s => s.score >= g4Threshold);
-    const zdnas = findZDNARegions(sequence, 100, zdnaThreshold);
-    const cruciforms = findCruciforms(sequence);
-
     return {
       g4s,
       zdnas,
       cruciforms,
       total: g4s.length + zdnas.length + cruciforms.length,
     };
-  }, [sequence, g4Threshold, zdnaThreshold]);
+  }, [cruciforms, g4s, sequence, zdnas]);
 
   // Build track segments
   const g4Segments = useMemo(() => {
