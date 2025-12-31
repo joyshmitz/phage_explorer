@@ -672,4 +672,102 @@ declare module '@phage/wasm-compute' {
    * @see phage_explorer-vk7b.5
    */
   export function scan_kl_windows(seq: Uint8Array, k: number, window_size: number, step_size: number): KLScanResult;
+
+  // ============================================================================
+  // Myers Diff/Alignment
+  // @see phage_explorer-kyo0.1
+  // ============================================================================
+
+  /**
+   * Result of Myers diff alignment.
+   *
+   * IMPORTANT: Must call `.free()` when done to release WASM memory.
+   *
+   * Mask codes:
+   * - 0 = MATCH
+   * - 1 = MISMATCH (substitution)
+   * - 2 = INSERT (in B, not in A)
+   * - 3 = DELETE (in A, not in B)
+   *
+   * @example
+   * ```ts
+   * const encoder = new TextEncoder();
+   * const seqA = encoder.encode('ACGT');
+   * const seqB = encoder.encode('ACCT');
+   * const result = wasm.myers_diff(seqA, seqB);
+   * try {
+   *   console.log('Identity:', result.identity);
+   *   console.log('Mask A:', result.mask_a); // Uint8Array
+   * } finally {
+   *   result.free();
+   * }
+   * ```
+   */
+  export class MyersDiffResult {
+    free(): void;
+    /** Diff mask for sequence A (0=MATCH, 1=MISMATCH, 3=DELETE) */
+    readonly mask_a: Uint8Array;
+    /** Diff mask for sequence B (0=MATCH, 1=MISMATCH, 2=INSERT) */
+    readonly mask_b: Uint8Array;
+    /** Edit distance (total edits) */
+    readonly edit_distance: number;
+    /** Number of matching positions */
+    readonly matches: number;
+    /** Number of mismatches (substitutions) */
+    readonly mismatches: number;
+    /** Number of insertions */
+    readonly insertions: number;
+    /** Number of deletions */
+    readonly deletions: number;
+    /** Sequence identity as fraction (0.0 - 1.0) */
+    readonly identity: number;
+    /** Whether computation was truncated due to guardrails */
+    readonly truncated: boolean;
+    /** Error message if any */
+    readonly error: string | undefined;
+    /** Length of sequence A */
+    readonly len_a: number;
+    /** Length of sequence B */
+    readonly len_b: number;
+  }
+
+  /**
+   * Compute Myers diff between two DNA sequences.
+   *
+   * Uses Myers O(ND) algorithm with guardrails:
+   * - Max sequence length: 500,000 bp
+   * - Max edit distance: 10,000
+   *
+   * If guardrails are exceeded, returns a truncated result with
+   * `truncated: true` and an error message.
+   *
+   * @param seq_a - First sequence bytes (ASCII DNA)
+   * @param seq_b - Second sequence bytes (ASCII DNA)
+   * @returns MyersDiffResult (caller must call `.free()`)
+   *
+   * @see phage_explorer-kyo0.1.1
+   */
+  export function myers_diff(seq_a: Uint8Array, seq_b: Uint8Array): MyersDiffResult;
+
+  /**
+   * Compute Myers diff with custom edit distance limit.
+   *
+   * @param seq_a - First sequence bytes
+   * @param seq_b - Second sequence bytes
+   * @param max_d - Maximum edit distance to compute
+   * @returns MyersDiffResult
+   */
+  export function myers_diff_with_limit(seq_a: Uint8Array, seq_b: Uint8Array, max_d: number): MyersDiffResult;
+
+  /**
+   * Fast O(n) diff for equal-length sequences.
+   *
+   * Only computes mismatches (no insertions/deletions possible).
+   * Much faster than myers_diff for same-length sequences.
+   *
+   * @param seq_a - First sequence bytes
+   * @param seq_b - Second sequence bytes (must have same length as seq_a)
+   * @returns MyersDiffResult with mask codes 0=MATCH, 1=MISMATCH only
+   */
+  export function equal_len_diff(seq_a: Uint8Array, seq_b: Uint8Array): MyersDiffResult;
 }

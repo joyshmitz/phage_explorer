@@ -1,32 +1,163 @@
-import type { GenomeComparisonResult } from '@phage-explorer/comparison';
 import { compareGenomes } from '@phage-explorer/comparison';
+import type { ComparisonJob, ComparisonWorkerMessage, SequenceBytesRef } from './types';
+import { getWasmCompute } from '../lib/wasm-loader';
 
-interface ComparisonJob {
-  phageA: { id: number; name: string; accession: string };
-  phageB: { id: number; name: string; accession: string };
-  sequenceA: string;
-  sequenceB: string;
-  genesA: any[];
-  genesB: any[];
-  codonUsageA?: any | null;
-  codonUsageB?: any | null;
+const textDecoder = typeof TextDecoder !== 'undefined' ? new TextDecoder() : null;
+const textEncoder = typeof TextEncoder !== 'undefined' ? new TextEncoder() : null;
+
+function decodeAsciiBytes(bytes: Uint8Array): string {
+  if (textDecoder) return textDecoder.decode(bytes);
+
+  const CHUNK = 0x2000;
+  let out = '';
+  for (let i = 0; i < bytes.length; i += CHUNK) {
+    const chunk = bytes.subarray(i, i + CHUNK);
+    out += String.fromCharCode(...chunk);
+  }
+  return out;
 }
 
-interface WorkerMessage {
-  ok: boolean;
-  result?: GenomeComparisonResult;
-  diffMask?: Uint8Array;
-  diffPositions?: number[];
-  diffStats?: DiffStats;
-  error?: string;
+function getSequenceBytesView(ref: SequenceBytesRef): Uint8Array {
+  const view = new Uint8Array(ref.buffer, ref.byteOffset, ref.byteLength);
+  return ref.length < view.length ? view.subarray(0, ref.length) : view;
+}
+
+function decodeSequenceRef(ref: SequenceBytesRef): string {
+  const view = getSequenceBytesView(ref);
+
+  if (ref.encoding === 'ascii') {
+    return decodeAsciiBytes(view);
+  }
+
+  // Temporary compatibility path for callers that already have encoded bases.
+  const out = new Uint8Array(ref.length);
+  for (let i = 0; i < ref.length; i++) {
+    const code = view[i] ?? 4;
+    out[i] =
+      code === 0 ? 65 : // A
+      code === 1 ? 67 : // C
+      code === 2 ? 71 : // G
+      code === 3 ? 84 : // T
+      78;              // N
+  }
+  return decodeAsciiBytes(out);
+}
+
+// Threshold for using WASM diff: sequences longer than this use WASM
+const WASM_DIFF_THRESHOLD = 1000;
+
+interface WasmDiffResult {
+  mask: Uint8Array;
+  positions: number[];
+  stats: {
+    insertions: number;
+    deletions: number;
+    substitutions: number;
+    matches: number;
+    lengthA: number;
+    lengthB: number;
+    identity: number;
+  };
+}
+
+/**
+ * Try to compute diff using WASM Myers algorithm.
+ * Returns null if WASM is unavailable or the computation fails.
+ */
+async function tryComputeDiffWasm(
+  sequenceA: string,
+  sequenceB: string
+): Promise<WasmDiffResult | null> {
+  if (!textEncoder) return null;
+
+  const wasm = await getWasmCompute();
+  if (!wasm) return null;
+
+  // Check for required functions
+  if (typeof wasm.myers_diff !== 'function' && typeof wasm.equal_len_diff !== 'function') {
+    return null;
+  }
+
+  try {
+    const seqABytes = textEncoder.encode(sequenceA);
+    const seqBBytes = textEncoder.encode(sequenceB);
+
+    // Use fast O(n) path for equal-length sequences
+    const useEqualLen = seqABytes.length === seqBBytes.length && typeof wasm.equal_len_diff === 'function';
+    const result = useEqualLen
+      ? wasm.equal_len_diff(seqABytes, seqBBytes)
+      : wasm.myers_diff(seqABytes, seqBBytes);
+
+    try {
+      // Check for errors or truncation
+      if (result.truncated && result.error) {
+        if (import.meta.env.DEV) {
+          console.warn('[comparison.worker] WASM diff truncated:', result.error);
+        }
+        // Fall back to JS for truncated results
+        return null;
+      }
+
+      // Copy mask_a to our output format
+      const maskA = new Uint8Array(result.mask_a);
+      const positions: number[] = [];
+
+      // Build positions array from mask (non-zero = difference)
+      for (let i = 0; i < maskA.length; i++) {
+        if (maskA[i] !== 0) {
+          positions.push(i);
+        }
+      }
+
+      return {
+        mask: maskA,
+        positions,
+        stats: {
+          insertions: result.insertions,
+          deletions: result.deletions,
+          substitutions: result.mismatches,
+          matches: result.matches,
+          lengthA: result.len_a,
+          lengthB: result.len_b,
+          identity: Math.max(0, Math.min(100, result.identity * 100)),
+        },
+      };
+    } finally {
+      result.free();
+    }
+  } catch (err) {
+    if (import.meta.env.DEV) {
+      console.warn('[comparison.worker] WASM diff failed, falling back to JS:', err);
+    }
+    return null;
+  }
 }
 
 self.onmessage = async (event: MessageEvent<ComparisonJob>) => {
-  const job = event.data;
-  const message: WorkerMessage = { ok: false };
+  const job = event.data as ComparisonJob | null | undefined;
+  const message: ComparisonWorkerMessage = { ok: false };
+
+  if (!job || typeof job !== 'object') {
+    message.error = 'Invalid comparison job: missing required sequences';
+    (self as any).postMessage(message);
+    return;
+  }
 
   // Validate input
-  if (!job || !job.sequenceA || !job.sequenceB) {
+  const sequenceA =
+    'sequenceA' in job
+      ? job.sequenceA
+      : job.sequenceARef
+        ? decodeSequenceRef(job.sequenceARef)
+        : '';
+  const sequenceB =
+    'sequenceB' in job
+      ? job.sequenceB
+      : job.sequenceBRef
+        ? decodeSequenceRef(job.sequenceBRef)
+        : '';
+
+  if (!sequenceA || !sequenceB) {
     message.error = 'Invalid comparison job: missing required sequences';
     (self as any).postMessage(message);
     return;
@@ -36,15 +167,26 @@ self.onmessage = async (event: MessageEvent<ComparisonJob>) => {
     const result = await compareGenomes(
       job.phageA,
       job.phageB,
-      job.sequenceA,
-      job.sequenceB,
+      sequenceA,
+      sequenceB,
       job.genesA ?? [],
       job.genesB ?? [],
       job.codonUsageA ?? null,
       job.codonUsageB ?? null
     );
 
-    const diff = computeDiff(job.sequenceA, job.sequenceB);
+    // Try WASM diff for longer sequences (faster)
+    const maxLen = Math.max(sequenceA.length, sequenceB.length);
+    let diff: WasmDiffResult | DiffComputation | null = null;
+
+    if (maxLen >= WASM_DIFF_THRESHOLD) {
+      diff = await tryComputeDiffWasm(sequenceA, sequenceB);
+    }
+
+    // Fall back to JS diff if WASM unavailable or failed
+    if (!diff) {
+      diff = computeDiff(sequenceA, sequenceB);
+    }
 
     message.ok = true;
     message.result = result;
@@ -66,6 +208,7 @@ self.onmessage = async (event: MessageEvent<ComparisonJob>) => {
     }
     message.error = err instanceof Error ? err.message : 'Comparison failed';
   }
+
   (self as any).postMessage(message);
 };
 
