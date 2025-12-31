@@ -384,6 +384,8 @@ describe('getMaxKmer', () => {
     // All have count 2, first is A at index 0
     expect(max).not.toBeNull();
     expect(max!.count).toBe(2);
+    expect(max!.kmer).toBe('A'); // First in index order when tied
+    expect(max!.index).toBe(0);
   });
 });
 
