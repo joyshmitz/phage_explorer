@@ -22,6 +22,33 @@ describe('Anomaly Scanner', () => {
     expect(result.windows).toHaveLength(0);
   });
 
+  it('should preserve window coordinates when sequence contains ambiguous bases', () => {
+    // Previously we dropped non-ACGT bases, which shifted window positions.
+    // Replacing with 'N' preserves the original coordinate space.
+    const result = scanForAnomalies('ACGTNACGT', 5, 2, 2);
+    expect(result.windows).toHaveLength(3);
+    expect(result.windows.map(w => w.position)).toEqual([0, 2, 4]);
+  });
+
+  it('should handle RNA sequences by treating U as T', () => {
+    // RNA uses U instead of T. The scanner should normalize U→T.
+    // Without this fix, "ACGU" would become "ACGN" and all k-mers would be skipped.
+    const dnaSeq = 'ACGTACGTACGTACGTACGTACGTACGTACGT'; // 32 bases
+    const rnaSeq = 'ACGUACGUACGUACGUACGUACGUACGUACGU'; // Same but with U
+
+    const dnaResult = scanForAnomalies(dnaSeq, 16, 8, 2);
+    const rnaResult = scanForAnomalies(rnaSeq, 16, 8, 2);
+
+    // Both should produce the same number of windows with valid KL values
+    expect(rnaResult.windows.length).toBe(dnaResult.windows.length);
+    expect(rnaResult.windows.length).toBeGreaterThan(0);
+
+    // KL divergence should be identical (U and T are equivalent)
+    for (let i = 0; i < dnaResult.windows.length; i++) {
+      expect(rnaResult.windows[i].klDivergence).toBeCloseTo(dnaResult.windows[i].klDivergence, 5);
+    }
+  });
+
   it('should detect anomalies in synthetic data', () => {
     // Deterministic background + a highly-compressible repetitive region.
     // The pure window at position 5000 is intentionally sized to match windowSize

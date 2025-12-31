@@ -223,7 +223,8 @@ export function scanForAnomalies(
 ): AnomalyScanResult {
   // Preserve original coordinate space: replace non-ACGT bases with 'N' instead of dropping them.
   // This avoids shifting window positions relative to the original genome.
-  const seq = sequence.toUpperCase().replace(/[^ACGT]/g, 'N');
+  // Note: U→T normalization handles RNA sequences (WASM/JS counters also treat U as T).
+  const seq = sequence.toUpperCase().replace(/U/g, 'T').replace(/[^ACGT]/g, 'N');
   if (seq.length < windowSize || windowSize <= 0 || stepSize <= 0) {
     return {
       windows: [],
