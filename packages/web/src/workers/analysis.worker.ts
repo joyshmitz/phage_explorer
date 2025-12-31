@@ -496,16 +496,49 @@ function findRepeats(sequence: string, minLength = 8, maxGap = 5000): RepeatResu
 /**
  * Calculate codon usage statistics
  */
-function calculateCodonUsage(sequence: string): CodonUsageResult {
+async function calculateCodonUsage(sequence: string): Promise<CodonUsageResult> {
   const seq = sequence.toUpperCase().replace(/[^ACGT]/g, '');
   const usage: Record<string, number> = {};
   const rscu: Record<string, number> = {};
 
-  // Count codons
-  for (let i = 0; i <= seq.length - 3; i += 3) {
-    const codon = seq.slice(i, i + 3);
-    if (CODON_TABLE[codon]) {
-      usage[codon] = (usage[codon] || 0) + 1;
+  // Count codons (prefer WASM to avoid JS string slicing in tight loops).
+  // Note: wasm-compute currently returns counts as JSON; we parse and keep the
+  // existing JS behavior for RSCU computation.
+  //
+  // Bead: phage_explorer-yvs8.2
+  //
+  // IMPORTANT: We pass the cleaned `seq` (ACGT-only) so results match the
+  // previous implementation (which removed ambiguous bases).
+  let didUseWasm = false;
+  try {
+    const wasm = await getWasmCompute();
+    if (wasm) {
+      const result = wasm.count_codon_usage(seq, 0);
+      try {
+        const parsed: unknown = JSON.parse(result.json);
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+          for (const [codon, count] of Object.entries(parsed)) {
+            if (typeof count === 'number' && Number.isFinite(count)) {
+              usage[codon] = count;
+            }
+          }
+          didUseWasm = true;
+        }
+      } finally {
+        result.free();
+      }
+    }
+  } catch {
+    didUseWasm = false;
+  }
+
+  if (!didUseWasm) {
+    // Count codons (JS fallback)
+    for (let i = 0; i <= seq.length - 3; i += 3) {
+      const codon = seq.slice(i, i + 3);
+      if (CODON_TABLE[codon]) {
+        usage[codon] = (usage[codon] || 0) + 1;
+      }
     }
   }
 
