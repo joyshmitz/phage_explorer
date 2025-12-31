@@ -56,7 +56,7 @@ precacheAndRoute(self.__WB_MANIFEST || []);
 // Cache database with StaleWhileRevalidate (use cached, update in background)
 // Database is critical for app function, so we prefer cached data for speed
 registerRoute(
-  ({ url }) => url.pathname.endsWith('.db'),
+  ({ url }) => url.pathname.endsWith('.db') || url.pathname.endsWith('.db.gz'),
   new StaleWhileRevalidate({
     cacheName: CACHE_NAMES.database,
     plugins: [
