@@ -585,6 +585,37 @@ declare module '@phage/wasm-compute' {
   export function detect_bonds_spatial(positions: Float32Array, elements: string): BondDetectionResult;
 
   // ============================================================================
+  // Dot Plot (Self-Similarity Matrix)
+  // ============================================================================
+
+  /**
+   * Result of dot plot computation.
+   *
+   * IMPORTANT: Must call `.free()` when done to release WASM memory.
+   */
+  export class DotPlotBuffers {
+    free(): void;
+    /** Direct similarity values (row-major, bins × bins) */
+    readonly direct: Float32Array;
+    /** Inverted (reverse complement) similarity values (row-major, bins × bins) */
+    readonly inverted: Float32Array;
+    /** Number of bins in each dimension */
+    readonly bins: number;
+    /** Window size used for computation */
+    readonly window: number;
+  }
+
+  /**
+   * Compute self-similarity dot plot from sequence bytes.
+   *
+   * @param seq - Sequence bytes (ASCII)
+   * @param bins - Number of bins for the grid (bins × bins output)
+   * @param window - Window size in bases. If 0, derives a conservative default.
+   * @returns DotPlotBuffers containing direct and inverted similarity matrices
+   */
+  export function dotplot_self_buffers(seq: Uint8Array, bins: number, window: number): DotPlotBuffers;
+
+  // ============================================================================
   // Sequence Rendering Helpers (Optional, not currently wired in)
   // ============================================================================
 
@@ -871,5 +902,20 @@ declare module '@phage/wasm-compute' {
      * @returns MinHashSignature containing the signature
      */
     minhash(num_hashes: number, k: number): MinHashSignature;
+
+    /**
+     * Compute self-similarity dot plot using pre-encoded sequence.
+     *
+     * This is more efficient than `dotplot_self_buffers` when running multiple
+     * analyses on the same sequence (e.g., progressive refinement with preview
+     * then full resolution).
+     *
+     * @param bins - Number of bins for the grid (bins × bins output)
+     * @param window - Window size in bases. If 0, derives a conservative default.
+     * @returns DotPlotBuffers containing direct and inverted similarity matrices
+     *
+     * @see phage_explorer-8qk2.6
+     */
+    dotplot_self(bins: number, window: number): DotPlotBuffers;
   }
 }
