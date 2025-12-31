@@ -225,6 +225,44 @@ describe('PhageExplorerStore - Scroll Position', () => {
   });
 });
 
+describe('PhageExplorerStore - Zoom Scale', () => {
+  it('starts uninitialized (null)', () => {
+    const store = usePhageStore.getState();
+    expect(store.zoomScale).toBeNull();
+  });
+
+  it('setZoomScale clamps to [0.1, 4.0] and ignores NaN', () => {
+    const store = usePhageStore.getState();
+
+    store.setZoomScale(10);
+    expect(usePhageStore.getState().zoomScale).toBe(4.0);
+
+    store.setZoomScale(0);
+    expect(usePhageStore.getState().zoomScale).toBe(0.1);
+
+    store.setZoomScale(Number.NaN);
+    expect(usePhageStore.getState().zoomScale).toBe(0.1);
+  });
+
+  it('zoomIn/zoomOut step the zoom scale with clamping', () => {
+    const store = usePhageStore.getState();
+
+    store.zoomIn();
+    expect(usePhageStore.getState().zoomScale).toBeCloseTo(1.3, 5);
+
+    store.zoomOut();
+    expect(usePhageStore.getState().zoomScale).toBeCloseTo(1.0, 5);
+
+    store.setZoomScale(4.0);
+    store.zoomIn();
+    expect(usePhageStore.getState().zoomScale).toBe(4.0);
+
+    store.setZoomScale(0.1);
+    store.zoomOut();
+    expect(usePhageStore.getState().zoomScale).toBe(0.1);
+  });
+});
+
 describe('PhageExplorerStore - 3D Model Controls', () => {
   it('toggles 3D model visibility', () => {
     const store = usePhageStore.getState();
@@ -354,7 +392,7 @@ describe('PhageExplorerStore - Comparison Tab Navigation', () => {
 
   it('wraps around to summary from last tab', () => {
     const store = usePhageStore.getState();
-    store.setComparisonTab('structural');
+    store.setComparisonTab('diff');
     store.nextComparisonTab();
 
     expect(usePhageStore.getState().comparisonTab).toBe('summary');
@@ -368,12 +406,12 @@ describe('PhageExplorerStore - Comparison Tab Navigation', () => {
     expect(usePhageStore.getState().comparisonTab).toBe('kmer');
   });
 
-  it('wraps around to structural from summary', () => {
+  it('wraps around to diff from summary', () => {
     const store = usePhageStore.getState();
     store.setComparisonTab('summary');
     store.prevComparisonTab();
 
-    expect(usePhageStore.getState().comparisonTab).toBe('structural');
+    expect(usePhageStore.getState().comparisonTab).toBe('diff');
   });
 });
 

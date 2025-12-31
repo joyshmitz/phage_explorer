@@ -104,6 +104,8 @@ export interface PhageExplorerState {
   viewMode: ViewMode;
   readingFrame: ReadingFrame;
   scrollPosition: number;
+  /** Zoom scale for the web SequenceView renderer (null = not yet initialized) */
+  zoomScale: number | null;
 
   // Diff mode
   diffEnabled: boolean;
@@ -186,6 +188,9 @@ export interface PhageExplorerActions {
   scrollBy: (delta: number) => void;
   scrollToStart: () => void;
   scrollToEnd: () => void;
+  setZoomScale: (scale: number) => void;
+  zoomIn: (factor?: number) => void;
+  zoomOut: (factor?: number) => void;
 
   // Diff mode
   toggleDiff: () => void;
@@ -288,6 +293,7 @@ const initialState: PhageExplorerState = {
   viewMode: 'dna',
   readingFrame: 0,
   scrollPosition: 0,
+  zoomScale: null,
   diffEnabled: false,
   diffReferencePhageId: null,
   diffReferenceSequence: null,
@@ -416,6 +422,28 @@ export const usePhageStore = create<PhageExplorerStore>((set, get) => ({
   },
 
   scrollToStart: () => set({ scrollPosition: 0 }),
+
+  setZoomScale: (scale) => {
+    if (!Number.isFinite(scale)) return;
+    const clamped = Math.max(0.1, Math.min(4.0, scale));
+    const current = get().zoomScale;
+    if (current !== null && Math.abs(current - clamped) < 1e-4) return;
+    set({ zoomScale: clamped });
+  },
+
+  zoomIn: (factor = 1.3) => {
+    const current = get().zoomScale ?? 1.0;
+    const next = Math.max(0.1, Math.min(4.0, current * factor));
+    if (Math.abs(current - next) < 1e-4) return;
+    set({ zoomScale: next });
+  },
+
+  zoomOut: (factor = 1.3) => {
+    const current = get().zoomScale ?? 1.0;
+    const next = Math.max(0.1, Math.min(4.0, current / factor));
+    if (Math.abs(current - next) < 1e-4) return;
+    set({ zoomScale: next });
+  },
 
   scrollToEnd: () => {
     const { currentPhage, viewMode, terminalCols, terminalRows } = get();
@@ -571,7 +599,7 @@ export const usePhageStore = create<PhageExplorerStore>((set, get) => ({
 
   nextComparisonTab: () => {
     const { comparisonTab } = get();
-    const tabs: ComparisonTab[] = ['summary', 'kmer', 'information', 'correlation', 'biological', 'genes', 'structural'];
+    const tabs: ComparisonTab[] = ['summary', 'kmer', 'information', 'correlation', 'biological', 'genes', 'structural', 'diff'];
     const currentIndex = tabs.indexOf(comparisonTab);
     const nextIndex = (currentIndex + 1) % tabs.length;
     set({ comparisonTab: tabs[nextIndex] });
@@ -579,7 +607,7 @@ export const usePhageStore = create<PhageExplorerStore>((set, get) => ({
 
   prevComparisonTab: () => {
     const { comparisonTab } = get();
-    const tabs: ComparisonTab[] = ['summary', 'kmer', 'information', 'correlation', 'biological', 'genes', 'structural'];
+    const tabs: ComparisonTab[] = ['summary', 'kmer', 'information', 'correlation', 'biological', 'genes', 'structural', 'diff'];
     const currentIndex = tabs.indexOf(comparisonTab);
     const prevIndex = (currentIndex - 1 + tabs.length) % tabs.length;
     set({ comparisonTab: tabs[prevIndex] });
