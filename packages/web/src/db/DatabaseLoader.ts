@@ -16,7 +16,6 @@ import {
 import {
   isQuotaError,
   safeCacheWrite,
-  getStorageEstimate,
   logCacheStats,
   type CacheWriteResult,
 } from './db-cache';
@@ -476,9 +475,15 @@ export class DatabaseLoader {
       throw new Error(`Failed to download database: ${response.statusText}`);
     }
 
-    const contentLength = response.headers.get('content-length');
+    const contentEncoding = response.headers.get('content-encoding');
+    // When Content-Encoding is present, browsers transparently decode the body stream, but
+    // Content-Length (if set) may refer to the encoded (compressed) byte length. In that case,
+    // progress ratios become meaningless and can exceed 100%.
+    const canTrustContentLength = !contentEncoding || contentEncoding === 'identity';
+    const contentLength = canTrustContentLength ? response.headers.get('content-length') : null;
     const total = contentLength ? parseInt(contentLength, 10) : 0;
     let loaded = 0;
+    let lastReportedLoaded = 0;
 
     const reader = response.body?.getReader();
     if (!reader) {
@@ -497,6 +502,17 @@ export class DatabaseLoader {
       if (total > 0) {
         const percent = Math.round((loaded / total) * 40) + 10;
         this.progress('downloading', percent, `${label}: ${Math.round(loaded / 1024)}KB`);
+      } else {
+        // Best-effort progress when total size is unknown/unreliable.
+        // We cap this to the "download" phase range (10–50).
+        if (loaded - lastReportedLoaded >= 256 * 1024) {
+          lastReportedLoaded = loaded;
+          const approxPercent = Math.min(
+            50,
+            10 + Math.round((loaded / (1024 * 1024)) * 6)
+          );
+          this.progress('downloading', approxPercent, `${label}: ${Math.round(loaded / 1024)}KB`);
+        }
       }
     }
 
