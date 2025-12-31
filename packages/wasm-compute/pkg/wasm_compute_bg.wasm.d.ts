@@ -102,6 +102,7 @@ export const reverse_complement: (a: number, b: number) => [number, number];
 export const scan_kl_windows: (a: number, b: number, c: number, d: number, e: number) => number;
 export const sequencehandle_count_kmers: (a: number, b: number) => number;
 export const sequencehandle_cumulative_gc_skew: (a: number) => [number, number];
+export const sequencehandle_dotplot_self: (a: number, b: number, c: number) => number;
 export const sequencehandle_encoded_bytes: (a: number) => any;
 export const sequencehandle_gc_skew: (a: number, b: number, c: number) => [number, number];
 export const sequencehandle_minhash: (a: number, b: number, c: number) => number;
