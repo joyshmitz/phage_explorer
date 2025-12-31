@@ -13,7 +13,10 @@ import type {
   EvolutionReplayState,
   PackagingMotorState,
   InfectionKineticsState,
+  DotPlotConfig,
+  DotPlotResult,
 } from '@phage-explorer/core';
+import type { GenomeComparisonResult } from '@phage-explorer/comparison';
 
 // Re-export simulation types
 export type {
@@ -321,19 +324,44 @@ export interface WorkerPoolConfig {
 // ============================================================
 
 /**
+ * Canonical sequence encodings for worker/WASM pipelines.
+ *
+ * - `ascii`: raw ASCII bytes of the original sequence (A/C/G/T/N, case-insensitive).
+ * - `acgt05`: encoded bases where A=0, C=1, G=2, T=3, N/other=4.
+ */
+export type SequenceEncoding = 'ascii' | 'acgt05';
+
+/**
+ * Byte-backed sequence reference for worker communication.
+ *
+ * This is the preferred transport for large genomes because it avoids repeatedly
+ * structured-cloning giant strings between threads.
+ *
+ * Notes:
+ * - `SharedArrayBuffer` requires `crossOriginIsolated === true` (COOP/COEP).
+ * - When SAB is unavailable, use a transferable `ArrayBuffer` instead.
+ */
+export interface SequenceBytesRef {
+  buffer: SharedArrayBuffer | ArrayBuffer;
+  /** Byte offset into `buffer` where the sequence starts (usually 0). */
+  byteOffset: number;
+  /** Byte length of the sequence payload (usually equals `length` for `ascii`). */
+  byteLength: number;
+  /** Sequence length in characters/bases (for `ascii`, equals `byteLength`). */
+  length: number;
+  encoding: SequenceEncoding;
+  /** Whether this is a true SharedArrayBuffer (zero-copy) vs transferred ArrayBuffer. */
+  isShared: boolean;
+}
+
+/**
  * Reference to a shared sequence buffer for zero-copy worker communication.
  * When SharedArrayBuffer is available, the buffer can be accessed directly
  * in workers without copying.
  */
-export interface SharedSequenceRef {
-  /** Phage ID this sequence belongs to */
+export interface SharedSequenceRef extends SequenceBytesRef {
+  /** Phage ID this sequence belongs to (used for caching/debugging). */
   phageId: number;
-  /** SharedArrayBuffer (or ArrayBuffer fallback) containing ASCII-encoded sequence */
-  buffer: SharedArrayBuffer | ArrayBuffer;
-  /** Length of the sequence in characters */
-  length: number;
-  /** Whether this is a true SharedArrayBuffer (enables zero-copy) */
-  isShared: boolean;
 }
 
 /**
@@ -377,4 +405,64 @@ export interface SharedAnalysisWorkerAPI extends AnalysisWorkerAPI {
 export interface SharedSearchWorkerAPI extends SearchWorkerAPI {
   /** Run search using shared buffer reference */
   runSearchShared(request: SharedSearchRequest): Promise<SearchResponse>;
+}
+
+// ============================================================
+// Non-Comlink Worker Message Types (postMessage + Transferables)
+// ============================================================
+
+export type DotPlotJob =
+  | { sequence: string; config?: DotPlotConfig }
+  | { sequenceRef: SequenceBytesRef; config?: DotPlotConfig };
+
+export interface DotPlotWorkerResponse {
+  ok: boolean;
+  result?: DotPlotResult;
+  // Pre-flattened for HeatmapCanvas
+  directValues?: Float32Array;
+  invertedValues?: Float32Array;
+  bins?: number;
+  window?: number;
+  error?: string;
+}
+
+export type ComparisonJob =
+  | {
+      phageA: { id: number; name: string; accession: string };
+      phageB: { id: number; name: string; accession: string };
+      sequenceA: string;
+      sequenceB: string;
+      genesA: any[];
+      genesB: any[];
+      codonUsageA?: any | null;
+      codonUsageB?: any | null;
+    }
+  | {
+      phageA: { id: number; name: string; accession: string };
+      phageB: { id: number; name: string; accession: string };
+      sequenceARef: SequenceBytesRef;
+      sequenceBRef: SequenceBytesRef;
+      genesA: any[];
+      genesB: any[];
+      codonUsageA?: any | null;
+      codonUsageB?: any | null;
+    };
+
+export interface ComparisonWorkerMessage {
+  ok: boolean;
+  result?: GenomeComparisonResult;
+  diffMask?: Uint8Array;
+  diffPositions?: number[];
+  diffStats?: ComparisonDiffStats;
+  error?: string;
+}
+
+export interface ComparisonDiffStats {
+  insertions: number;
+  deletions: number;
+  substitutions: number;
+  matches: number;
+  lengthA: number;
+  lengthB: number;
+  identity: number;
 }

@@ -13,6 +13,12 @@
  *   // Workers can read directly without deserialization
  */
 
+import { canUseSharedArrayBuffer } from '../utils/wasm';
+import type { SharedSequenceRef } from './types';
+
+const textEncoder = typeof TextEncoder !== 'undefined' ? new TextEncoder() : null;
+const textDecoder = typeof TextDecoder !== 'undefined' ? new TextDecoder() : null;
+
 export interface SequenceBuffer {
   /** The SharedArrayBuffer (or ArrayBuffer fallback) containing encoded sequence */
   sab: SharedArrayBuffer | ArrayBuffer;
@@ -31,42 +37,41 @@ interface PoolEntry {
 }
 
 /**
- * Check if SharedArrayBuffer is available in the current context.
- * Requires COOP/COEP headers to be set on the page.
- */
-function isSharedArrayBufferAvailable(): boolean {
-  try {
-    // Check if SharedArrayBuffer exists and is constructible
-    if (typeof SharedArrayBuffer === 'undefined') {
-      return false;
-    }
-    // Try to actually create one - this will fail without proper headers
-    const test = new SharedArrayBuffer(1);
-    return test.byteLength === 1;
-  } catch {
-    return false;
-  }
-}
-
-/**
  * Encode a DNA sequence string to a Uint8Array.
  * Uses ASCII encoding (1 byte per character).
  * This is efficient for DNA sequences which only use A,T,G,C,N characters.
  */
 function encodeSequence(sequence: string): Uint8Array {
-  const encoder = new TextEncoder();
-  return encoder.encode(sequence);
+  if (textEncoder) {
+    return textEncoder.encode(sequence);
+  }
+
+  // Manual ASCII encoding fallback (older browsers / unusual worker environments).
+  const out = new Uint8Array(sequence.length);
+  for (let i = 0; i < sequence.length; i++) {
+    out[i] = sequence.charCodeAt(i) & 0xff;
+  }
+  return out;
 }
 
 /**
  * Decode a Uint8Array back to a DNA sequence string.
  */
 export function decodeSequence(view: Uint8Array, length?: number): string {
-  const decoder = new TextDecoder();
-  if (length !== undefined && length < view.length) {
-    return decoder.decode(view.subarray(0, length));
+  const slice = length !== undefined && length < view.length ? view.subarray(0, length) : view;
+
+  if (textDecoder) {
+    return textDecoder.decode(slice);
   }
-  return decoder.decode(view);
+
+  // Manual ASCII decoding fallback.
+  const CHUNK = 0x2000;
+  let out = '';
+  for (let i = 0; i < slice.length; i += CHUNK) {
+    const chunk = slice.subarray(i, i + CHUNK);
+    out += String.fromCharCode(...chunk);
+  }
+  return out;
 }
 
 /**
@@ -82,7 +87,7 @@ export class SharedSequencePool {
 
   private constructor(maxPoolSize: number = 50) {
     this.maxPoolSize = maxPoolSize;
-    this.sharedAvailable = isSharedArrayBufferAvailable();
+    this.sharedAvailable = canUseSharedArrayBuffer();
 
     if (this.sharedAvailable) {
       if (import.meta.env.DEV) {
@@ -121,6 +126,63 @@ export class SharedSequencePool {
    */
   isUsingSharedMemory(): boolean {
     return this.sharedAvailable;
+  }
+
+  /**
+   * Get a sequence reference suitable for sending to a worker.
+   *
+   * - If SharedArrayBuffer is available, returns a zero-copy ref to the pool-owned SAB.
+   * - Otherwise, returns a *transferable* ArrayBuffer copy so postMessage/Comlink can avoid
+   *   cloning huge strings. The pool keeps its own internal copy for reuse.
+   */
+  getOrCreateRef(phageId: number, sequence: string): { ref: SharedSequenceRef; transfer: Transferable[] } {
+    const buffer = this.getOrCreate(phageId, sequence);
+    return this.makeWorkerRef(phageId, buffer);
+  }
+
+  /**
+   * Get an existing sequence reference suitable for sending to a worker.
+   * Returns undefined if the sequence isn't in the pool yet.
+   */
+  getRef(phageId: number): { ref: SharedSequenceRef; transfer: Transferable[] } | undefined {
+    const entry = this.pool.get(phageId);
+    if (!entry) return undefined;
+    entry.lastAccess = Date.now();
+    return this.makeWorkerRef(phageId, entry.buffer);
+  }
+
+  private makeWorkerRef(phageId: number, buffer: SequenceBuffer): { ref: SharedSequenceRef; transfer: Transferable[] } {
+    if (buffer.isShared) {
+      return {
+        ref: {
+          phageId,
+          buffer: buffer.sab,
+          byteOffset: 0,
+          byteLength: buffer.view.byteLength,
+          length: buffer.length,
+          encoding: 'ascii',
+          isShared: true,
+        },
+        transfer: [],
+      };
+    }
+
+    // ArrayBuffer fallback: create a transferable copy (one-shot).
+    const copy = new ArrayBuffer(buffer.view.byteLength);
+    new Uint8Array(copy).set(buffer.view);
+
+    return {
+      ref: {
+        phageId,
+        buffer: copy,
+        byteOffset: 0,
+        byteLength: copy.byteLength,
+        length: buffer.length,
+        encoding: 'ascii',
+        isShared: false,
+      },
+      transfer: [copy],
+    };
   }
 
   /**

@@ -53,11 +53,19 @@ export type {
   FuzzySearchResult,
   WorkerPoolConfig,
   // SharedArrayBuffer types
+  SequenceEncoding,
+  SequenceBytesRef,
   SharedSequenceRef,
   SharedAnalysisRequest,
   SharedSearchRequest,
   SharedAnalysisWorkerAPI,
   SharedSearchWorkerAPI,
+  // postMessage worker types
+  DotPlotJob,
+  DotPlotWorkerResponse,
+  ComparisonJob,
+  ComparisonWorkerMessage,
+  ComparisonDiffStats,
 } from './types';
 
 // Re-export simulation types from core
