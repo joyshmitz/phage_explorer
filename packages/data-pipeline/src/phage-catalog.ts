@@ -263,6 +263,7 @@ export const PHAGE_CATALOG: PhageCatalogEntry[] = [
     genomeType: 'dsDNA',
     baltimoreGroup: 'I',
     description: 'L5 is a temperate mycobacteriophage and the first mycobacteriophage genome sequenced. Its integrase system is used for site-specific integration into mycobacterial chromosomes. Close relative of D29 (which lost lysogeny genes).',
+    pdbIds: ['8EDU'], // Mycobacteriophage Muddy capsid - same HK97-fold Cluster A architecture as L5
   },
   {
     slug: 'phic31',
@@ -346,6 +347,7 @@ export const PHAGE_CATALOG: PhageCatalogEntry[] = [
     genomeType: 'dsDNA',
     baltimoreGroup: 'I',
     description: 'T1 is one of the original seven "T phages" but the least studied due to its notorious stability when dried—a lab contamination hazard. It has a long flexible tail and uses a headful packaging mechanism with generalized transduction capability.',
+    pdbIds: ['9KZJ'], // Cryo-EM structure of bacteriophage T1 capsid (2024)
   },
 ];
 

@@ -339,16 +339,34 @@ function colorForElement(element: string): Color {
   return ELEMENT_COLORS[key] ?? new Color('#22d3ee');
 }
 
+export type LoadingStage = 'fetching' | 'parsing' | 'bonds' | 'traces' | 'functional' | 'finalizing';
+
+export interface ProgressInfo {
+  stage: LoadingStage;
+  percent: number;
+}
+
+export type ProgressCallback = (info: ProgressInfo) => void;
+
 export async function loadStructure(
   idOrUrl: string,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  onProgress?: ProgressCallback
 ): Promise<LoadedStructure> {
   const format = detectFormat(idOrUrl);
   const url = resolveDownloadUrl(idOrUrl, format);
+
+  // Report: fetching (10%)
+  onProgress?.({ stage: 'fetching', percent: 10 });
+
   const res = await fetch(url, { signal });
   if (!res.ok) {
     throw new Error(`Failed to fetch structure (${res.status})`);
   }
+
+  // Report: fetching complete (20%)
+  onProgress?.({ stage: 'fetching', percent: 20 });
+
   const text = await res.text();
 
   if (signal?.aborted) {
@@ -388,7 +406,14 @@ export async function loadStructure(
     }
 
     worker.onmessage = (e) => {
-      const { type, data, error } = e.data;
+      const { type, data, error, stage, percent } = e.data;
+
+      // Handle progress messages from worker
+      if (type === 'progress') {
+        onProgress?.({ stage, percent });
+        return;
+      }
+
       if (type === 'error') {
         if (settled) return;
         settled = true;

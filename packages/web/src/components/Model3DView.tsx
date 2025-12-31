@@ -342,6 +342,8 @@ function Model3DViewBase({ phage }: Model3DViewProps): React.ReactElement {
     isError: structureError,
     error: structureErr,
     refetch: refetchStructure,
+    progress: structureProgress,
+    loadingStage,
   } = useStructureQuery({
     idOrUrl: pdbId ?? undefined,
     enabled: show3DModel && Boolean(pdbId),
@@ -863,7 +865,8 @@ function Model3DViewBase({ phage }: Model3DViewProps): React.ReactElement {
 
     if (structureLoading || structureFetching) {
       setLoadState('loading');
-      setProgress(20);
+      // Use actual progress from hook instead of static 20%
+      setProgress(structureProgress > 0 ? structureProgress : 5);
       setError(null);
       return;
     }
@@ -918,7 +921,7 @@ function Model3DViewBase({ phage }: Model3DViewProps): React.ReactElement {
       setLoadState('ready');
       requestRender();
     }
-  }, [coarsePointer, pdbId, show3DModel, structureData, structureError, structureErr, structureFetching, structureLoading, requestRender]);
+  }, [coarsePointer, pdbId, show3DModel, structureData, structureError, structureErr, structureFetching, structureLoading, structureProgress, requestRender]);
 
   useEffect(() => {
     if (loadState === 'ready') {
@@ -1261,7 +1264,14 @@ function Model3DViewBase({ phage }: Model3DViewProps): React.ReactElement {
           <div className="three-overlay" aria-busy="true" aria-label="Loading 3D structure">
             <Model3DSkeleton />
             <p className="text-dim" style={{ marginTop: '16px' }}>
-              Loading structure… {Math.round(progress)}%
+              {loadingStage === 'fetching' && 'Fetching from RCSB PDB…'}
+              {loadingStage === 'parsing' && 'Parsing structure…'}
+              {loadingStage === 'bonds' && 'Detecting bonds…'}
+              {loadingStage === 'traces' && 'Building traces…'}
+              {loadingStage === 'functional' && 'Analyzing functional groups…'}
+              {loadingStage === 'finalizing' && 'Finalizing…'}
+              {!loadingStage && 'Loading structure…'}
+              {' '}{Math.round(progress)}%
             </p>
           </div>
         )}

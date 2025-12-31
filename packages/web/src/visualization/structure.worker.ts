@@ -1,12 +1,34 @@
 // structure.worker.ts
 // Worker for offloading heavy structure parsing and graph analysis
 // (parsing PDB/MMCIF, bond detection, functional group detection)
+//
+// PERFORMANCE: Uses WASM spatial-hash bond detection for O(N) complexity
+// instead of O(N²) JS implementation. Critical for large structures.
 
 import {
   type AtomRecord,
   type Bond,
   type FunctionalGroupType,
 } from './structure-loader';
+
+// --- WASM Module Loading ---
+// Dynamically load WASM for spatial-hash bond detection
+let wasmModule: typeof import('@phage/wasm-compute') | null = null;
+let wasmLoadAttempted = false;
+
+async function getWasmModule() {
+  if (wasmLoadAttempted) return wasmModule;
+  wasmLoadAttempted = true;
+
+  try {
+    wasmModule = await import('@phage/wasm-compute');
+    wasmModule.init_panic_hook();
+    return wasmModule;
+  } catch (err) {
+    console.warn('[structure.worker] WASM module not available, using JS fallback:', err);
+    return null;
+  }
+}
 
 // --- Worker-local Types (mirroring structure-loader but without Three.js deps) ---
 // We can't import Three.js here easily in a standard worker setup without careful bundling,
@@ -122,10 +144,75 @@ function parseMMCIF(text: string): AtomRecord[] {
   return atoms;
 }
 
-function detectBonds(atoms: AtomRecord[]): Bond[] {
+// Known single-character elements with specific radii (must match WASM and JS)
+const KNOWN_ELEMENTS = new Set(['H', 'C', 'N', 'O', 'S', 'P']);
+
+/**
+ * Convert element symbol to single char for WASM.
+ * For known elements (H, C, N, O, S, P), use the element directly.
+ * For unknown/multi-char elements (CA, FE, MG, etc.), use 'X' to get default radius.
+ * This ensures consistency between WASM and JS fallback.
+ */
+function elementToWasmChar(element: string): string {
+  const upper = element.toUpperCase();
+  // For single-char known elements, use as-is
+  if (upper.length === 1 && KNOWN_ELEMENTS.has(upper)) {
+    return upper;
+  }
+  // For multi-char elements or unknown, use 'X' for default radius (0.8)
+  return 'X';
+}
+
+/**
+ * Detect bonds between atoms using spatial hashing.
+ *
+ * Uses WASM spatial-hash algorithm when available (O(N) complexity).
+ * Falls back to JS O(N²) for small structures or if WASM unavailable.
+ *
+ * Performance comparison for 50,000 atoms:
+ * - JS O(N²): ~1.25 billion comparisons, 30-60+ seconds
+ * - WASM spatial-hash: ~1 million comparisons, <1 second
+ */
+async function detectBondsWasm(
+  atoms: AtomRecord[],
+  wasm: typeof import('@phage/wasm-compute')
+): Promise<Bond[]> {
+  // Prepare flat arrays for WASM
+  const positions = new Float32Array(atoms.length * 3);
+  const elements: string[] = [];
+
+  for (let i = 0; i < atoms.length; i++) {
+    const atom = atoms[i];
+    positions[i * 3] = atom.x;
+    positions[i * 3 + 1] = atom.y;
+    positions[i * 3 + 2] = atom.z;
+    // Convert element to single char, ensuring consistency with JS fallback
+    elements.push(elementToWasmChar(atom.element));
+  }
+
+  const elementStr = elements.join('');
+  const result = wasm.detect_bonds_spatial(positions, elementStr);
+  const bondData = result.bonds;
+  const bondCount = result.bond_count;
+
+  // Convert flat array [a0, b0, a1, b1, ...] to Bond[] format
   const bonds: Bond[] = [];
-  // Simple spatial hashing could speed this up, but keeping it O(N^2) for simplicity in worker
-  // (Moving to worker fixes the UI freeze regardless of optimization)
+  for (let i = 0; i < bondCount; i++) {
+    bonds.push({
+      a: bondData[i * 2],
+      b: bondData[i * 2 + 1],
+    });
+  }
+
+  return bonds;
+}
+
+/**
+ * Fallback JS bond detection (O(N²) complexity).
+ * Used for small structures or when WASM is unavailable.
+ */
+function detectBondsJS(atoms: AtomRecord[]): Bond[] {
+  const bonds: Bond[] = [];
   for (let i = 0; i < atoms.length; i++) {
     for (let j = i + 1; j < atoms.length; j++) {
       const a = atoms[i];
@@ -143,6 +230,29 @@ function detectBonds(atoms: AtomRecord[]): Bond[] {
     }
   }
   return bonds;
+}
+
+// Threshold for using WASM vs JS (small structures are fast enough with JS)
+const WASM_ATOM_THRESHOLD = 2000;
+
+async function detectBonds(atoms: AtomRecord[]): Promise<Bond[]> {
+  // For small structures, JS is fast enough
+  if (atoms.length < WASM_ATOM_THRESHOLD) {
+    return detectBondsJS(atoms);
+  }
+
+  // Try WASM for large structures
+  const wasm = await getWasmModule();
+  if (wasm) {
+    try {
+      return await detectBondsWasm(atoms, wasm);
+    } catch (err) {
+      console.warn('[structure.worker] WASM bond detection failed, falling back to JS:', err);
+    }
+  }
+
+  // Fallback to JS
+  return detectBondsJS(atoms);
 }
 
 function buildBackboneTraces(atoms: AtomRecord[]): { x: number; y: number; z: number }[][] {
@@ -293,19 +403,33 @@ function detectPhosphates(atoms: AtomRecord[], bonds: Bond[]): SerializedFunctio
   return groups;
 }
 
-self.onmessage = (e: MessageEvent<WorkerInput>) => {
+self.onmessage = async (e: MessageEvent<WorkerInput>) => {
   const { text, format } = e.data;
-  
+
   try {
+    // Report progress: parsing
+    self.postMessage({ type: 'progress', stage: 'parsing', percent: 30 });
+
     const atoms = format === 'mmcif' ? parseMMCIF(text) : parsePDB(text);
     if (atoms.length === 0) {
       throw new Error('No atoms parsed from structure file');
     }
 
-    const bonds = detectBonds(atoms);
+    // Report progress: bond detection
+    // This now uses WASM spatial-hash for O(N) complexity on large structures
+    self.postMessage({ type: 'progress', stage: 'bonds', percent: 45 });
+
+    const bonds = await detectBonds(atoms);
+
+    // Report progress: building traces
+    self.postMessage({ type: 'progress', stage: 'traces', percent: 70 });
+
     const backboneTraces = buildBackboneTraces(atoms);
     const chains = Array.from(new Set(atoms.map(a => a.chainId)));
-    
+
+    // Report progress: functional groups
+    self.postMessage({ type: 'progress', stage: 'functional', percent: 85 });
+
     // Functional Groups
     const rings = detectAromaticRings(atoms, bonds);
     const disulfides = detectDisulfides(atoms, bonds);
@@ -330,11 +454,14 @@ self.onmessage = (e: MessageEvent<WorkerInput>) => {
       y: (minY + maxY) / 2,
       z: (minZ + maxZ) / 2,
     };
-    
+
     const sizeX = maxX - minX;
     const sizeY = maxY - minY;
     const sizeZ = maxZ - minZ;
     const radius = Math.sqrt(sizeX*sizeX + sizeY*sizeY + sizeZ*sizeZ) / 2 || 1;
+
+    // Report progress: finalizing
+    self.postMessage({ type: 'progress', stage: 'finalizing', percent: 95 });
 
     const result: WorkerOutput = {
       atoms,

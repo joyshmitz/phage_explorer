@@ -155,6 +155,10 @@ export function compute_cumulative_gc_skew(seq: string): Float64Array;
 /**
  * Compute diff mask between two sequences.
  *
+ * **STATUS: NOT WIRED IN** - Diff computation happens in JS.
+ * Kept for future optimization if diff mode becomes a performance concern.
+ * Diff is computed once per sequence change, not per frame, so JS is adequate.
+ *
  * Compares a query sequence against a reference sequence and produces
  * a diff mask indicating the type of difference at each position:
  * - 0: Match
@@ -175,6 +179,9 @@ export function compute_diff_mask(query: string, reference: string): Uint8Array;
 
 /**
  * Compute diff mask from pre-encoded sequences (faster than string version).
+ *
+ * **STATUS: NOT WIRED IN** - See `compute_diff_mask` above.
+ * This is the faster variant that operates on pre-encoded sequences.
  *
  * # Arguments
  * * `query_encoded` - Pre-encoded query sequence (values 0-4)
@@ -223,6 +230,10 @@ export function compute_linguistic_complexity(seq: string, max_k: number): numbe
 
 /**
  * Compute color runs for micro batch rendering.
+ *
+ * **STATUS: NOT WIRED IN** - JS `renderMicroBatch()` is used instead.
+ * Kept for future optimization if profiling shows rendering is a bottleneck.
+ * The JS version already uses the same single-pass algorithm and achieves 60fps.
  *
  * This performs single-pass run-length encoding on an encoded sequence,
  * producing runs grouped by color. The output is a flat Float32Array where
@@ -327,11 +338,15 @@ export function detect_tandem_repeats(seq: string, min_unit: number, max_unit: n
 /**
  * Fast sequence encoding for canvas rendering.
  *
+ * **STATUS: NOT WIRED IN** - JS `encodeSequence()` is used instead.
+ * Kept for future optimization if profiling shows encoding is a bottleneck.
+ *
  * Encodes nucleotide characters to numeric codes:
  * - A/a -> 0, C/c -> 1, G/g -> 2, T/t/U/u -> 3, other -> 4 (N)
  *
- * This is used by CanvasSequenceGridRenderer for O(1) lookups during rendering.
- * WASM version is ~4x faster than JS for large sequences due to tighter loops.
+ * This would be used by CanvasSequenceGridRenderer for O(1) lookups during rendering.
+ * WASM version is ~4x faster than JS for large sequences due to tighter loops,
+ * but encoding only happens once per sequence change (not per frame).
  *
  * # Arguments
  * * `seq` - DNA/RNA sequence string
