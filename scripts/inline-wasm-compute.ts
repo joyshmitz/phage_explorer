@@ -11,36 +11,47 @@ console.log("Inlining wasm-compute Wasm into JS...");
 try {
   const wasmBuffer = readFileSync(wasmPath);
   const wasmBase64 = wasmBuffer.toString("base64");
-  let jsContent = readFileSync(jsPath, "utf-8");
 
-  const inject = `// Inlined Wasm bytes
+  // wasm-pack output has changed over time; rather than trying to patch arbitrary templates,
+  // we overwrite the entrypoint with a stable, bundler-friendly wrapper that:
+  // - avoids importing `.wasm` as an ES module (Vite/Rollup do not support the proposal yet)
+  // - instantiates from inlined bytes (critical for Bun --compile single-binary builds)
+  // - preserves the `import('@phage/wasm-compute')` "module is ready" semantics via top-level await
+  const wrapper = `import { __wbg_set_wasm } from "./wasm_compute_bg.js";
+import * as wasmBg from "./wasm_compute_bg.js";
+export * from "./wasm_compute_bg.js";
+
+// Inlined Wasm bytes (base64)
 const wasmBase64 = "${wasmBase64}";
-const wasmBytes = Uint8Array.from(Buffer.from(wasmBase64, "base64"));
+
+function base64ToBytes(base64) {
+  // Prefer Node/Bun Buffer when available (fast + works without atob).
+  if (typeof Buffer !== "undefined") {
+    return Uint8Array.from(Buffer.from(base64, "base64"));
+  }
+
+  // Browser/worker fallback.
+  const atobFn = globalThis.atob;
+  if (typeof atobFn !== "function") {
+    throw new Error("No base64 decoder available (expected Buffer or atob)");
+  }
+
+  const bin = atobFn(base64);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return bytes;
+}
+
+const wasmBytes = base64ToBytes(wasmBase64);
+const { instance } = await WebAssembly.instantiate(wasmBytes, {
+  "./wasm_compute_bg.js": wasmBg,
+});
+
+__wbg_set_wasm(instance.exports);
+instance.exports.__wbindgen_start();
 `;
 
-  // Pattern for NodeJS target output
-  const nodeFsPattern = /const wasmPath = .*?;[\s\S]*?const wasmBytes = require\('fs'\)\.readFileSync\(wasmPath\);/;
-  
-  if (nodeFsPattern.test(jsContent)) {
-    jsContent = jsContent.replace(nodeFsPattern, inject);
-  } else if (!jsContent.includes(searchStr)) {
-    // Fallback for Web target or if pattern mismatch (prepend)
-    // But check for existing wasmBytes to avoid collision
-    if (!jsContent.includes("const wasmBytes =")) {
-       jsContent = inject + jsContent;
-    } else {
-       console.warn("wasmBytes already defined but pattern not matched. Skipping injection.");
-    }
-  }
-
-  const fallbackRegex = /if \(typeof module_or_path === 'undefined'\) \{\s+module_or_path = new URL\('wasm_compute_bg\.wasm', import\.meta\.url\);\s+\}/;
-  if (fallbackRegex.test(jsContent)) {
-    jsContent = jsContent.replace(fallbackRegex, `if (typeof module_or_path === 'undefined') {\n    module_or_path = wasmBytes;\n  }`);
-  } else {
-    console.warn("Could not patch default module_or_path fallback; init() may still fetch from URL.");
-  }
-
-  writeFileSync(jsPath, jsContent);
+  writeFileSync(jsPath, wrapper);
   console.log(`✓ Inlined ${wasmBuffer.length} bytes of wasm-compute.`);
 } catch (e) {
   console.error("Error inlining wasm-compute:", e);

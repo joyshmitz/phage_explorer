@@ -3872,6 +3872,118 @@ impl SequenceHandle {
         minhash_signature_canonical(&ascii, k, num_hashes)
     }
 
+    /// Compute self-similarity dot plot using pre-encoded sequence.
+    ///
+    /// This is more efficient than `dotplot_self_buffers` when running multiple
+    /// analyses on the same sequence (e.g., progressive refinement with preview
+    /// then full resolution).
+    ///
+    /// # Arguments
+    /// * `bins` - Number of bins for the grid (bins × bins output)
+    /// * `window` - Window size in bases. If 0, derives a conservative default.
+    ///
+    /// # Returns
+    /// DotPlotBuffers containing direct and inverted similarity matrices.
+    ///
+    /// @see phage_explorer-8qk2.6
+    pub fn dotplot_self(&self, bins: usize, window: usize) -> DotPlotBuffers {
+        if self.length == 0 || bins == 0 {
+            return DotPlotBuffers {
+                direct: Vec::new(),
+                inverted: Vec::new(),
+                bins: 0,
+                window: 0,
+            };
+        }
+
+        let len = self.length;
+
+        // Match JS default: max(20, floor(len/bins) || len), clamped to [1, len].
+        let derived_window = {
+            let base = if bins > 0 { len / bins } else { len };
+            let base = if base == 0 { len } else { base };
+            std::cmp::max(20usize, base)
+        };
+        let window = if window == 0 { derived_window } else { window };
+        let window = std::cmp::max(1usize, std::cmp::min(len, window));
+
+        // Precompute starts[] exactly like JS: floor(i * step) where step is float.
+        let mut starts: Vec<usize> = vec![0; bins];
+        if bins > 1 {
+            let span = (len - window) as f64;
+            let step = span / (bins as f64 - 1.0);
+            for i in 0..bins {
+                let s = ((i as f64) * step).floor() as usize;
+                starts[i] = std::cmp::min(s, len - window);
+            }
+        } else if bins == 1 {
+            starts[0] = 0;
+        }
+
+        let n = bins * bins;
+        let mut direct = vec![0.0f32; n];
+        let mut inverted = vec![0.0f32; n];
+        let denom = window as f32;
+
+        // Helper: complement for encoded bases (A=0↔T=3, C=1↔G=2, N=4 stays 4)
+        #[inline(always)]
+        fn complement_encoded(code: u8) -> u8 {
+            if code <= 3 {
+                3 - code
+            } else {
+                code // N stays N
+            }
+        }
+
+        for i in 0..bins {
+            let a0 = starts[i];
+
+            for j in i..bins {
+                let b0 = starts[j];
+
+                let mut same_dir: u32 = 0;
+                let mut same_inv: u32 = 0;
+
+                // Direct: compare aligned window positions.
+                // Inverted: compare reverse-complement of A window against B.
+                for k in 0..window {
+                    let a = self.encoded[a0 + k];
+                    let b = self.encoded[b0 + k];
+
+                    // Only count matches for valid bases (not N)
+                    if a <= 3 && a == b {
+                        same_dir += 1;
+                    }
+
+                    let a_rc = complement_encoded(self.encoded[a0 + (window - 1 - k)]);
+                    if a_rc <= 3 && a_rc == b {
+                        same_inv += 1;
+                    }
+                }
+
+                let dir_val = (same_dir as f32) / denom;
+                let inv_val = (same_inv as f32) / denom;
+
+                let idx1 = i * bins + j;
+                direct[idx1] = dir_val;
+                inverted[idx1] = inv_val;
+
+                if i != j {
+                    let idx2 = j * bins + i;
+                    direct[idx2] = dir_val;
+                    inverted[idx2] = inv_val;
+                }
+            }
+        }
+
+        DotPlotBuffers {
+            direct,
+            inverted,
+            bins,
+            window,
+        }
+    }
+
     /// Get the encoded sequence as a Uint8Array.
     ///
     /// Values: A=0, C=1, G=2, T=3, N=4
@@ -3960,6 +4072,52 @@ mod sequence_handle_tests {
         assert_eq!(sig.k, 3);
         // Signature should have some actual values (not all MAX)
         assert!(sig.signature.iter().any(|&v| v != u32::MAX));
+    }
+
+    #[test]
+    fn test_dotplot_self_basic() {
+        // Same test case as dotplot_self_buffers test
+        let handle = SequenceHandle::new(b"ACGT");
+        let result = handle.dotplot_self(2, 2);
+
+        assert_eq!(result.bins, 2);
+        assert_eq!(result.window, 2);
+        assert_eq!(result.direct.len(), 4);
+        assert_eq!(result.inverted.len(), 4);
+
+        // Diagonal should be 1.0 (self-similarity)
+        assert!((result.direct[0] - 1.0).abs() < 1e-6);
+        assert!((result.direct[3] - 1.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn test_dotplot_self_parity_with_buffers() {
+        // Verify SequenceHandle.dotplot_self matches dotplot_self_buffers
+        let seq = b"ACGTACGTACGTACGTACGTACGTACGT";
+        let handle = SequenceHandle::new(seq);
+
+        let handle_result = handle.dotplot_self(4, 5);
+        let buffers_result = dotplot_self_buffers(seq, 4, 5);
+
+        assert_eq!(handle_result.bins, buffers_result.bins);
+        assert_eq!(handle_result.window, buffers_result.window);
+
+        for i in 0..handle_result.direct.len() {
+            assert!(
+                (handle_result.direct[i] - buffers_result.direct[i]).abs() < 1e-6,
+                "direct[{}]: {} vs {}",
+                i,
+                handle_result.direct[i],
+                buffers_result.direct[i]
+            );
+            assert!(
+                (handle_result.inverted[i] - buffers_result.inverted[i]).abs() < 1e-6,
+                "inverted[{}]: {} vs {}",
+                i,
+                handle_result.inverted[i],
+                buffers_result.inverted[i]
+            );
+        }
     }
 }
 

@@ -5,11 +5,13 @@
   "files": [
     "wasm_compute_bg.wasm",
     "wasm_compute.js",
+    "wasm_compute_bg.js",
     "wasm_compute.d.ts"
   ],
   "main": "wasm_compute.js",
   "types": "wasm_compute.d.ts",
   "sideEffects": [
+    "./wasm_compute.js",
     "./snippets/*"
   ]
 }
