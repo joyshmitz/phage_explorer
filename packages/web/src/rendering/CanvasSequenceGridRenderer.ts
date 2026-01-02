@@ -1012,6 +1012,9 @@ export class CanvasSequenceGridRenderer {
    * Update post-processing pipeline
    */
   setPostProcess(pipeline?: PostProcessPipeline): void {
+    if (this.postProcess && this.postProcess !== pipeline) {
+      this.postProcess.dispose?.();
+    }
     this.postProcess = pipeline;
     this.needsFullRedraw = true;
     this.scheduleRender();
@@ -2167,6 +2170,7 @@ export class CanvasSequenceGridRenderer {
     if (this.scrollEndTimer !== null) {
       clearTimeout(this.scrollEndTimer);
     }
+    this.postProcess?.dispose?.();
     this.scroller.dispose();
   }
 

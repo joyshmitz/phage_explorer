@@ -19,6 +19,7 @@ export class PostProcessPipeline {
   private positionBuffer: WebGLBuffer | null = null;
   private vao: WebGLVertexArrayObject | null = null;
   private uTime = 0;
+  private disabled = false;
 
   constructor(opts: PostProcessOptions = {}) {
     this.opts = {
@@ -38,7 +39,7 @@ export class PostProcessPipeline {
   }
 
   private initWebGL(): void {
-    if (this.gl) return;
+    if (this.gl || this.disabled) return;
 
     try {
       if (typeof OffscreenCanvas !== 'undefined') {
@@ -101,7 +102,8 @@ export class PostProcessPipeline {
 
     } catch (e) {
       console.error('Failed to init PostProcessPipeline:', e);
-      this.gl = null; // Disable on failure
+      this.gl = null;
+      this.disabled = true; // Prevent repeated retries on unsupported devices
     }
   }
 
@@ -125,7 +127,11 @@ export class PostProcessPipeline {
    * @returns boolean True if processing occurred, false if skipped (e.g. reduced motion)
    */
   process(source: TexImageSource, destination: HTMLCanvasElement | OffscreenCanvas): boolean {
-    if (this.opts.reducedMotion || (!this.opts.enableScanlines && !this.opts.enableChromaticAberration && !this.opts.enableBloom)) {
+    if (
+      this.disabled ||
+      this.opts.reducedMotion ||
+      (!this.opts.enableScanlines && !this.opts.enableChromaticAberration && !this.opts.enableBloom)
+    ) {
       return false;
     }
 
@@ -170,6 +176,37 @@ export class PostProcessPipeline {
 
     this.uTime += 0.01;
     return true;
+  }
+
+  /**
+   * Release WebGL resources and GPU context when possible.
+   * Safe to call multiple times.
+   */
+  dispose(): void {
+    if (!this.gl) {
+      this.glCanvas = null;
+      this.program = null;
+      this.texture = null;
+      this.positionBuffer = null;
+      this.vao = null;
+      return;
+    }
+
+    try {
+      if (this.program) this.gl.deleteProgram(this.program);
+      if (this.texture) this.gl.deleteTexture(this.texture);
+      if (this.positionBuffer) this.gl.deleteBuffer(this.positionBuffer);
+      if (this.vao) this.gl.deleteVertexArray(this.vao);
+
+      this.gl.getExtension('WEBGL_lose_context')?.loseContext();
+    } finally {
+      this.gl = null;
+      this.glCanvas = null;
+      this.program = null;
+      this.texture = null;
+      this.positionBuffer = null;
+      this.vao = null;
+    }
   }
 }
 

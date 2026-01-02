@@ -86,7 +86,7 @@ const DEFAULT_OPTIONS: Required<VirtualScrollerOptions> = {
 export class VirtualScroller {
   private options: Required<VirtualScrollerOptions>;
   private state: ScrollState;
-  private animationFrameId: number | null = null;
+  private animationFrameId: number | ReturnType<typeof setTimeout> | null = null;
   private onScrollCallback: ((range: VisibleRange) => void) | null = null;
   private useNativeRaf: boolean;
 
@@ -640,19 +640,19 @@ export class VirtualScroller {
     this.onScrollCallback = null;
   }
 
-  private requestRaf(callback: FrameRequestCallback): number {
+  private requestRaf(callback: FrameRequestCallback): number | ReturnType<typeof setTimeout> {
     if (this.useNativeRaf) {
       return globalThis.requestAnimationFrame(callback);
     }
     return globalThis.setTimeout(() => callback(performance.now()), 16);
   }
 
-  private cancelRaf(handle: number): void {
+  private cancelRaf(handle: number | ReturnType<typeof setTimeout>): void {
     if (this.useNativeRaf) {
-      globalThis.cancelAnimationFrame(handle);
+      globalThis.cancelAnimationFrame(handle as number);
       return;
     }
-    globalThis.clearTimeout(handle);
+    globalThis.clearTimeout(handle as ReturnType<typeof setTimeout>);
   }
 }
 
