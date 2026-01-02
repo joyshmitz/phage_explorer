@@ -172,6 +172,9 @@ self.onmessage = (event: MessageEvent<WorkerMessage>) => {
       renderer.setDensityMode(msg.mode);
       break;
     case 'setPostProcess':
+      if (postProcess) {
+        postProcess.dispose?.();
+      }
       postProcess = msg.options ? new PostProcessPipeline(msg.options) : undefined;
       renderer.setPostProcess(postProcess);
       break;
@@ -220,6 +223,9 @@ self.onmessage = (event: MessageEvent<WorkerMessage>) => {
     case 'dispose':
       renderer.dispose();
       renderer = null;
+      if (postProcess) {
+        postProcess.dispose?.();
+      }
       postProcess = undefined;
       self.close();
       break;

@@ -6,7 +6,16 @@
  */
 
 import * as Comlink from 'comlink';
-import { simulateTranscriptionFlow } from '@phage-explorer/core';
+import {
+  computeDinucleotideFrequencies,
+  computeGcContent,
+  computeKmerFrequencies,
+  computePhasePortrait,
+  decomposeBias,
+  performPCA,
+  simulateTranscriptionFlow,
+  translateSequence,
+} from '@phage-explorer/core';
 import {
   topKFromDenseCounts,
   canUseDenseKmerCounts,
@@ -24,12 +33,18 @@ import type {
   RepeatResult,
   CodonUsageResult,
   KmerSpectrumResult,
+  KmerVectorRequest,
+  GenomicSignaturePcaRequest,
+  BiasDecompositionRequest,
+  BiasDecompositionWorkerResult,
+  PhasePortraitRequest,
   SharedAnalysisRequest,
   SharedAnalysisWorkerAPI,
   SequenceBytesRef,
 } from './types';
 
 const textDecoder = typeof TextDecoder !== 'undefined' ? new TextDecoder() : null;
+const textEncoder = typeof TextEncoder !== 'undefined' ? new TextEncoder() : null;
 
 // Dinucleotide bendability values (simplified model)
 const BENDABILITY: Record<string, number> = {
@@ -97,6 +112,57 @@ interface Rolling2BitState {
   /** Bitmask for keeping only the last k codes (2*k bits). */
   mask: number;
   k: number;
+}
+
+function popcount32(x: number): number {
+  // Force to unsigned 32-bit.
+  let v = x >>> 0;
+  v -= (v >>> 1) & 0x55555555;
+  v = (v & 0x33333333) + ((v >>> 2) & 0x33333333);
+  return (((v + (v >>> 4)) & 0x0f0f0f0f) * 0x01010101) >>> 24;
+}
+
+/**
+ * Compute linguistic complexity for k=3 in a window using a 64-bit bitset.
+ *
+ * Semantics match the existing JS implementation:
+ * - k-mers containing non-ACGT are skipped (no contribution).
+ * - Denominator is `min(64, windowSize - 2)` (does not adjust for ambiguity).
+ *
+ * Note: We treat U as T for robustness, consistent with other kernels.
+ */
+function uniqueTrimerRatioAt(seq: string, start: number, windowSize: number): number {
+  const maxPossible = Math.min(64, windowSize - 2);
+  if (maxPossible <= 0) return 0;
+
+  let seenLo = 0;
+  let seenHi = 0;
+
+  let rolling = 0;
+  let valid = 0;
+
+  const end = start + windowSize;
+  for (let pos = start; pos < end; pos++) {
+    const code = asciiToAcgt05(seq.charCodeAt(pos));
+    if (code > 3) {
+      rolling = 0;
+      valid = 0;
+      continue;
+    }
+
+    rolling = ((rolling << 2) | code) & 0x3f; // keep last 6 bits (3 bases)
+    valid = valid < 3 ? valid + 1 : 3;
+    if (valid < 3) continue;
+
+    if (rolling < 32) {
+      seenLo |= 1 << rolling;
+    } else {
+      seenHi |= 1 << (rolling - 32);
+    }
+  }
+
+  const unique = popcount32(seenLo) + popcount32(seenHi);
+  return unique / maxPossible;
 }
 
 function createRolling2BitState(k: number): Rolling2BitState {
@@ -171,12 +237,26 @@ function getSequenceBytesView(ref: SequenceBytesRef): Uint8Array {
  * Calculate GC skew along the sequence (JS fallback)
  */
 function calculateGCSkewJS(seq: string, windowSize: number, stepSize: number): GCSkewResult {
+  const safeWindow = Math.max(1, Math.floor(windowSize));
+  const safeStep = Math.max(1, Math.floor(stepSize));
+
+  // If the window is larger than the sequence, return an empty result instead of crashing.
+  if (seq.length < safeWindow) {
+    return {
+      type: 'gc-skew',
+      skew: [],
+      cumulative: [],
+      originPosition: 0,
+      terminusPosition: 0,
+    };
+  }
+
   const skew: number[] = [];
   const cumulative: number[] = [];
   let cumSum = 0;
 
-  for (let i = 0; i < seq.length - windowSize; i += stepSize) {
-    const window = seq.slice(i, i + windowSize);
+  for (let i = 0; i <= seq.length - safeWindow; i += safeStep) {
+    const window = seq.slice(i, i + safeWindow);
     let g = 0, c = 0;
     for (const char of window) {
       if (char === 'G') g++;
@@ -189,9 +269,19 @@ function calculateGCSkewJS(seq: string, windowSize: number, stepSize: number): G
     cumulative.push(cumSum);
   }
 
+  if (cumulative.length === 0) {
+    return {
+      type: 'gc-skew',
+      skew: [],
+      cumulative: [],
+      originPosition: 0,
+      terminusPosition: 0,
+    };
+  }
+
   // Find origin (min cumulative) and terminus (max cumulative)
   let minIdx = 0, maxIdx = 0;
-  let minVal = cumulative[0], maxVal = cumulative[0];
+  let minVal = cumulative[0] ?? 0, maxVal = cumulative[0] ?? 0;
   for (let i = 1; i < cumulative.length; i++) {
     if (cumulative[i] < minVal) {
       minVal = cumulative[i];
@@ -207,8 +297,8 @@ function calculateGCSkewJS(seq: string, windowSize: number, stepSize: number): G
     type: 'gc-skew',
     skew,
     cumulative,
-    originPosition: minIdx * stepSize,
-    terminusPosition: maxIdx * stepSize,
+    originPosition: minIdx * safeStep,
+    terminusPosition: maxIdx * safeStep,
   };
 }
 
@@ -218,7 +308,7 @@ function calculateGCSkewJS(seq: string, windowSize: number, stepSize: number): G
  */
 async function calculateGCSkewWasm(sequence: string, windowSize = 1000): Promise<GCSkewResult> {
   const seq = sequence.toUpperCase();
-  const stepSize = Math.floor(windowSize / 4);
+  const stepSize = Math.max(1, Math.floor(windowSize / 4));
 
   try {
     const wasm = await getWasmCompute();
@@ -275,15 +365,51 @@ async function calculateGCSkewWasm(sequence: string, windowSize = 1000): Promise
 /**
  * Calculate sequence complexity (Shannon entropy + linguistic)
  */
-function calculateComplexity(sequence: string, windowSize = 100): ComplexityResult {
+async function calculateComplexity(sequence: string, windowSize = 100): Promise<ComplexityResult> {
   const seq = sequence.toUpperCase();
   const entropy: number[] = [];
   const linguistic: number[] = [];
   const lowComplexityRegions: Array<{ start: number; end: number }> = [];
 
-  const stepSize = windowSize / 2;
+  const stepSize = Math.max(1, Math.floor(windowSize / 2));
   let inLowRegion = false;
   let regionStart = 0;
+
+  // Prefer WASM for windowed entropy + k-mer complexity (fast, low GC churn).
+  // Bead: phage_explorer-yvs8.4
+  try {
+    const wasm = await getWasmCompute();
+    if (wasm) {
+      const wasmEntropy = wasm.compute_windowed_entropy_acgt(seq, windowSize, stepSize);
+      const windowCount = wasmEntropy.length;
+
+      for (let i = 0; i < windowCount; i++) {
+        const e = wasmEntropy[i] ?? 0;
+        entropy.push(e);
+        linguistic.push(uniqueTrimerRatioAt(seq, i * stepSize, windowSize));
+
+        const isLow = e < 0.5;
+        const pos = i * stepSize;
+        if (isLow && !inLowRegion) {
+          inLowRegion = true;
+          regionStart = pos;
+        } else if (!isLow && inLowRegion) {
+          inLowRegion = false;
+          lowComplexityRegions.push({ start: regionStart, end: pos });
+        }
+      }
+
+      if (inLowRegion) {
+        lowComplexityRegions.push({ start: regionStart, end: seq.length });
+      }
+
+      return { type: 'complexity', entropy, linguistic, lowComplexityRegions };
+    }
+  } catch (err) {
+    if (typeof console !== 'undefined') {
+      console.warn('[analysis.worker] WASM complexity failed, using JS fallback:', err);
+    }
+  }
 
   for (let i = 0; i < seq.length - windowSize; i += stepSize) {
     const window = seq.slice(i, i + windowSize);
@@ -305,14 +431,8 @@ function calculateComplexity(sequence: string, windowSize = 100): ComplexityResu
     }
     entropy.push(ent / 2); // Normalize to 0-1
 
-    // Linguistic complexity (unique trimers)
-    const kmers = new Set<string>();
-    for (let j = 0; j <= window.length - 3; j++) {
-      const kmer = window.slice(j, j + 3);
-      if (!/[^ACGT]/.test(kmer)) kmers.add(kmer);
-    }
-    const maxPossible = Math.min(64, window.length - 2);
-    linguistic.push(maxPossible > 0 ? kmers.size / maxPossible : 0);
+    // Linguistic complexity (unique trimers), low-allocation fast path.
+    linguistic.push(uniqueTrimerRatioAt(seq, i, windowSize));
 
     // Track low complexity regions
     const isLow = ent / 2 < 0.5;
@@ -435,8 +555,9 @@ function findPromoters(sequence: string): PromoterResult {
 /**
  * Find repeat sequences
  */
-function findRepeats(sequence: string, minLength = 8, maxGap = 5000): RepeatResult {
+async function findRepeats(sequence: string, minLength = 8, maxGap = 5000): Promise<RepeatResult> {
   const repeats: RepeatResult['repeats'] = [];
+  const seen = new Set<string>();
   const seq = sequence.toUpperCase();
 
   const step = Math.max(1, Math.floor(seq.length / 500));
@@ -445,6 +566,17 @@ function findRepeats(sequence: string, minLength = 8, maxGap = 5000): RepeatResu
     const comp: Record<string, string> = { A: 'T', T: 'A', C: 'G', G: 'C' };
     return s.split('').reverse().map(c => comp[c] || c).join('');
   };
+
+  const pushRepeat = (repeat: RepeatResult['repeats'][number]): void => {
+    const key = `${repeat.type}:${repeat.position1}:${repeat.position2 ?? ''}:${repeat.sequence}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    repeats.push(repeat);
+  };
+
+  // Keep the existing heuristic direct/inverted repeat scan (fast and noise-resistant).
+  // We cap this so we leave space for WASM-derived palindromes/tandem repeats.
+  const heuristicCap = 30;
 
   for (let i = 0; i < seq.length - minLength; i += step) {
     const pattern = seq.slice(i, i + minLength);
@@ -456,8 +588,8 @@ function findRepeats(sequence: string, minLength = 8, maxGap = 5000): RepeatResu
 
     // Direct repeats
     let idx = searchRegion.indexOf(pattern);
-    if (idx !== -1 && repeats.length < 50) {
-      repeats.push({
+    if (idx !== -1 && repeats.length < heuristicCap) {
+      pushRepeat({
         type: 'direct',
         position1: i,
         position2: searchStart + idx,
@@ -469,8 +601,8 @@ function findRepeats(sequence: string, minLength = 8, maxGap = 5000): RepeatResu
     // Inverted repeats
     const revComp = reverseComplement(pattern);
     idx = searchRegion.indexOf(revComp);
-    if (idx !== -1 && repeats.length < 50) {
-      repeats.push({
+    if (idx !== -1 && repeats.length < heuristicCap) {
+      pushRepeat({
         type: 'inverted',
         position1: i,
         position2: searchStart + idx,
@@ -479,18 +611,136 @@ function findRepeats(sequence: string, minLength = 8, maxGap = 5000): RepeatResu
       });
     }
 
-    // Palindromes
-    if (pattern === revComp && repeats.length < 50) {
-      repeats.push({
-        type: 'palindrome',
-        position1: i,
-        sequence: pattern,
-        length: minLength,
-      });
+    if (repeats.length >= heuristicCap) break;
+  }
+
+  // Prefer WASM palindrome/tandem repeat detection when available.
+  // Bead: phage_explorer-yvs8.3
+  const maxResults = 50;
+  const remaining = Math.max(0, maxResults - repeats.length);
+  let didUseWasm = false;
+
+  // Guardrails: the current Rust algorithms scan the whole sequence and can be slow/noisy on very large genomes.
+  // Keep big-phage behavior stable by falling back to heuristics only.
+  const wasmLengthThreshold = 120_000;
+
+  try {
+    const wasm = await getWasmCompute();
+    if (wasm && remaining > 0 && seq.length <= wasmLengthThreshold) {
+      didUseWasm = true;
+
+      // Palindromes: treat `minLength` as a minimum total length target, but Rust takes arm length.
+      // Clamp the hairpin loop/spacer to avoid pathological work when callers pass large gaps.
+      const minArmLen = Math.max(2, Math.floor(minLength / 2));
+      const maxPalindromeGap = Math.min(50, Math.max(0, Math.floor(maxGap)));
+
+      const palResult = wasm.detect_palindromes(seq, minArmLen, maxPalindromeGap);
+      try {
+        const parsed: unknown = JSON.parse(palResult.json);
+        if (Array.isArray(parsed)) {
+          for (const item of parsed) {
+            if (repeats.length >= maxResults) break;
+            if (!item || typeof item !== 'object') continue;
+
+            const start = Number((item as { start?: unknown }).start);
+            const end = Number((item as { end?: unknown }).end);
+            const sequenceStr = (item as { sequence?: unknown }).sequence;
+
+            if (!Number.isFinite(start) || !Number.isFinite(end)) continue;
+            const s = Math.max(0, Math.floor(start));
+            const e = Math.min(seq.length, Math.floor(end));
+            if (e <= s) continue;
+
+            const subseq =
+              typeof sequenceStr === 'string' && sequenceStr.length > 0
+                ? sequenceStr
+                : seq.slice(s, e);
+
+            // Filter noisy ambiguous palindromes (typically N-runs).
+            if (/[^ACGTU]/i.test(subseq)) continue;
+
+            pushRepeat({
+              type: 'palindrome',
+              position1: s,
+              sequence: subseq.toUpperCase(),
+              length: e - s,
+            });
+          }
+        }
+      } finally {
+        palResult.free();
+      }
+
+      if (repeats.length < maxResults) {
+        // Tandem repeats: scan for consecutive repeats of a unit of length ~minLength/2..minLength.
+        // This keeps results useful and avoids flooding the UI with tiny microsatellites.
+        const minUnit = Math.max(2, Math.floor(minLength / 2));
+        const maxUnit = Math.max(minUnit, Math.min(64, Math.floor(minLength)));
+        const minCopies = 2;
+
+        const tandemResult = wasm.detect_tandem_repeats(seq, minUnit, maxUnit, minCopies);
+        try {
+          const parsed: unknown = JSON.parse(tandemResult.json);
+          if (Array.isArray(parsed)) {
+            for (const item of parsed) {
+              if (repeats.length >= maxResults) break;
+              if (!item || typeof item !== 'object') continue;
+
+              const start = Number((item as { start?: unknown }).start);
+              const end = Number((item as { end?: unknown }).end);
+              const unit = (item as { unit?: unknown }).unit;
+              const copies = Number((item as { copies?: unknown }).copies);
+
+              if (!Number.isFinite(start) || !Number.isFinite(end) || !Number.isFinite(copies)) continue;
+              if (typeof unit !== 'string' || unit.length === 0) continue;
+
+              const s = Math.max(0, Math.floor(start));
+              const e = Math.min(seq.length, Math.floor(end));
+              if (e <= s) continue;
+
+              const unitUpper = unit.toUpperCase();
+              if (/[^ACGTU]/.test(unitUpper)) continue;
+
+              const unitLen = unitUpper.length;
+              const pos2 = s + unitLen;
+              pushRepeat({
+                type: 'tandem',
+                position1: s,
+                position2: pos2 < e ? pos2 : undefined,
+                sequence: unitUpper,
+                length: Math.max(1, Math.floor(unitLen * copies)),
+              });
+            }
+          }
+        } finally {
+          tandemResult.free();
+        }
+      }
+    }
+  } catch {
+    didUseWasm = false;
+  }
+
+  // JS fallback: re-add simple palindromes when WASM wasn't used (keeps behavior close to previous overlay).
+  if (!didUseWasm && repeats.length < maxResults) {
+    for (let i = 0; i < seq.length - minLength; i += step) {
+      const pattern = seq.slice(i, i + minLength);
+      if (/[^ACGT]/.test(pattern)) continue;
+      const revComp = reverseComplement(pattern);
+      if (pattern === revComp && repeats.length < maxResults) {
+        pushRepeat({
+          type: 'palindrome',
+          position1: i,
+          sequence: pattern,
+          length: minLength,
+        });
+      }
+      if (repeats.length >= maxResults) break;
     }
   }
 
-  return { type: 'repeats', repeats };
+  repeats.sort((a, b) => a.position1 - b.position1);
+  return { type: 'repeats', repeats: repeats.slice(0, maxResults) };
 }
 
 /**
@@ -605,9 +855,9 @@ async function calculateKmerSpectrum(sequence: string, k = 6): Promise<KmerSpect
   if (!spectrum && canUseDenseKmerCounts(k)) {
     try {
       const wasm = await getWasmCompute();
-      if (wasm) {
+      if (wasm && textEncoder) {
         // Convert sequence to bytes for WASM
-        const seqBytes = new TextEncoder().encode(seq);
+        const seqBytes = textEncoder.encode(seq);
         const result = wasm.count_kmers_dense(seqBytes, k);
 
         try {
@@ -671,7 +921,7 @@ function calculateGCSkewFromRef(ref: SequenceBytesRef, windowSize = 1000): GCSke
   const winSize = Math.max(1, Math.floor(windowSize));
   const stepSize = Math.max(1, Math.floor(winSize / 4));
 
-  for (let i = 0; i < bytes.length - winSize; i += stepSize) {
+  for (let i = 0; i <= bytes.length - winSize; i += stepSize) {
     const end = Math.min(bytes.length, i + winSize);
     let g = 0;
     let c = 0;
@@ -731,13 +981,13 @@ async function runAnalysisImpl(request: AnalysisRequest): Promise<AnalysisResult
     case 'gc-skew':
       return await calculateGCSkewWasm(sequence, options.windowSize || 1000);
     case 'complexity':
-      return calculateComplexity(sequence, options.windowSize || 100);
+      return await calculateComplexity(sequence, options.windowSize || 100);
     case 'bendability':
       return calculateBendability(sequence, options.windowSize || 50);
     case 'promoters':
       return findPromoters(sequence);
     case 'repeats':
-      return findRepeats(sequence, options.minLength || 8, options.maxGap || 5000);
+      return await findRepeats(sequence, options.minLength || 8, options.maxGap || 5000);
     case 'codon-usage':
       return calculateCodonUsage(sequence);
     case 'kmer-spectrum':
@@ -761,6 +1011,121 @@ async function runAnalysisWithProgressImpl(
   return result;
 }
 
+// ============================================================
+// PCA-family compute (off main thread)
+// ============================================================
+
+function isFiniteNumber(n: unknown): n is number {
+  return typeof n === 'number' && Number.isFinite(n);
+}
+
+function calculateGCFromAscii(seq: string): number {
+  let gc = 0;
+  let total = 0;
+  for (let i = 0; i < seq.length; i++) {
+    const c = seq.charCodeAt(i);
+    // A/C/G/T (upper + lower). Treat U as T elsewhere; GC counts should ignore it.
+    const isA = c === 65 || c === 97;
+    const isC = c === 67 || c === 99;
+    const isG = c === 71 || c === 103;
+    const isT = c === 84 || c === 116;
+    if (isA || isC || isG || isT) {
+      total++;
+      if (isC || isG) gc++;
+    }
+  }
+  return total > 0 ? gc / total : 0.5;
+}
+
+async function computeKmerVectorImpl(request: KmerVectorRequest) {
+  const { phageId, name, sequenceRef, options } = request;
+  if (!sequenceRef) {
+    throw new Error('Missing sequenceRef for k-mer vector');
+  }
+
+  const sequence = decodeSequenceRef(sequenceRef);
+  const frequencies = computeKmerFrequencies(sequence, options);
+
+  return {
+    phageId,
+    name,
+    frequencies,
+    gcContent: computeGcContent(sequence),
+    genomeLength: sequenceRef.length ?? sequence.length,
+  };
+}
+
+async function computeGenomicSignaturePcaImpl(request: GenomicSignaturePcaRequest) {
+  const { vectors, frequencies, dim, options } = request;
+
+  if (!Array.isArray(vectors) || vectors.length < 3) return null;
+  if (!isFiniteNumber(dim) || dim <= 0) return null;
+  if (!(frequencies instanceof Float32Array)) return null;
+
+  const n = vectors.length;
+  if (frequencies.length !== n * dim) {
+    throw new Error(`Invalid PCA matrix: expected ${n * dim} floats, got ${frequencies.length}`);
+  }
+
+  const kmerVectors = vectors.map((meta, i) => ({
+    ...meta,
+    frequencies: frequencies.subarray(i * dim, (i + 1) * dim),
+  }));
+
+  return performPCA(kmerVectors, options);
+}
+
+async function computeBiasDecompositionImpl(request: BiasDecompositionRequest): Promise<BiasDecompositionWorkerResult | null> {
+  const { sequenceRef, windowSize, stepSize } = request;
+  if (!sequenceRef) return null;
+
+  const win = Math.max(1, Math.floor(windowSize));
+  const step = Math.max(1, Math.floor(stepSize));
+
+  const sequence = decodeSequenceRef(sequenceRef);
+  if (!sequence || sequence.length < win * 2) return null;
+
+  const windows: Array<{ name: string; vector: number[]; gc: number; pos: number }> = [];
+  for (let start = 0; start + win <= sequence.length; start += step) {
+    const windowSeq = sequence.slice(start, start + win);
+    const vector = computeDinucleotideFrequencies(windowSeq);
+    const gc = calculateGCFromAscii(windowSeq);
+    windows.push({
+      name: `${start}-${start + win}`,
+      vector,
+      gc,
+      pos: start,
+    });
+  }
+
+  if (windows.length < 3) return null;
+
+  const decomposition = decomposeBias(windows);
+  if (!decomposition) return null;
+
+  return {
+    decomposition,
+    gcContents: windows.map((w) => w.gc),
+    positions: windows.map((w) => w.pos),
+  };
+}
+
+async function computePhasePortraitImpl(request: PhasePortraitRequest) {
+  const { sequenceRef, windowSize, stepSize } = request;
+  if (!sequenceRef) return null;
+
+  const win = Math.max(1, Math.floor(windowSize));
+  const step = Math.max(1, Math.floor(stepSize));
+
+  const sequence = decodeSequenceRef(sequenceRef);
+  if (!sequence || sequence.length < 100) return null;
+
+  const aaSequence = translateSequence(sequence, 0);
+  if (!aaSequence || aaSequence.length < win) return null;
+
+  return computePhasePortrait(aaSequence, win, step);
+}
+
 /**
  * Analysis Worker API implementation
  */
@@ -768,6 +1133,11 @@ const workerAPI: SharedAnalysisWorkerAPI = {
   runAnalysis: runAnalysisImpl,
 
   runAnalysisWithProgress: runAnalysisWithProgressImpl,
+
+  computeKmerVector: computeKmerVectorImpl,
+  computeGenomicSignaturePca: computeGenomicSignaturePcaImpl,
+  computeBiasDecomposition: computeBiasDecompositionImpl,
+  computePhasePortrait: computePhasePortraitImpl,
 
   async runAnalysisShared(request: SharedAnalysisRequest): Promise<AnalysisResult> {
     if (request.type === 'gc-skew') {

@@ -284,6 +284,93 @@ export class GPUCompute {
     return result;
   }
 
+  /**
+   * Dense k-mer counting returning the raw dense Uint32Array (length = 4^k).
+   *
+   * Notes:
+   * - Safe-capped to k<=10 to avoid excessive GPU memory and readback sizes.
+   * - Uses the cached pipeline for lower per-run overhead (important for benchmarks).
+   */
+  async countKmersDense(sequence: string, k: number): Promise<Uint32Array | null> {
+    // Wait for initialization if not complete
+    if (!this.initComplete) {
+      await this.initPromise;
+    }
+    if (!this.supported || !this.device) return null;
+
+    // Keep this within a browser-safe range (4^10 * 4B ~= 4MB).
+    if (k < 1 || k > 10) return null;
+
+    const device = this.device;
+    const cachedPipeline = await this.getOrCreatePipeline('kmer');
+    if (!cachedPipeline) return null;
+
+    // Track buffers for cleanup on error
+    let seqBuffer: GPUBuffer | null = null;
+    let countBuffer: GPUBuffer | null = null;
+    let uniformBuffer: GPUBuffer | null = null;
+
+    try {
+      // 1. Preprocess sequence to u32 array (0=A, 1=C, 2=G, 3=T, 4=N)
+      const mappedSeq = this.encodeSequence(sequence);
+      const countsLen = 1 << (2 * k); // safe for k<=10
+      const countsSize = countsLen * 4;
+
+      // 2. Create buffers
+      seqBuffer = device.createBuffer({
+        size: mappedSeq.byteLength,
+        usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+      });
+
+      countBuffer = device.createBuffer({
+        size: countsSize,
+        usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST,
+      });
+
+      uniformBuffer = device.createBuffer({
+        size: 8, // 2 u32s
+        usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+      });
+
+      // 3. Upload data
+      device.queue.writeBuffer(seqBuffer, 0, mappedSeq as BufferSource);
+      device.queue.writeBuffer(uniformBuffer, 0, new Uint32Array([sequence.length, k]) as BufferSource);
+      device.queue.writeBuffer(countBuffer, 0, new Uint32Array(countsLen) as BufferSource);
+
+      // 4. Bind + dispatch (cached pipeline)
+      const bindGroup = device.createBindGroup({
+        layout: cachedPipeline.bindGroupLayout,
+        entries: [
+          { binding: 0, resource: { buffer: seqBuffer } },
+          { binding: 1, resource: { buffer: countBuffer } },
+          { binding: 2, resource: { buffer: uniformBuffer } },
+        ],
+      });
+
+      const commandEncoder = device.createCommandEncoder();
+      const pass = commandEncoder.beginComputePass();
+      pass.setPipeline(cachedPipeline.pipeline);
+      pass.setBindGroup(0, bindGroup);
+
+      const workgroupSize = SHADER_REGISTRY.kmer.workgroupSize;
+      const dispatchCount = Math.ceil(sequence.length / workgroupSize);
+      pass.dispatchWorkgroups(dispatchCount);
+      pass.end();
+
+      device.queue.submit([commandEncoder.finish()]);
+
+      // 5. Read back
+      return await this.readBuffer(countBuffer, countsSize, Uint32Array);
+    } catch (e) {
+      console.warn('GPU dense k-mer computation failed:', e);
+      return null;
+    } finally {
+      seqBuffer?.destroy();
+      countBuffer?.destroy();
+      uniformBuffer?.destroy();
+    }
+  }
+
   async countKmers(sequence: string, k: number): Promise<Map<string, number> | null> {
     // Wait for initialization if not complete
     if (!this.initComplete) {
@@ -301,11 +388,7 @@ export class GPUCompute {
 
     try {
       // 1. Preprocess sequence to u32 array (0=A, 1=C, 2=G, 3=T, 4=N)
-      const mappedSeq = new Uint32Array(sequence.length);
-      for (let i = 0; i < sequence.length; i++) {
-        const char = sequence[i].toUpperCase();
-        mappedSeq[i] = char === 'A' ? 0 : char === 'C' ? 1 : char === 'G' ? 2 : char === 'T' ? 3 : 4;
-      }
+      const mappedSeq = this.encodeSequence(sequence);
 
       const seqBufferSize = mappedSeq.byteLength;
       const countsSize = Math.pow(4, k) * 4; // 4 bytes per count
@@ -332,15 +415,13 @@ export class GPUCompute {
       device.queue.writeBuffer(uniformBuffer, 0, new Uint32Array([sequence.length, k]) as BufferSource);
       device.queue.writeBuffer(countBuffer, 0, new Uint32Array(Math.pow(4, k)) as BufferSource);
 
-      // 4. Pipeline setup
-      const module = device.createShaderModule({ code: kmerShader });
-      const pipeline = device.createComputePipeline({
-        layout: 'auto',
-        compute: { module, entryPoint: 'main' },
-      });
+      // 4. Pipeline setup (cached)
+      const cachedPipeline = await this.getOrCreatePipeline('kmer');
+      if (!cachedPipeline) return null;
+      const pipeline = cachedPipeline.pipeline;
 
       const bindGroup = device.createBindGroup({
-        layout: pipeline.getBindGroupLayout(0),
+        layout: cachedPipeline.bindGroupLayout,
         entries: [
           { binding: 0, resource: { buffer: seqBuffer } },
           { binding: 1, resource: { buffer: countBuffer } },

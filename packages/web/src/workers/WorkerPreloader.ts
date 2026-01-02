@@ -16,6 +16,29 @@ let searchWorkerReady = false;
 // Track initialization state
 let preloadStarted = false;
 let preloadComplete = false;
+let preloadPromise: Promise<void> | null = null;
+
+async function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T | null> {
+  return await new Promise<T | null>((resolve) => {
+    let settled = false;
+    const timer = setTimeout(() => {
+      settled = true;
+      resolve(null);
+    }, timeoutMs);
+
+    promise
+      .then((value) => {
+        if (settled) return;
+        clearTimeout(timer);
+        resolve(value);
+      })
+      .catch(() => {
+        if (settled) return;
+        clearTimeout(timer);
+        resolve(null);
+      });
+  });
+}
 
 /**
  * Get the preloaded search worker API
@@ -43,48 +66,54 @@ export function getSearchWorker(): {
  */
 export async function preloadWorkers(): Promise<void> {
   if (preloadStarted) {
-    // Already started, wait for completion
+    // Already started, return the in-flight promise (or resolve if done)
     if (preloadComplete) return;
-    return new Promise((resolve) => {
-      const check = setInterval(() => {
-        if (preloadComplete) {
-          clearInterval(check);
-          resolve();
-        }
-      }, 50);
-    });
+    if (preloadPromise) return preloadPromise;
+    return;
   }
 
   preloadStarted = true;
-
-  try {
-    // Initialize search worker
-    searchWorker = new Worker(
-      new URL('./search.worker.ts', import.meta.url),
-      { type: 'module' }
-    );
-    searchWorkerAPI = Comlink.wrap<SearchWorkerAPI>(searchWorker);
-
-    // Verify worker is ready
+  preloadPromise = (async () => {
     try {
-      await searchWorkerAPI.ping();
-      searchWorkerReady = true;
-    } catch (e) {
-      console.warn('Search worker failed to initialize:', e);
+      // Initialize search worker
+      const url = new URL('./search.worker.ts', import.meta.url);
+      try {
+        searchWorker = new Worker(url, { type: 'module' });
+      } catch {
+        // Fallback for older browsers that support Workers but not module workers.
+        searchWorker = new Worker(url);
+      }
+      searchWorkerAPI = Comlink.wrap<SearchWorkerAPI>(searchWorker);
+
+      // Verify worker is ready
+      try {
+        const ok = await withTimeout(searchWorkerAPI.ping(), 2500);
+        searchWorkerReady = ok === true;
+        if (!searchWorkerReady) {
+          console.warn('Search worker ping timed out; continuing without preload readiness');
+        }
+      } catch (e) {
+        console.warn('Search worker failed to initialize:', e);
+      }
+
+      // Add more workers here as needed:
+      // - CRISPR worker
+      // - Anomaly worker
+      // - Hilbert worker
+      // - DotPlot worker
+      // etc.
+
+    } catch (error) {
+      console.error('Worker preload failed:', error);
     }
 
-    // Add more workers here as needed:
-    // - CRISPR worker
-    // - Anomaly worker
-    // - Hilbert worker
-    // - DotPlot worker
-    // etc.
+    preloadComplete = true;
+  })().finally(() => {
+    // Avoid holding on to resolved promises; keep only state flags.
+    preloadPromise = null;
+  });
 
-  } catch (error) {
-    console.error('Worker preload failed:', error);
-  }
-
-  preloadComplete = true;
+  return preloadPromise;
 }
 
 /**

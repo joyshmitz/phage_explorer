@@ -14,6 +14,7 @@
  */
 
 import * as Comlink from 'comlink';
+import type { KmerFrequencyOptions, KmerVector, PCAOptions, PCAResult, PhasePortraitResult } from '@phage-explorer/core';
 import type {
   SimulationWorkerAPI,
   AnalysisRequest,
@@ -29,6 +30,11 @@ import type {
   SharedAnalysisWorkerAPI,
   AnalysisType,
   AnalysisOptions,
+  KmerVectorRequest,
+  GenomicSignaturePcaRequest,
+  BiasDecompositionRequest,
+  BiasDecompositionWorkerResult,
+  PhasePortraitRequest,
 } from './types';
 import { SharedSequencePool, decodeSequence } from './SharedSequencePool';
 import { startOperation, getAggregateStats, printReport } from './perf-instrumentation';
@@ -117,22 +123,28 @@ export class ComputeOrchestrator {
     let api: SharedAnalysisWorkerAPI | SimulationWorkerAPI;
 
     try {
+      const create = (url: URL): Worker => {
+        try {
+          // Prefer module workers in modern browsers.
+          return new Worker(url, { type: 'module' });
+        } catch {
+          // Fallback for older browsers that support Workers but not module workers.
+          return new Worker(url);
+        }
+      };
+
       if (type === 'analysis') {
-        worker = new Worker(
-          new URL('./analysis.worker.ts', import.meta.url),
-          { type: 'module' }
-        );
+        worker = create(new URL('./analysis.worker.ts', import.meta.url));
         api = Comlink.wrap<SharedAnalysisWorkerAPI>(worker);
       } else {
-        worker = new Worker(
-          new URL('./simulation.worker.ts', import.meta.url),
-          { type: 'module' }
-        );
+        worker = create(new URL('./simulation.worker.ts', import.meta.url));
         api = Comlink.wrap<SimulationWorkerAPI>(worker);
       }
     } catch (error) {
       console.error(`Failed to create ${type} worker:`, error);
-      throw new Error(`Failed to create ${type} worker: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      throw new Error(
+        `Failed to create ${type} worker: ${error instanceof Error ? error.message : 'Unknown error'}`
+      );
     }
 
     const instance: WorkerInstance = {
@@ -455,6 +467,183 @@ export class ComputeOrchestrator {
   }
 
   // ============================================================
+  // PCA Overlay API (off-main-thread)
+  // ============================================================
+
+  /**
+   * Compute a dense k-mer frequency vector in the analysis worker.
+   *
+   * Uses SharedArrayBuffer when available to avoid copying the genome string.
+   */
+  async computeKmerVectorWithSharedBuffer(
+    phageId: number,
+    name: string,
+    sequence: string,
+    options?: KmerFrequencyOptions
+  ): Promise<KmerVector> {
+    const { finish } = startOperation('analysis', 'kmer-vector');
+    const instance = await this.getAvailableWorker('analysis');
+    let error: Error | undefined;
+
+    try {
+      const api = instance.api as SharedAnalysisWorkerAPI;
+      const { ref: sequenceRef, transfer } = this.sequencePool.getOrCreateRef(phageId, sequence);
+      const request: KmerVectorRequest = { phageId, name, sequenceRef, options };
+
+      const result =
+        transfer.length > 0
+          ? await api.computeKmerVector(Comlink.transfer(request, transfer))
+          : await api.computeKmerVector(request);
+
+      finish(false);
+      return result;
+    } catch (e) {
+      error = e instanceof Error ? e : new Error(String(e));
+      finish(true);
+      throw error;
+    } finally {
+      this.releaseWorker(instance, error);
+    }
+  }
+
+  /**
+   * Compute PCA for genomic signature vectors (k-mer frequencies) in the analysis worker.
+   *
+   * Uses a single flat `Float32Array` transfer to reduce structured-clone overhead.
+   */
+  async computeGenomicSignaturePca(
+    vectors: KmerVector[],
+    options?: PCAOptions
+  ): Promise<PCAResult | null> {
+    const { finish } = startOperation('analysis', 'genomic-signature-pca');
+    const instance = await this.getAvailableWorker('analysis');
+    let error: Error | undefined;
+
+    try {
+      if (vectors.length < 3) {
+        finish(false);
+        return null;
+      }
+
+      const dim = vectors[0]!.frequencies.length;
+      if (dim <= 0) {
+        finish(false);
+        return null;
+      }
+
+      for (let i = 1; i < vectors.length; i++) {
+        if (vectors[i]!.frequencies.length !== dim) {
+          throw new Error('All PCA vectors must have the same dimensionality');
+        }
+      }
+
+      const flat = new Float32Array(vectors.length * dim);
+      const metas: GenomicSignaturePcaRequest['vectors'] = vectors.map((v, i) => {
+        flat.set(v.frequencies, i * dim);
+        return {
+          phageId: v.phageId,
+          name: v.name,
+          gcContent: v.gcContent,
+          genomeLength: v.genomeLength,
+        };
+      });
+
+      const request: GenomicSignaturePcaRequest = {
+        vectors: metas,
+        frequencies: flat,
+        dim,
+        options,
+      };
+
+      const api = instance.api as SharedAnalysisWorkerAPI;
+      const result = await api.computeGenomicSignaturePca(
+        Comlink.transfer(request, [flat.buffer])
+      );
+
+      finish(false);
+      return result;
+    } catch (e) {
+      error = e instanceof Error ? e : new Error(String(e));
+      finish(true);
+      throw error;
+    } finally {
+      this.releaseWorker(instance, error);
+    }
+  }
+
+  /**
+   * Compute dinucleotide-bias PCA (bias decomposition) in the analysis worker.
+   *
+   * Uses SharedArrayBuffer when available to avoid copying the genome string.
+   */
+  async computeBiasDecompositionWithSharedBuffer(
+    phageId: number,
+    sequence: string,
+    windowSize: number,
+    stepSize: number
+  ): Promise<BiasDecompositionWorkerResult | null> {
+    const { finish } = startOperation('analysis', 'bias-decomposition');
+    const instance = await this.getAvailableWorker('analysis');
+    let error: Error | undefined;
+
+    try {
+      const api = instance.api as SharedAnalysisWorkerAPI;
+      const { ref: sequenceRef, transfer } = this.sequencePool.getOrCreateRef(phageId, sequence);
+      const request: BiasDecompositionRequest = { sequenceRef, windowSize, stepSize };
+
+      const result =
+        transfer.length > 0
+          ? await api.computeBiasDecomposition(Comlink.transfer(request, transfer))
+          : await api.computeBiasDecomposition(request);
+
+      finish(false);
+      return result;
+    } catch (e) {
+      error = e instanceof Error ? e : new Error(String(e));
+      finish(true);
+      throw error;
+    } finally {
+      this.releaseWorker(instance, error);
+    }
+  }
+
+  /**
+   * Compute phase portrait (AA property PCA) in the analysis worker.
+   *
+   * Uses SharedArrayBuffer when available to avoid copying the genome string.
+   */
+  async computePhasePortraitWithSharedBuffer(
+    phageId: number,
+    sequence: string,
+    windowSize: number,
+    stepSize: number
+  ): Promise<PhasePortraitResult | null> {
+    const { finish } = startOperation('analysis', 'phase-portrait');
+    const instance = await this.getAvailableWorker('analysis');
+    let error: Error | undefined;
+
+    try {
+      const api = instance.api as SharedAnalysisWorkerAPI;
+      const { ref: sequenceRef, transfer } = this.sequencePool.getOrCreateRef(phageId, sequence);
+      const request: PhasePortraitRequest = { sequenceRef, windowSize, stepSize };
+
+      const result =
+        transfer.length > 0
+          ? await api.computePhasePortrait(Comlink.transfer(request, transfer))
+          : await api.computePhasePortrait(request);
+
+      finish(false);
+      return result;
+    } catch (e) {
+      error = e instanceof Error ? e : new Error(String(e));
+      finish(true);
+      throw error;
+    } finally {
+      this.releaseWorker(instance, error);
+    }
+  }
+
+  // ============================================================
   // Simulation API
   // ============================================================
 
@@ -462,7 +651,7 @@ export class ComputeOrchestrator {
    * Initialize a simulation
    */
   async initSimulation(params: SimInitParams): Promise<SimState> {
-    const { finish } = startOperation('simulation', params.simulationId);
+    const { finish } = startOperation('simulation', params.simId);
     const instance = await this.getAvailableWorker('simulation');
     let error: Error | undefined;
     try {

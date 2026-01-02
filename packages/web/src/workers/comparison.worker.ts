@@ -141,7 +141,7 @@ async function tryComputeDiffWasm(
 
 self.onmessage = async (event: MessageEvent<ComparisonJob>) => {
   const job = event.data as ComparisonJob | null | undefined;
-  const message: ComparisonWorkerMessage = { ok: false };
+  const message: ComparisonWorkerMessage = { ok: false, jobId: job?.jobId };
 
   if (!job || typeof job !== 'object') {
     message.error = 'Invalid comparison job: missing required sequences';
@@ -195,6 +195,7 @@ self.onmessage = async (event: MessageEvent<ComparisonJob>) => {
     }
 
     message.ok = true;
+    message.jobId = job.jobId;
     message.result = result;
     message.diffMask = diff.mask;
     message.diffPositions = diff.positions;

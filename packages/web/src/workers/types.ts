@@ -15,6 +15,12 @@ import type {
   InfectionKineticsState,
   DotPlotConfig,
   DotPlotResult,
+  BiasDecomposition,
+  KmerFrequencyOptions,
+  KmerVector,
+  PCAOptions,
+  PCAResult,
+  PhasePortraitResult,
 } from '@phage-explorer/core';
 import type { GenomeComparisonResult } from '@phage-explorer/comparison';
 
@@ -145,6 +151,45 @@ export interface AnalysisOptions {
   kmerSize?: number;
 }
 
+// ============================================================
+// PCA-family worker jobs (PCA overlays / bias decomposition / phase portrait)
+// ============================================================
+
+export interface GenomicSignaturePcaRequest {
+  /** Per-phage metadata (frequencies are provided as a single flat buffer). */
+  vectors: Array<Omit<KmerVector, 'frequencies'>>;
+  /** Flat row-major matrix: length = vectors.length * dim. */
+  frequencies: Float32Array;
+  /** Number of features per row in `frequencies`. */
+  dim: number;
+  options?: PCAOptions;
+}
+
+export interface KmerVectorRequest {
+  phageId: number;
+  name: string;
+  sequenceRef: SequenceBytesRef;
+  options?: KmerFrequencyOptions;
+}
+
+export interface BiasDecompositionRequest {
+  sequenceRef: SequenceBytesRef;
+  windowSize: number;
+  stepSize: number;
+}
+
+export interface BiasDecompositionWorkerResult {
+  decomposition: BiasDecomposition;
+  gcContents: number[];
+  positions: number[];
+}
+
+export interface PhasePortraitRequest {
+  sequenceRef: SequenceBytesRef;
+  windowSize: number;
+  stepSize: number;
+}
+
 /**
  * GC Skew result
  */
@@ -195,7 +240,7 @@ export interface PromoterResult {
 export interface RepeatResult {
   type: 'repeats';
   repeats: Array<{
-    type: 'direct' | 'inverted' | 'palindrome';
+    type: 'direct' | 'inverted' | 'palindrome' | 'tandem';
     position1: number;
     position2?: number;
     sequence: string;
@@ -282,6 +327,12 @@ export interface AnalysisWorkerAPI {
     request: AnalysisRequest,
     onProgress: (progress: ProgressInfo) => void
   ): Promise<AnalysisResult>;
+
+  // PCA-family compute off main thread
+  computeKmerVector(request: KmerVectorRequest): Promise<KmerVector>;
+  computeGenomicSignaturePca(request: GenomicSignaturePcaRequest): Promise<PCAResult | null>;
+  computeBiasDecomposition(request: BiasDecompositionRequest): Promise<BiasDecompositionWorkerResult | null>;
+  computePhasePortrait(request: PhasePortraitRequest): Promise<PhasePortraitResult | null>;
 }
 
 /**
@@ -428,6 +479,7 @@ export interface DotPlotWorkerResponse {
 
 export type ComparisonJob =
   | {
+      jobId?: string;
       phageA: { id: number; name: string; accession: string };
       phageB: { id: number; name: string; accession: string };
       sequenceA: string;
@@ -438,6 +490,7 @@ export type ComparisonJob =
       codonUsageB?: any | null;
     }
   | {
+      jobId?: string;
       phageA: { id: number; name: string; accession: string };
       phageB: { id: number; name: string; accession: string };
       sequenceARef: SequenceBytesRef;
@@ -449,6 +502,7 @@ export type ComparisonJob =
     };
 
 export interface ComparisonWorkerMessage {
+  jobId?: string;
   ok: boolean;
   result?: GenomeComparisonResult;
   diffMask?: Uint8Array;
