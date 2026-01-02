@@ -30,7 +30,7 @@ export function useDatabaseQuery(
   const query = useQuery<PhageRepository>({
     queryKey: ['database', databaseUrl],
     queryFn: async () => {
-      loaderRef.current?.close().catch(() => {});
+      await loaderRef.current?.close().catch(() => {});
       loaderRef.current = createDatabaseLoader(databaseUrl, (p) => {
         setProgress(p);
         if (p.cached !== undefined) {
@@ -71,4 +71,3 @@ export function useDatabaseQuery(
 }
 
 export default useDatabaseQuery;
-

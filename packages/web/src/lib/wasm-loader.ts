@@ -52,7 +52,7 @@
  * @see phage_explorer-8qk2.2
  */
 
-import { canUseWasm } from './browser-capabilities';
+import { canUseWasm, canUseWasmSimd } from './browser-capabilities';
 
 // ============================================================================
 // Types
@@ -64,11 +64,13 @@ import { canUseWasm } from './browser-capabilities';
  */
 export type WasmComputeModule = typeof import('@phage/wasm-compute');
 
+export type WasmComputeVariant = 'baseline' | 'simd';
+
 /**
  * Result of attempting to load the WASM module.
  */
 export type WasmLoadResult =
-  | { ok: true; module: WasmComputeModule }
+  | { ok: true; module: WasmComputeModule; variant: WasmComputeVariant }
   | { ok: false; error: string };
 
 /**
@@ -77,7 +79,7 @@ export type WasmLoadResult =
 export type WasmLoadState =
   | { status: 'idle' }
   | { status: 'loading' }
-  | { status: 'ready'; module: WasmComputeModule }
+  | { status: 'ready'; module: WasmComputeModule; variant: WasmComputeVariant }
   | { status: 'failed'; error: string };
 
 // ============================================================================
@@ -134,38 +136,64 @@ async function loadWasmModule(): Promise<WasmLoadResult> {
     log('Loading wasm-compute module...');
     const startTime = performance.now();
 
-    // Dynamic import of the WASM module
-    const wasm = await import('@phage/wasm-compute');
+    const tryLoad = async (
+      variant: WasmComputeVariant
+    ): Promise<{ module: WasmComputeModule; variant: WasmComputeVariant }> => {
+      const wasm =
+        variant === 'simd'
+          ? ((await import('@phage/wasm-compute/simd')) as unknown as WasmComputeModule)
+          : await import('@phage/wasm-compute');
 
-    // Initialize the module if it has an init function
-    // Some wasm-bindgen outputs require explicit init, others auto-init
-    try {
-      // Try to call init if it exists (wasm-bindgen --target web style)
-      const maybeInit = (wasm as unknown as { default?: () => Promise<void> }).default;
-      if (typeof maybeInit === 'function') {
-        await maybeInit();
-        log('WASM init() called successfully');
+      // Initialize the module if it has an init function
+      // Some wasm-bindgen outputs require explicit init, others auto-init
+      try {
+        // Try to call init if it exists (wasm-bindgen --target web style)
+        const maybeInit = (wasm as unknown as { default?: () => Promise<void> }).default;
+        if (typeof maybeInit === 'function') {
+          await maybeInit();
+          log('WASM init() called successfully', { variant });
+        }
+      } catch {
+        // Init may not be needed or may have already been called
+        // This is not a fatal error - the module may still work
+        log('WASM init() not needed or already initialized', { variant });
       }
-    } catch (initError) {
-      // Init may not be needed or may have already been called
-      // This is not a fatal error - the module may still work
-      log('WASM init() not needed or already initialized');
+
+      // Initialize panic hook for better error messages (if available)
+      try {
+        if (typeof wasm.init_panic_hook === 'function') {
+          wasm.init_panic_hook();
+          log('WASM panic hook initialized', { variant });
+        }
+      } catch {
+        // Panic hook is optional
+      }
+
+      return { module: wasm, variant };
+    };
+
+    // Prefer SIMD build when supported, but always fall back to baseline.
+    const preferSimd = await canUseWasmSimd().catch(() => false);
+    const candidates: WasmComputeVariant[] = preferSimd ? ['simd', 'baseline'] : ['baseline'];
+
+    let lastError: unknown = null;
+    for (const variant of candidates) {
+      try {
+        const loaded = await tryLoad(variant);
+        const elapsed = performance.now() - startTime;
+        log('WASM module loaded successfully', {
+          variant: loaded.variant,
+          elapsed: `${elapsed.toFixed(1)}ms`,
+        });
+        return { ok: true, module: loaded.module, variant: loaded.variant };
+      } catch (e) {
+        lastError = e;
+        warn(`Failed to load WASM variant: ${variant}`, e);
+      }
     }
 
-    // Initialize panic hook for better error messages (if available)
-    try {
-      if (typeof wasm.init_panic_hook === 'function') {
-        wasm.init_panic_hook();
-        log('WASM panic hook initialized');
-      }
-    } catch {
-      // Panic hook is optional
-    }
-
-    const elapsed = performance.now() - startTime;
-    log('WASM module loaded successfully', { elapsed: `${elapsed.toFixed(1)}ms` });
-
-    return { ok: true, module: wasm };
+    const errorMessage = lastError instanceof Error ? lastError.message : String(lastError);
+    return { ok: false, error: errorMessage };
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
     warn('Failed to load WASM module', error);
@@ -218,7 +246,7 @@ export async function getWasmCompute(): Promise<WasmComputeModule | null> {
     const result = await loadPromise;
 
     if (result.ok) {
-      loadState = { status: 'ready', module: result.module };
+      loadState = { status: 'ready', module: result.module, variant: result.variant };
       return result.module;
     } else {
       loadState = { status: 'failed', error: result.error };
@@ -238,27 +266,32 @@ export async function getWasmCompute(): Promise<WasmComputeModule | null> {
  * @returns Detailed load result
  */
 export async function getWasmComputeResult(): Promise<WasmLoadResult> {
+  // Snapshot the current state so TypeScript doesn't incorrectly narrow `loadState`
+  // across the `await` boundary below (since `getWasmCompute()` mutates `loadState`).
+  const existing = loadState;
+
   // Fast path: already loaded
-  if (loadState.status === 'ready') {
-    return { ok: true, module: loadState.module };
+  if (existing.status === 'ready') {
+    return { ok: true, module: existing.module, variant: existing.variant };
   }
 
   // Fast path: already failed
-  if (loadState.status === 'failed') {
-    return { ok: false, error: loadState.error };
+  if (existing.status === 'failed') {
+    return { ok: false, error: existing.error };
   }
 
   // Load if needed
   const module = await getWasmCompute();
-
-  if (loadState.status === 'ready') {
-    return { ok: true, module: loadState.module };
-  } else if (loadState.status === 'failed') {
-    return { ok: false, error: loadState.error };
+  if (module) {
+    return loadState.status === 'ready'
+      ? { ok: true, module: loadState.module, variant: loadState.variant }
+      : { ok: true, module, variant: 'baseline' };
   }
 
-  // Should not happen, but handle edge case
-  return { ok: false, error: 'Unexpected load state' };
+  // Prefer the recorded failure reason when available.
+  return loadState.status === 'failed'
+    ? { ok: false, error: loadState.error }
+    : { ok: false, error: 'WASM module unavailable' };
 }
 
 /**
@@ -292,6 +325,15 @@ export function isWasmComputeFailed(): boolean {
  */
 export function getWasmLoadState(): WasmLoadState {
   return loadState;
+}
+
+/**
+ * Get the loaded WASM variant (baseline vs SIMD) when available.
+ *
+ * @returns The selected variant if loaded, otherwise null
+ */
+export function getWasmComputeVariant(): WasmComputeVariant | null {
+  return loadState.status === 'ready' ? loadState.variant : null;
 }
 
 /**

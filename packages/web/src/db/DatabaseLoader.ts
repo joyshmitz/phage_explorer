@@ -296,7 +296,12 @@ export class DatabaseLoader {
   /**
    * Check if cached database is valid
    */
-  async checkCache(): Promise<{ valid: boolean; hash?: string }> {
+  async checkCache(): Promise<{
+    valid: boolean;
+    hash?: string;
+    stale?: boolean;
+    manifestHash?: string;
+  }> {
     this.progress('checking', 0, 'Checking cache...');
 
     try {
@@ -311,10 +316,11 @@ export class DatabaseLoader {
       // Try to fetch manifest with ETag support (much faster for unchanged manifests)
       const { manifest } = await fetchManifestWithETag(this.config.manifestUrl);
       if (manifest && manifest.hash !== cachedHash) {
-        return { valid: false, hash: cachedHash };
+        // Cache is usable but stale. We'll load it and refresh in the background.
+        return { valid: true, hash: cachedHash, stale: true, manifestHash: manifest.hash };
       }
 
-      return { valid: true, hash: cachedHash };
+      return { valid: true, hash: cachedHash, stale: false, manifestHash: manifest?.hash };
     } catch {
       return { valid: false };
     }
@@ -820,7 +826,13 @@ export class DatabaseLoader {
       this.timing.endStage('cacheCheck');
 
       if (cacheStatus.valid) {
-        this.progress('initializing', 80, 'Loading from cache...', true);
+        const stale = cacheStatus.stale === true;
+        this.progress(
+          'initializing',
+          80,
+          stale ? 'Loading cached database (update available)...' : 'Loading from cache...',
+          true
+        );
         this.timing.setCached(true);
         this.timing.setSource('cache');
 
@@ -841,7 +853,12 @@ export class DatabaseLoader {
           db.exec('SELECT 1');
           this.timing.endStage('dbOpen');
 
-          this.progress('ready', 100, 'Database ready (cached)', true);
+          this.progress(
+            'ready',
+            100,
+            stale ? 'Database ready (cached, update available)' : 'Database ready (cached)',
+            true
+          );
           this.repository = new SqlJsRepository(db);
 
           // Finalize and log timing
