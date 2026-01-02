@@ -257,7 +257,8 @@ export function SequenceGrid({
 
     if (diffEnabled && diffReferenceSequence) {
       const refSlice = diffReferenceSequence.substring(startIndex, startIndex + sliceLength);
-      return applyDiff(baseGrid, refSlice, viewMode, readingFrame, startIndex);
+      const totalLen = genomeLength > 0 ? genomeLength : sequence.length;
+      return applyDiff(baseGrid, refSlice, viewMode, readingFrame, startIndex, totalLen);
     }
 
     return baseGrid;
