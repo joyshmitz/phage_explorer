@@ -12,6 +12,8 @@
 import React, { useRef, useEffect, useCallback, useState, type ReactNode, type CSSProperties } from 'react';
 import { useOverlay, useOverlayZIndex, type OverlayId } from './OverlayProvider';
 import { BottomSheet } from '../mobile/BottomSheet';
+import { useReducedMotion } from '../../hooks';
+import { useWebPreferences } from '../../store/createWebStore';
 import {
   IconAlertTriangle,
   IconAperture,
@@ -139,6 +141,9 @@ export function Overlay({
   const overlayRef = useRef<HTMLDivElement>(null);
   const previousFocus = useRef<HTMLElement | null>(null);
   const [isBackdropHovered, setIsBackdropHovered] = useState(false);
+  const reducedMotion = useReducedMotion();
+  const scanlinesEnabled = useWebPreferences((s) => s.scanlines);
+  const showScanlines = scanlinesEnabled && !reducedMotion;
 
   const overlayIsOpen = isOpen(id);
   const overlayStackItem = stack.find((item) => item.id === id);
@@ -269,7 +274,7 @@ export function Overlay({
     padding: shouldUseBottomSheet ? 0 : isMobile ? '1rem' : effectivePosition === 'center' ? '2rem' : 0,
     zIndex,
     cursor: showBackdrop && closeOnBackdrop && isBackdropHovered ? 'pointer' : 'default',
-    transition: showBackdrop ? 'background-color var(--duration-fast) var(--ease-out)' : undefined,
+    // Hover transition handled separately from entry animation
   };
 
   const overlayStyle: CSSProperties = {
@@ -339,6 +344,7 @@ export function Overlay({
   return (
     <div
       style={backdropStyle}
+      className="overlay-backdrop-enter"
       onClick={handleBackdropClick}
       onMouseMove={handleBackdropMouseMove}
       onMouseLeave={handleBackdropMouseLeave}
@@ -346,7 +352,7 @@ export function Overlay({
       <div
         ref={overlayRef}
         style={overlayStyle}
-        className={`overlay overlay-${id} ${className}`}
+        className={`overlay overlay-${id} overlay-panel-enter ${className}`}
         tabIndex={-1}
         role="dialog"
         aria-modal="true"
@@ -429,18 +435,20 @@ export function Overlay({
         )}
 
         {/* Scanline effect (subtle) */}
-        <div
-          style={{
-            position: 'absolute',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            pointerEvents: 'none',
-            background: 'repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.03) 2px, rgba(0,0,0,0.03) 4px)',
-            borderRadius: overlayBorderRadius,
-          }}
-        />
+        {showScanlines && (
+          <div
+            style={{
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              pointerEvents: 'none',
+              background: 'repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.03) 2px, rgba(0,0,0,0.03) 4px)',
+              borderRadius: overlayBorderRadius,
+            }}
+          />
+        )}
       </div>
     </div>
   );

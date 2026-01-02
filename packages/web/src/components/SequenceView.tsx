@@ -35,6 +35,54 @@ interface ViewModeToggleProps {
 }
 
 function ViewModeToggle({ value, onChange }: ViewModeToggleProps): React.ReactElement {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const segmentRefs = useRef<(HTMLButtonElement | null)[]>([]);
+  const [indicatorStyle, setIndicatorStyle] = useState<{ x: number; width: number } | null>(null);
+
+  // Calculate indicator position when value changes
+  useEffect(() => {
+    const activeIndex = VIEW_MODE_OPTIONS.findIndex(opt => opt.id === value);
+    const activeButton = segmentRefs.current[activeIndex];
+    const container = containerRef.current;
+
+    if (!activeButton || !container) return;
+
+    // Use requestAnimationFrame for smooth measurement
+    requestAnimationFrame(() => {
+      const containerRect = container.getBoundingClientRect();
+      const buttonRect = activeButton.getBoundingClientRect();
+      const padding = 6; // Match the container padding
+
+      setIndicatorStyle({
+        x: buttonRect.left - containerRect.left - padding,
+        width: buttonRect.width,
+      });
+    });
+  }, [value]);
+
+  // Update on resize
+  useEffect(() => {
+    const handleResize = () => {
+      const activeIndex = VIEW_MODE_OPTIONS.findIndex(opt => opt.id === value);
+      const activeButton = segmentRefs.current[activeIndex];
+      const container = containerRef.current;
+
+      if (!activeButton || !container) return;
+
+      const containerRect = container.getBoundingClientRect();
+      const buttonRect = activeButton.getBoundingClientRect();
+      const padding = 6;
+
+      setIndicatorStyle({
+        x: buttonRect.left - containerRect.left - padding,
+        width: buttonRect.width,
+      });
+    };
+
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, [value]);
+
   const handleKey = useCallback(
     (event: React.KeyboardEvent<HTMLButtonElement>, index: number) => {
       if (event.key === 'ArrowRight' || event.key === 'ArrowDown') {
@@ -58,12 +106,26 @@ function ViewModeToggle({ value, onChange }: ViewModeToggleProps): React.ReactEl
   );
 
   return (
-    <div className="view-mode-toggle" role="radiogroup" aria-label="Sequence view mode">
+    <div
+      ref={containerRef}
+      className={`view-mode-toggle ${indicatorStyle ? 'has-indicator' : ''}`}
+      role="radiogroup"
+      aria-label="Sequence view mode"
+      style={indicatorStyle ? {
+        '--indicator-x': `${indicatorStyle.x}px`,
+        '--indicator-width': `${indicatorStyle.width}px`,
+      } as React.CSSProperties : undefined}
+    >
+      {/* Sliding indicator - positioned absolutely behind active segment */}
+      {indicatorStyle && (
+        <div className="view-mode-indicator" aria-hidden="true" />
+      )}
       {VIEW_MODE_OPTIONS.map((option, idx) => {
         const active = value === option.id;
         return (
           <button
             key={option.id}
+            ref={el => { segmentRefs.current[idx] = el; }}
             type="button"
             className={`view-mode-segment ${active ? 'active' : ''}`}
             role="radio"
@@ -148,6 +210,13 @@ function SequenceViewBase({
   const colors = theme.colors;
   const reducedMotion = useReducedMotion();
   const supportsDvh = useDvhSupport();
+  const normalizedHeight = useMemo(() => {
+    if (typeof height === 'string' && !supportsDvh && height.includes('dvh')) {
+      // Older iOS Safari treats dvh as invalid, which can collapse the canvas height to 0.
+      return height.replace(/dvh/g, 'vh');
+    }
+    return height;
+  }, [height, supportsDvh]);
   const [snapToCodon, setSnapToCodon] = useState(true);
   const defaultDensity: 'compact' | 'standard' =
     typeof window !== 'undefined' && window.innerWidth < 1024 ? 'compact' : 'standard';
@@ -185,7 +254,7 @@ function SequenceViewBase({
 
   // Create PostProcessPipeline for WebGL2 CRT effects
   const postProcess = useMemo(() => {
-    if (reducedMotion || !scanlines) return undefined;
+    if (reducedMotion || (!scanlines && !glow)) return undefined;
     return new PostProcessPipeline({
       reducedMotion,
       enableScanlines: scanlines,
@@ -559,10 +628,10 @@ function SequenceViewBase({
   // dvh accounts for mobile browser chrome (address bar), vh does not.
   const vhUnit = supportsDvh ? 'dvh' : 'vh';
   const resolvedHeight =
-    typeof height === 'number'
-      ? height
-      : typeof height === 'string'
-        ? height
+    typeof normalizedHeight === 'number'
+      ? normalizedHeight
+      : typeof normalizedHeight === 'string'
+        ? normalizedHeight
         : isMobile
           ? orientation === 'portrait'
             ? `78${vhUnit}` // taller in portrait to show more bases
@@ -712,11 +781,12 @@ function SequenceViewBase({
           onContextMenu={handleContextMenu}
           role="img"
           aria-label="Genome sequence canvas"
+          className="sequence-grid-canvas"
           style={{
             width: '100%',
             height: resolvedHeight,
             display: 'block',
-            touchAction: 'none', // Must be 'none' to enable custom touch scroll handling
+            touchAction: sequence ? 'none' : 'auto', // Allow page scroll while loading; enable custom gestures once ready
           }}
         />
         {/* Loading skeleton state */}
@@ -899,7 +969,7 @@ function SequenceViewBase({
           style={{
             position: 'fixed',
             right: '12px',
-            bottom: '86px',
+            bottom: 'calc(86px + env(safe-area-inset-bottom))',
             zIndex: 20,
             background: colors.backgroundAlt,
             border: `1px solid ${colors.border}`,

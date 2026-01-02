@@ -79,6 +79,7 @@ export const ComparisonOverlay: React.FC<ComparisonOverlayProps> = ({ repository
   const [diffMask, setDiffMask] = useState<Uint8Array | null>(null);
   const [diffPositions, setDiffPositions] = useState<number[]>([]);
   const [diffStats, setDiffStats] = useState<DiffStatsType | null>(null);
+  const activeJobIdRef = useRef<string | null>(null);
 
   const phageA = phageAIndex !== null ? phages[phageAIndex] : null;
   const phageB = phageBIndex !== null ? phages[phageBIndex] : null;
@@ -110,6 +111,8 @@ export const ComparisonOverlay: React.FC<ComparisonOverlayProps> = ({ repository
 
   const runComparison = useCallback(async () => {
     if (!repository || !phageA || !phageB || phageA.id === phageB.id) return;
+    const jobId = `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+    activeJobIdRef.current = jobId;
     setComparisonLoading(true);
     setError(null);
     setDiffMask(null);
@@ -138,6 +141,7 @@ export const ComparisonOverlay: React.FC<ComparisonOverlayProps> = ({ repository
       const { ref: sequenceBRef, transfer: transferB } = pool.getOrCreateRef(phageB.id, seqB);
 
       const job = {
+        jobId,
         phageA: { id: phageA.id, name: phageA.name, accession: phageA.accession },
         phageB: { id: phageB.id, name: phageB.name, accession: phageB.accession },
         sequenceARef,
@@ -149,18 +153,26 @@ export const ComparisonOverlay: React.FC<ComparisonOverlayProps> = ({ repository
       };
 
       const worker = workerRef.current;
-      let result: GenomeComparisonResult | null = null;
+      let payload:
+        | {
+            result: GenomeComparisonResult;
+            diffMask?: Uint8Array;
+            diffPositions?: number[];
+            diffStats?: DiffStatsType | null;
+          }
+        | null = null;
       if (worker) {
-        result = await new Promise<GenomeComparisonResult>((resolve, reject) => {
+        payload = await new Promise<typeof payload>((resolve, reject) => {
           const handleMessage = (event: MessageEvent<ComparisonWorkerMessage>) => {
+            if (event.data.jobId && event.data.jobId !== jobId) return;
             worker.removeEventListener('message', handleMessage);
             if (event.data.ok && event.data.result) {
-              if (event.data.diffMask) {
-                setDiffMask(event.data.diffMask);
-              }
-              setDiffPositions(event.data.diffPositions ?? []);
-              setDiffStats((event.data.diffStats as DiffStatsType | undefined) ?? null);
-              resolve(event.data.result);
+              resolve({
+                result: event.data.result,
+                diffMask: event.data.diffMask,
+                diffPositions: event.data.diffPositions ?? [],
+                diffStats: (event.data.diffStats as DiffStatsType | undefined) ?? null,
+              });
             } else {
               reject(new Error(event.data.error ?? 'Worker comparison failed'));
             }
@@ -169,15 +181,24 @@ export const ComparisonOverlay: React.FC<ComparisonOverlayProps> = ({ repository
           worker.postMessage(job, [...transferA, ...transferB]);
         });
       }
-      if (!result) {
+      if (!payload) {
         throw new Error('Worker comparison failed');
       }
-      setComparisonResult(result);
+      if (activeJobIdRef.current !== jobId) return;
+      if (payload.diffMask) {
+        setDiffMask(payload.diffMask);
+      }
+      setDiffPositions(payload.diffPositions ?? []);
+      setDiffStats(payload.diffStats ?? null);
+      setComparisonResult(payload.result);
     } catch (err) {
+      if (activeJobIdRef.current !== jobId) return;
       const msg = err instanceof Error ? err.message : 'Comparison failed';
       setError(msg);
     } finally {
-      setComparisonLoading(false);
+      if (activeJobIdRef.current === jobId) {
+        setComparisonLoading(false);
+      }
     }
   }, [phageA, phageB, repository, setComparisonLoading, setComparisonResult]);
 

@@ -168,6 +168,7 @@ export function useSequenceGrid(options: UseSequenceGridOptions): UseSequenceGri
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const rendererRef = useRef<CanvasSequenceGridRenderer | null>(null);
   const workerRef = useRef<Worker | null>(null);
+  const displayLengthRef = useRef<number>(0);
   const workerStateRef = useRef<{
     visibleRange: VisibleRange | null;
     layout: { cols: number; rows: number; totalHeight: number; totalWidth: number } | null;
@@ -191,6 +192,7 @@ export function useSequenceGrid(options: UseSequenceGridOptions): UseSequenceGri
   });
   // Track mobile device state for responsive features
   const [isMobile, setIsMobile] = useState(() => detectMobileDevice());
+
 
   const onVisibleRangeChangeRef = useRef(onVisibleRangeChange);
   useEffect(() => {
@@ -378,7 +380,7 @@ export function useSequenceGrid(options: UseSequenceGridOptions): UseSequenceGri
         const row = Math.floor(absoluteY / rowHeight);
         if (col < 0 || row < 0 || col >= cols || row >= state.layout.rows) return null;
         const idx = row * cols + col;
-        if (idx >= sequence.length) return null;
+        if (idx >= displayLengthRef.current) return null;
         return idx >= 0 ? idx : null;
       },
       getScrollPosition: () => workerStateRef.current.scrollPosition,
@@ -666,6 +668,10 @@ export function useSequenceGrid(options: UseSequenceGridOptions): UseSequenceGri
     // The renderer handles coordinate mapping for dual mode.
     return { displaySequence: sequence, aminoSequence: aaSeq };
   }, [sequence, viewMode, readingFrame]);
+
+  useEffect(() => {
+    displayLengthRef.current = displaySequence.length;
+  }, [displaySequence]);
 
   // Update sequence
   useEffect(() => {

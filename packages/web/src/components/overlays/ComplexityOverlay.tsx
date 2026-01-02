@@ -4,7 +4,7 @@
  * Displays Shannon entropy and linguistic complexity visualization.
  */
 
-import React, { useEffect, useRef, useMemo, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import type { PhageFull } from '@phage-explorer/core';
 import type { PhageRepository } from '../../db';
 import { useTheme } from '../../hooks/useTheme';
@@ -14,66 +14,12 @@ import { Overlay } from './Overlay';
 import { useOverlay } from './OverlayProvider';
 import { AnalysisPanelSkeleton } from '../ui/Skeleton';
 import { InfoButton } from '../ui';
+import { getOrchestrator } from '../../workers/ComputeOrchestrator';
+import type { ComplexityResult } from '../../workers/types';
 
 interface ComplexityOverlayProps {
   repository: PhageRepository | null;
   currentPhage: PhageFull | null;
-}
-
-// Calculate Shannon entropy for a window
-function calculateEntropy(window: string): number {
-  const counts: Record<string, number> = {};
-  for (const char of window.toUpperCase()) {
-    if ('ACGT'.includes(char)) {
-      counts[char] = (counts[char] || 0) + 1;
-    }
-  }
-
-  const total = Object.values(counts).reduce((a, b) => a + b, 0);
-  if (total === 0) return 0;
-
-  let entropy = 0;
-  for (const count of Object.values(counts)) {
-    const p = count / total;
-    if (p > 0) {
-      entropy -= p * Math.log2(p);
-    }
-  }
-
-  return entropy / 2; // Normalize to 0-1 (max entropy for 4 bases is 2)
-}
-
-// Calculate linguistic complexity (unique k-mers ratio)
-function calculateLinguisticComplexity(window: string, k = 3): number {
-  const kmers = new Set<string>();
-  const seq = window.toUpperCase();
-
-  for (let i = 0; i <= seq.length - k; i++) {
-    const kmer = seq.slice(i, i + k);
-    if (!/[^ACGT]/.test(kmer)) {
-      kmers.add(kmer);
-    }
-  }
-
-  const maxPossible = Math.min(Math.pow(4, k), seq.length - k + 1);
-  return maxPossible > 0 ? kmers.size / maxPossible : 0;
-}
-
-// Sliding window complexity calculation
-function calculateComplexityProfile(
-  sequence: string,
-  windowSize = 100
-): { entropy: number[]; linguistic: number[] } {
-  const entropy: number[] = [];
-  const linguistic: number[] = [];
-
-  for (let i = 0; i < sequence.length - windowSize; i += windowSize / 2) {
-    const window = sequence.slice(i, i + windowSize);
-    entropy.push(calculateEntropy(window));
-    linguistic.push(calculateLinguisticComplexity(window));
-  }
-
-  return { entropy, linguistic };
 }
 
 export function ComplexityOverlay({
@@ -86,7 +32,10 @@ export function ComplexityOverlay({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const sequenceCache = useRef<Map<number, string>>(new Map());
   const [sequence, setSequence] = useState<string>('');
-  const [loading, setLoading] = useState(false);
+  const [sequenceLoading, setSequenceLoading] = useState(false);
+  const [analysisLoading, setAnalysisLoading] = useState(false);
+  const [entropy, setEntropy] = useState<number[]>([]);
+  const [linguistic, setLinguistic] = useState<number[]>([]);
   const { isEnabled: beginnerModeEnabled, showContextFor } = useBeginnerMode();
   const overlayHelp = getOverlayContext('complexity');
 
@@ -103,7 +52,10 @@ export function ComplexityOverlay({
     if (!isOpen('complexity')) return;
     if (!repository || !currentPhage) {
       setSequence('');
-      setLoading(false);
+      setEntropy([]);
+      setLinguistic([]);
+      setSequenceLoading(false);
+      setAnalysisLoading(false);
       return;
     }
 
@@ -112,11 +64,11 @@ export function ComplexityOverlay({
     // Check cache
     if (sequenceCache.current.has(phageId)) {
       setSequence(sequenceCache.current.get(phageId) ?? '');
-      setLoading(false);
+      setSequenceLoading(false);
       return;
     }
 
-    setLoading(true);
+    setSequenceLoading(true);
     repository
       .getFullGenomeLength(phageId)
       .then((length: number) => repository.getSequenceWindow(phageId, 0, length))
@@ -125,12 +77,49 @@ export function ComplexityOverlay({
         setSequence(seq);
       })
       .catch(() => setSequence(''))
-      .finally(() => setLoading(false));
+      .finally(() => setSequenceLoading(false));
   }, [isOpen, repository, currentPhage]);
 
-  const { entropy, linguistic } = useMemo(() => {
-    return calculateComplexityProfile(sequence);
-  }, [sequence]);
+  // Compute complexity in the analysis worker (WASM-accelerated) to avoid main-thread jank.
+  useEffect(() => {
+    if (!isOpen('complexity')) return;
+    if (!currentPhage) return;
+
+    if (!sequence) {
+      setEntropy([]);
+      setLinguistic([]);
+      setAnalysisLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    setAnalysisLoading(true);
+
+    (async () => {
+      try {
+        const result = await getOrchestrator().runAnalysisWithSharedBuffer(
+          currentPhage.id,
+          sequence,
+          'complexity',
+          { windowSize: 100 }
+        ) as ComplexityResult;
+
+        if (cancelled) return;
+        setEntropy(result.entropy);
+        setLinguistic(result.linguistic);
+      } catch {
+        if (cancelled) return;
+        setEntropy([]);
+        setLinguistic([]);
+      } finally {
+        if (!cancelled) setAnalysisLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen, currentPhage, sequence]);
 
   // Draw the visualization
   useEffect(() => {
@@ -215,12 +204,15 @@ export function ComplexityOverlay({
     >
       <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
         {/* Loading State */}
-        {loading && (
+        {sequenceLoading && (
           <AnalysisPanelSkeleton message="Loading sequence data..." rows={3} />
+        )}
+        {!sequenceLoading && analysisLoading && (
+          <AnalysisPanelSkeleton message="Computing complexity..." rows={3} />
         )}
 
         {/* Description */}
-        {!loading && (
+        {!sequenceLoading && !analysisLoading && (
           <div style={{
             padding: '0.75rem',
             backgroundColor: colors.backgroundAlt,
@@ -247,7 +239,7 @@ export function ComplexityOverlay({
         )}
 
         {/* Stats */}
-        {!loading && entropy.length > 0 && (
+        {!sequenceLoading && !analysisLoading && entropy.length > 0 && (
           <div style={{
             display: 'grid',
             gridTemplateColumns: 'repeat(3, 1fr)',
@@ -299,7 +291,7 @@ export function ComplexityOverlay({
         )}
 
         {/* Canvas */}
-        {!loading && entropy.length >= 2 && (
+        {!sequenceLoading && !analysisLoading && entropy.length >= 2 && (
           <div style={{
             border: `1px solid ${colors.borderLight}`,
             borderRadius: '4px',
@@ -313,7 +305,7 @@ export function ComplexityOverlay({
         )}
 
         {/* Legend */}
-        {!loading && entropy.length >= 2 && (
+        {!sequenceLoading && !analysisLoading && entropy.length >= 2 && (
           <div style={{
             display: 'flex',
             justifyContent: 'center',
@@ -327,7 +319,7 @@ export function ComplexityOverlay({
           </div>
         )}
 
-        {!loading && sequence.length === 0 && (
+        {!sequenceLoading && !analysisLoading && sequence.length === 0 && (
           <div style={{ textAlign: 'center', padding: '2rem', color: colors.textMuted }}>
             No sequence data available. Select a phage to analyze.
           </div>

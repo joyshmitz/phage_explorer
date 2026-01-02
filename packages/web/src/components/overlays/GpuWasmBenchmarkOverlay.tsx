@@ -9,7 +9,12 @@
  */
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import type { PhageFull } from '@phage-explorer/core';
+import {
+  DENSE_KMER_MAX_K,
+  countKmersDenseJS,
+  denseKmerMemoryCostHuman,
+  type PhageFull,
+} from '@phage-explorer/core';
 import type { PhageRepository } from '../../db';
 import { useTheme } from '../../hooks/useTheme';
 import { useHotkey } from '../../hooks/useHotkey';
@@ -19,8 +24,8 @@ import { Overlay } from './Overlay';
 import { useOverlay } from './OverlayProvider';
 import type * as WasmComputeTypes from '@phage/wasm-compute';
 
-type BenchBackend = 'gpu' | 'wasm';
-type BenchOp = 'kmer' | 'gc-skew';
+type BenchBackend = 'gpu' | 'wasm' | 'js';
+type BenchOp = 'dense-kmer' | 'minhash' | 'gc-skew';
 type WasmComputeModule = typeof WasmComputeTypes;
 
 interface BenchRow {
@@ -49,6 +54,8 @@ function formatMs(value: number | undefined): string {
 async function yieldToUi(): Promise<void> {
   await new Promise<void>((resolve) => setTimeout(resolve, 0));
 }
+
+const textEncoder = typeof TextEncoder !== 'undefined' ? new TextEncoder() : null;
 
 async function benchAsync(args: {
   warmup: () => Promise<void>;
@@ -89,6 +96,8 @@ export function GpuWasmBenchmarkOverlay({
 
   const [sampleBp, setSampleBp] = useState(100_000);
   const [k, setK] = useState(6);
+  const [canonical, setCanonical] = useState(true);
+  const [minhashHashes, setMinhashHashes] = useState(256);
   const [gcWindow, setGcWindow] = useState(1000);
   const [gcStep, setGcStep] = useState(250);
   const [runs, setRuns] = useState(7);
@@ -166,6 +175,7 @@ export function GpuWasmBenchmarkOverlay({
       const usedSampleBp = Math.max(1, Math.min(genomeBp, sampleBp));
       const sequence = await repository.getSequenceWindow(currentPhage.id, 0, usedSampleBp);
       const seq = sequence.toUpperCase();
+      const seqBytes = textEncoder ? textEncoder.encode(seq) : null;
 
       setMeta({
         phageName: currentPhage.name,
@@ -184,9 +194,15 @@ export function GpuWasmBenchmarkOverlay({
       if (!gpuSupported) {
         nextRows.push({
           backend: 'gpu',
-          op: 'kmer',
+          op: 'dense-kmer',
           supported: false,
           notes: webgpuInfo.supported ? 'GPU init failed' : webgpuInfo.reason,
+        });
+        nextRows.push({
+          backend: 'gpu',
+          op: 'minhash',
+          supported: false,
+          notes: webgpuInfo.supported ? 'MinHash not implemented on GPU' : webgpuInfo.reason,
         });
         nextRows.push({
           backend: 'gpu',
@@ -195,37 +211,54 @@ export function GpuWasmBenchmarkOverlay({
           notes: webgpuInfo.supported ? 'GPU init failed' : webgpuInfo.reason,
         });
       } else {
-        // k-mer (GPU)
-        try {
-          const measured = await benchAsync({
-            warmup: async () => {
-              const result = await gpuCompute.countKmers(seq, k);
-              if (!result) throw new Error('GPU k-mer returned null');
-            },
-            run: async () => {
-              const result = await gpuCompute.countKmers(seq, k);
-              if (!result) throw new Error('GPU k-mer returned null');
-            },
-            runs,
-          });
+        // Dense k-mer counts (GPU)
+        if (k > DENSE_KMER_MAX_K) {
           nextRows.push({
             backend: 'gpu',
-            op: 'kmer',
-            supported: true,
-            warmupMs: measured.warmupMs,
-            medianMs: measured.medianMs,
-            runs,
-            notes: `k=${k}`,
-          });
-        } catch (err) {
-          nextRows.push({
-            backend: 'gpu',
-            op: 'kmer',
+            op: 'dense-kmer',
             supported: false,
-            error: err instanceof Error ? err.message : String(err),
-            notes: `k=${k}`,
+            notes: `k=${k} exceeds dense cap (max=${DENSE_KMER_MAX_K}, ${denseKmerMemoryCostHuman(k)}) · sample=${usedSampleBp.toLocaleString()}bp`,
           });
+        } else {
+          try {
+            const measured = await benchAsync({
+              warmup: async () => {
+                const result = await gpuCompute.countKmersDense(seq, k);
+                if (!result) throw new Error('GPU dense k-mer returned null');
+              },
+              run: async () => {
+                const result = await gpuCompute.countKmersDense(seq, k);
+                if (!result) throw new Error('GPU dense k-mer returned null');
+              },
+              runs,
+            });
+            nextRows.push({
+              backend: 'gpu',
+              op: 'dense-kmer',
+              supported: true,
+              warmupMs: measured.warmupMs,
+              medianMs: measured.medianMs,
+              runs,
+              notes: `k=${k} · sample=${usedSampleBp.toLocaleString()}bp`,
+            });
+          } catch (err) {
+            nextRows.push({
+              backend: 'gpu',
+              op: 'dense-kmer',
+              supported: false,
+              error: err instanceof Error ? err.message : String(err),
+              notes: `k=${k} · sample=${usedSampleBp.toLocaleString()}bp`,
+            });
+          }
         }
+
+        // MinHash (GPU) - not implemented
+        nextRows.push({
+          backend: 'gpu',
+          op: 'minhash',
+          supported: false,
+          notes: `not implemented · sample=${usedSampleBp.toLocaleString()}bp`,
+        });
 
         // GC skew (GPU)
         try {
@@ -247,7 +280,7 @@ export function GpuWasmBenchmarkOverlay({
             warmupMs: measured.warmupMs,
             medianMs: measured.medianMs,
             runs,
-            notes: `window=${gcWindow}, step=${gcStep}`,
+            notes: `window=${gcWindow}, step=${gcStep} · sample=${usedSampleBp.toLocaleString()}bp`,
           });
         } catch (err) {
           nextRows.push({
@@ -255,7 +288,7 @@ export function GpuWasmBenchmarkOverlay({
             op: 'gc-skew',
             supported: false,
             error: err instanceof Error ? err.message : String(err),
-            notes: `window=${gcWindow}, step=${gcStep}`,
+            notes: `window=${gcWindow}, step=${gcStep} · sample=${usedSampleBp.toLocaleString()}bp`,
           });
         }
       }
@@ -266,7 +299,13 @@ export function GpuWasmBenchmarkOverlay({
       if (!wasm.ok || !wasm.module) {
         nextRows.push({
           backend: 'wasm',
-          op: 'kmer',
+          op: 'dense-kmer',
+          supported: false,
+          notes: wasm.error ?? 'WASM module failed to load',
+        });
+        nextRows.push({
+          backend: 'wasm',
+          op: 'minhash',
           supported: false,
           notes: wasm.error ?? 'WASM module failed to load',
         });
@@ -277,36 +316,146 @@ export function GpuWasmBenchmarkOverlay({
           notes: wasm.error ?? 'WASM module failed to load',
         });
       } else {
-        // k-mer (WASM) - use analyze_kmers(seq, seq) as a k-mer-heavy proxy.
-        try {
-          const measured = await benchAsync({
-            warmup: async () => {
-              const r = wasm.module!.analyze_kmers(seq, seq, k);
-              r.free();
-            },
-            run: async () => {
-              const r = wasm.module!.analyze_kmers(seq, seq, k);
-              r.free();
-            },
-            runs,
-          });
+        // Dense k-mer counts (WASM)
+        if (!seqBytes) {
           nextRows.push({
             backend: 'wasm',
-            op: 'kmer',
-            supported: true,
-            warmupMs: measured.warmupMs,
-            medianMs: measured.medianMs,
-            runs,
-            notes: `analyze_kmers(seq, seq), k=${k}`,
-          });
-        } catch (err) {
-          nextRows.push({
-            backend: 'wasm',
-            op: 'kmer',
+            op: 'dense-kmer',
             supported: false,
-            error: err instanceof Error ? err.message : String(err),
-            notes: `k=${k}`,
+            notes: 'TextEncoder unavailable (cannot build ASCII bytes)',
           });
+        } else if (k > DENSE_KMER_MAX_K) {
+          nextRows.push({
+            backend: 'wasm',
+            op: 'dense-kmer',
+            supported: false,
+            notes: `k=${k} exceeds dense cap (max=${DENSE_KMER_MAX_K}, ${denseKmerMemoryCostHuman(k)}) · sample=${usedSampleBp.toLocaleString()}bp`,
+          });
+        } else if (
+          canonical
+            ? typeof wasm.module!.count_kmers_dense_canonical !== 'function'
+            : typeof wasm.module!.count_kmers_dense !== 'function'
+        ) {
+          nextRows.push({
+            backend: 'wasm',
+            op: 'dense-kmer',
+            supported: false,
+            notes: 'WASM dense k-mer kernel not available in this build',
+          });
+        } else {
+          try {
+            const fn = canonical ? wasm.module!.count_kmers_dense_canonical : wasm.module!.count_kmers_dense;
+            const measured = await benchAsync({
+              warmup: async () => {
+                const r = fn(seqBytes, k);
+                try {
+                  void r.total_valid;
+                  void r.unique_count;
+                  void r.counts;
+                } finally {
+                  r.free();
+                }
+              },
+              run: async () => {
+                const r = fn(seqBytes, k);
+                try {
+                  void r.total_valid;
+                  void r.unique_count;
+                  void r.counts;
+                } finally {
+                  r.free();
+                }
+              },
+              runs,
+            });
+            nextRows.push({
+              backend: 'wasm',
+              op: 'dense-kmer',
+              supported: true,
+              warmupMs: measured.warmupMs,
+              medianMs: measured.medianMs,
+              runs,
+              notes: `k=${k} · canonical=${canonical ? 'yes' : 'no'} · sample=${usedSampleBp.toLocaleString()}bp`,
+            });
+          } catch (err) {
+            nextRows.push({
+              backend: 'wasm',
+              op: 'dense-kmer',
+              supported: false,
+              error: err instanceof Error ? err.message : String(err),
+              notes: `k=${k} · canonical=${canonical ? 'yes' : 'no'} · sample=${usedSampleBp.toLocaleString()}bp`,
+            });
+          }
+        }
+
+        // MinHash signature (WASM)
+        if (!seqBytes) {
+          nextRows.push({
+            backend: 'wasm',
+            op: 'minhash',
+            supported: false,
+            notes: 'TextEncoder unavailable (cannot build ASCII bytes)',
+          });
+        } else if (minhashHashes <= 0 || !Number.isFinite(minhashHashes)) {
+          nextRows.push({
+            backend: 'wasm',
+            op: 'minhash',
+            supported: false,
+            notes: 'Invalid num_hashes',
+          });
+        } else if (
+          canonical
+            ? typeof wasm.module!.minhash_signature_canonical !== 'function'
+            : typeof wasm.module!.minhash_signature !== 'function'
+        ) {
+          nextRows.push({
+            backend: 'wasm',
+            op: 'minhash',
+            supported: false,
+            notes: 'WASM MinHash kernel not available in this build',
+          });
+        } else {
+          try {
+            const fn = canonical ? wasm.module!.minhash_signature_canonical : wasm.module!.minhash_signature;
+            const measured = await benchAsync({
+              warmup: async () => {
+                const sig = fn(seqBytes, k, minhashHashes);
+                try {
+                  void sig.num_hashes;
+                  void sig.signature;
+                } finally {
+                  sig.free();
+                }
+              },
+              run: async () => {
+                const sig = fn(seqBytes, k, minhashHashes);
+                try {
+                  void sig.num_hashes;
+                  void sig.signature;
+                } finally {
+                  sig.free();
+                }
+              },
+              runs,
+            });
+            nextRows.push({
+              backend: 'wasm',
+              op: 'minhash',
+              supported: true,
+              warmupMs: measured.warmupMs,
+              medianMs: measured.medianMs,
+              runs,
+              notes: `k=${k} · hashes=${minhashHashes} · canonical=${canonical ? 'yes' : 'no'} · sample=${usedSampleBp.toLocaleString()}bp`,
+            });
+          } catch (err) {
+            nextRows.push({
+              backend: 'wasm',
+              op: 'minhash',
+              supported: false,
+              error: err instanceof Error ? err.message : String(err),
+              notes: `k=${k} · hashes=${minhashHashes} · canonical=${canonical ? 'yes' : 'no'} · sample=${usedSampleBp.toLocaleString()}bp`,
+            });
+          }
         }
 
         // GC skew (WASM)
@@ -327,7 +476,7 @@ export function GpuWasmBenchmarkOverlay({
             warmupMs: measured.warmupMs,
             medianMs: measured.medianMs,
             runs,
-            notes: `compute_gc_skew(window=${gcWindow}, step=${gcStep})`,
+            notes: `compute_gc_skew(window=${gcWindow}, step=${gcStep}) · sample=${usedSampleBp.toLocaleString()}bp`,
           });
         } catch (err) {
           nextRows.push({
@@ -335,7 +484,54 @@ export function GpuWasmBenchmarkOverlay({
             op: 'gc-skew',
             supported: false,
             error: err instanceof Error ? err.message : String(err),
-            notes: `window=${gcWindow}, step=${gcStep}`,
+            notes: `window=${gcWindow}, step=${gcStep} · sample=${usedSampleBp.toLocaleString()}bp`,
+          });
+        }
+      }
+
+      // ---------------------------------------------------------------------
+      // JS benchmarks (baseline)
+      // ---------------------------------------------------------------------
+      if (k > DENSE_KMER_MAX_K) {
+        nextRows.push({
+          backend: 'js',
+          op: 'dense-kmer',
+          supported: false,
+          notes: `k=${k} exceeds dense cap (max=${DENSE_KMER_MAX_K}, ${denseKmerMemoryCostHuman(k)}) · sample=${usedSampleBp.toLocaleString()}bp`,
+        });
+      } else {
+        try {
+          const measured = await benchAsync({
+            warmup: async () => {
+              const out = countKmersDenseJS(seqBytes ?? seq, k);
+              void out.totalValid;
+              void out.uniqueCount;
+              void out.counts;
+            },
+            run: async () => {
+              const out = countKmersDenseJS(seqBytes ?? seq, k);
+              void out.totalValid;
+              void out.uniqueCount;
+              void out.counts;
+            },
+            runs,
+          });
+          nextRows.push({
+            backend: 'js',
+            op: 'dense-kmer',
+            supported: true,
+            warmupMs: measured.warmupMs,
+            medianMs: measured.medianMs,
+            runs,
+            notes: `k=${k} · sample=${usedSampleBp.toLocaleString()}bp`,
+          });
+        } catch (err) {
+          nextRows.push({
+            backend: 'js',
+            op: 'dense-kmer',
+            supported: false,
+            error: err instanceof Error ? err.message : String(err),
+            notes: `k=${k} · sample=${usedSampleBp.toLocaleString()}bp`,
           });
         }
       }
@@ -402,6 +598,29 @@ export function GpuWasmBenchmarkOverlay({
               max={12}
               step={1}
               onChange={(e) => setK(Math.max(2, Math.min(12, Number(e.target.value) || 6)))}
+              style={{ padding: '0.35rem', borderRadius: '4px', border: `1px solid ${tableBorder}` }}
+            />
+          </label>
+
+          <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+            <span style={{ color: colors.textMuted, fontSize: '0.8rem' }}>Canonical (RC)</span>
+            <input
+              type="checkbox"
+              checked={canonical}
+              onChange={(e) => setCanonical(e.target.checked)}
+              style={{ width: '18px', height: '18px' }}
+            />
+          </label>
+
+          <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+            <span style={{ color: colors.textMuted, fontSize: '0.8rem' }}>MinHash hashes</span>
+            <input
+              type="number"
+              value={minhashHashes}
+              min={8}
+              max={4096}
+              step={8}
+              onChange={(e) => setMinhashHashes(Math.max(8, Math.min(4096, Number(e.target.value) || 256)))}
               style={{ padding: '0.35rem', borderRadius: '4px', border: `1px solid ${tableBorder}` }}
             />
           </label>
@@ -506,8 +725,11 @@ export function GpuWasmBenchmarkOverlay({
             }
 
             const supportedColor = row.supported ? colors.success : colors.textMuted;
-            const backendLabel = row.backend === 'gpu' ? 'WebGPU' : 'WASM';
-            const opLabel = row.op === 'kmer' ? 'k-mer' : 'GC skew';
+            const backendLabel = row.backend === 'gpu' ? 'WebGPU' : row.backend === 'wasm' ? 'WASM' : 'JS';
+            const opLabel =
+              row.op === 'dense-kmer' ? 'k-mer (dense)'
+              : row.op === 'minhash' ? 'MinHash'
+              : 'GC skew';
             const note = row.error ? `${row.notes ?? ''} ${row.error}`.trim() : row.notes ?? '';
 
             return (

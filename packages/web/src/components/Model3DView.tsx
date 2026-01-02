@@ -198,6 +198,14 @@ function getAsymmetricUnitTooltip(atomCount: number): string {
 
 function Model3DViewBase({ phage }: Model3DViewProps): React.ReactElement {
   const coarsePointer = useMemo(() => isCoarsePointerDevice(), []);
+  const supportsDvh = useMemo(() => {
+    if (typeof CSS === 'undefined') return false;
+    try {
+      return CSS.supports('height', '1dvh');
+    } catch {
+      return false;
+    }
+  }, []);
   const webglSupport = useMemo(() => detectWebGLSupport(), []);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const rendererRef = useRef<WebGLRenderer | null>(null);
@@ -1274,7 +1282,14 @@ function Model3DViewBase({ phage }: Model3DViewProps): React.ReactElement {
         className="three-container"
         ref={containerRef}
         role="presentation"
-        style={fullscreen ? { width: '100%', height: 'calc(100dvh - 120px)' } : undefined}
+        style={
+          fullscreen
+            ? {
+                width: '100%',
+                height: supportsDvh ? 'calc(100dvh - 120px)' : 'calc(100vh - 120px)',
+              }
+            : undefined
+        }
       >
         {/* Loading state with skeleton */}
         {loadState === 'loading' && (

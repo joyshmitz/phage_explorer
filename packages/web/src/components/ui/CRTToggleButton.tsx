@@ -42,10 +42,10 @@ export function CRTToggleButton({
   };
 
   const positionMap = {
-    'bottom-left': { bottom: '1rem', left: '1rem' },
-    'bottom-right': { bottom: '1rem', right: '1rem' },
-    'top-left': { top: '1rem', left: '1rem' },
-    'top-right': { top: '1rem', right: '1rem' },
+    'bottom-left': { bottom: 'calc(1rem + env(safe-area-inset-bottom))', left: 'calc(1rem + env(safe-area-inset-left))' },
+    'bottom-right': { bottom: 'calc(1rem + env(safe-area-inset-bottom))', right: 'calc(1rem + env(safe-area-inset-right))' },
+    'top-left': { top: 'calc(1rem + env(safe-area-inset-top))', left: 'calc(1rem + env(safe-area-inset-left))' },
+    'top-right': { top: 'calc(1rem + env(safe-area-inset-top))', right: 'calc(1rem + env(safe-area-inset-right))' },
   };
 
   const { button: buttonSize, icon: iconSize } = sizeMap[size];

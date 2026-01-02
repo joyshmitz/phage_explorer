@@ -10,7 +10,7 @@
  * - TOOLS: Settings, help, search, command palette
  */
 
-import React, { useCallback, useState } from 'react';
+import React, { useCallback } from 'react';
 import { usePhageStore } from '@phage-explorer/state';
 import { BottomSheet } from '../mobile/BottomSheet';
 import { useOverlay, type OverlayId } from '../overlays/OverlayProvider';
@@ -71,8 +71,9 @@ export function ActionDrawer({ isOpen, onClose }: ActionDrawerProps): React.Reac
   const toggleViewMode = usePhageStore((s) => s.toggleViewMode);
   const show3DModel = usePhageStore((s) => s.show3DModel);
   const toggle3DModel = usePhageStore((s) => s.toggle3DModel);
-  // TODO: Add zoomLevel to global store when needed
-  const [zoomLevel, setZoomLevel] = useState(1);
+  const zoomScale = usePhageStore((s) => s.zoomScale) ?? 1.0;
+  const zoomIn = usePhageStore((s) => s.zoomIn);
+  const zoomOut = usePhageStore((s) => s.zoomOut);
 
   // Handlers with haptic feedback
   const handleAction = useCallback(
@@ -95,13 +96,13 @@ export function ActionDrawer({ isOpen, onClose }: ActionDrawerProps): React.Reac
 
   const handleZoomIn = useCallback(() => {
     haptics.selection();
-    setZoomLevel(Math.min(zoomLevel + 0.5, 10));
-  }, [setZoomLevel, zoomLevel]);
+    zoomIn();
+  }, [zoomIn]);
 
   const handleZoomOut = useCallback(() => {
     haptics.selection();
-    setZoomLevel(Math.max(zoomLevel - 0.5, 0.5));
-  }, [setZoomLevel, zoomLevel]);
+    zoomOut();
+  }, [zoomOut]);
 
   // View mode label - use full "Amino Acids" for clarity
   const viewModeLabel = viewMode === 'dna' ? 'DNA' : viewMode === 'aa' ? 'Amino Acids' : 'Dual';
@@ -130,14 +131,14 @@ export function ActionDrawer({ isOpen, onClose }: ActionDrawerProps): React.Reac
           label: 'Zoom In',
           icon: <IconZoomIn size={20} />,
           action: handleZoomIn,
-          disabled: zoomLevel >= 10,
+          disabled: zoomScale >= 4.0,
         },
         {
           id: 'zoomOut',
           label: 'Zoom Out',
           icon: <IconZoomOut size={20} />,
           action: handleZoomOut,
-          disabled: zoomLevel <= 0.5,
+          disabled: zoomScale <= 0.1,
         },
       ],
     },
@@ -244,7 +245,7 @@ export function ActionDrawer({ isOpen, onClose }: ActionDrawerProps): React.Reac
       minHeight={35}
       maxHeight={85}
     >
-      <div className="action-drawer" id="action-drawer" role="menu">
+      <div className="action-drawer" id="action-drawer">
         {categories.map((category) => (
           <div key={category.id} className="action-drawer__category">
             <h3 className="action-drawer__category-label">{category.label}</h3>
@@ -253,7 +254,6 @@ export function ActionDrawer({ isOpen, onClose }: ActionDrawerProps): React.Reac
                 <button
                   key={item.id}
                   type="button"
-                  role="menuitem"
                   className={`action-drawer__item ${item.active ? 'action-drawer__item--active' : ''} ${item.disabled ? 'action-drawer__item--disabled' : ''}`}
                   onClick={item.action}
                   disabled={item.disabled}

@@ -4,7 +4,7 @@
  * Displays direct repeats, inverted repeats, and palindromic sequences.
  */
 
-import React, { useEffect, useMemo, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import type { PhageFull } from '@phage-explorer/core';
 import type { PhageRepository } from '../../db';
 import { useTheme } from '../../hooks/useTheme';
@@ -12,80 +12,15 @@ import { useHotkey } from '../../hooks';
 import { Overlay } from './Overlay';
 import { useOverlay } from './OverlayProvider';
 import { AnalysisPanelSkeleton } from '../ui/Skeleton';
+import { getOrchestrator } from '../../workers/ComputeOrchestrator';
+import type { RepeatResult } from '../../workers/types';
 
 interface RepeatsOverlayProps {
   repository: PhageRepository | null;
   currentPhage: PhageFull | null;
 }
 
-interface RepeatInfo {
-  type: 'direct' | 'inverted' | 'palindrome';
-  position1: number;
-  position2?: number;
-  sequence: string;
-  length: number;
-}
-
-// Reverse complement
-function reverseComplement(seq: string): string {
-  const complement: Record<string, string> = { A: 'T', T: 'A', C: 'G', G: 'C' };
-  return seq.split('').reverse().map(c => complement[c] || c).join('');
-}
-
-// Find repeats in sequence
-function findRepeats(sequence: string, minLength = 8, maxGap = 5000): RepeatInfo[] {
-  const repeats: RepeatInfo[] = [];
-  const seq = sequence.toUpperCase();
-
-  // Sample positions for efficiency
-  const step = Math.max(1, Math.floor(seq.length / 500));
-
-  for (let i = 0; i < seq.length - minLength; i += step) {
-    const pattern = seq.slice(i, i + minLength);
-    if (/[^ACGT]/.test(pattern)) continue;
-
-    // Look for direct repeats
-    const searchStart = Math.min(i + minLength, seq.length);
-    const searchEnd = Math.min(i + maxGap, seq.length);
-    const searchRegion = seq.slice(searchStart, searchEnd);
-
-    let idx = searchRegion.indexOf(pattern);
-    if (idx !== -1 && repeats.length < 50) {
-      repeats.push({
-        type: 'direct',
-        position1: i,
-        position2: searchStart + idx,
-        sequence: pattern,
-        length: minLength,
-      });
-    }
-
-    // Look for inverted repeats
-    const revComp = reverseComplement(pattern);
-    idx = searchRegion.indexOf(revComp);
-    if (idx !== -1 && repeats.length < 50) {
-      repeats.push({
-        type: 'inverted',
-        position1: i,
-        position2: searchStart + idx,
-        sequence: pattern,
-        length: minLength,
-      });
-    }
-
-    // Check if palindrome (self-complementary)
-    if (pattern === revComp && repeats.length < 50) {
-      repeats.push({
-        type: 'palindrome',
-        position1: i,
-        sequence: pattern,
-        length: minLength,
-      });
-    }
-  }
-
-  return repeats;
-}
+type RepeatInfo = RepeatResult['repeats'][number];
 
 export function RepeatsOverlay({
   repository,
@@ -96,7 +31,9 @@ export function RepeatsOverlay({
   const { isOpen, toggle } = useOverlay();
   const sequenceCache = useRef<Map<number, string>>(new Map());
   const [sequence, setSequence] = useState<string>('');
-  const [loading, setLoading] = useState(false);
+  const [sequenceLoading, setSequenceLoading] = useState(false);
+  const [analysisLoading, setAnalysisLoading] = useState(false);
+  const [repeats, setRepeats] = useState<RepeatInfo[]>([]);
 
   // Hotkey to toggle overlay
   useHotkey(
@@ -111,7 +48,9 @@ export function RepeatsOverlay({
     if (!isOpen('repeats')) return;
     if (!repository || !currentPhage) {
       setSequence('');
-      setLoading(false);
+      setRepeats([]);
+      setSequenceLoading(false);
+      setAnalysisLoading(false);
       return;
     }
 
@@ -120,11 +59,11 @@ export function RepeatsOverlay({
     // Check cache
     if (sequenceCache.current.has(phageId)) {
       setSequence(sequenceCache.current.get(phageId) ?? '');
-      setLoading(false);
+      setSequenceLoading(false);
       return;
     }
 
-    setLoading(true);
+    setSequenceLoading(true);
     repository
       .getFullGenomeLength(phageId)
       .then((length: number) => repository.getSequenceWindow(phageId, 0, length))
@@ -133,13 +72,51 @@ export function RepeatsOverlay({
         setSequence(seq);
       })
       .catch(() => setSequence(''))
-      .finally(() => setLoading(false));
+      .finally(() => setSequenceLoading(false));
   }, [isOpen, repository, currentPhage]);
 
-  const repeats = useMemo(() => findRepeats(sequence), [sequence]);
+  // Compute repeats in the analysis worker to avoid main-thread jank.
+  useEffect(() => {
+    if (!isOpen('repeats')) return;
+    if (!currentPhage) return;
+
+    if (!sequence) {
+      setRepeats([]);
+      setAnalysisLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    setAnalysisLoading(true);
+
+    (async () => {
+      try {
+        const result = await getOrchestrator().runAnalysisWithSharedBuffer(
+          currentPhage.id,
+          sequence,
+          'repeats',
+          { minLength: 8, maxGap: 5000 }
+        ) as RepeatResult;
+
+        if (cancelled) return;
+        setRepeats(result.repeats);
+      } catch {
+        if (cancelled) return;
+        setRepeats([]);
+      } finally {
+        if (!cancelled) setAnalysisLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen, currentPhage, sequence]);
+
   const direct = repeats.filter(r => r.type === 'direct');
   const inverted = repeats.filter(r => r.type === 'inverted');
   const palindromes = repeats.filter(r => r.type === 'palindrome');
+  const tandem = repeats.filter(r => r.type === 'tandem');
 
   if (!isOpen('repeats')) {
     return null;
@@ -149,12 +126,14 @@ export function RepeatsOverlay({
     direct: colors.primary,
     inverted: colors.warning,
     palindrome: colors.accent,
+    tandem: colors.info,
   };
 
   const typeIcons = {
     direct: '→→',
     inverted: '→←',
     palindrome: '↔',
+    tandem: '⟲',
   };
 
   return (
@@ -166,12 +145,15 @@ export function RepeatsOverlay({
     >
       <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
         {/* Loading State */}
-        {loading && (
-          <AnalysisPanelSkeleton message="Loading sequence data..." rows={3} />
+        {(sequenceLoading || analysisLoading) && (
+          <AnalysisPanelSkeleton
+            message={sequenceLoading ? 'Loading sequence data...' : 'Analyzing repeats...'}
+            rows={3}
+          />
         )}
 
         {/* Description */}
-        {!loading && (
+        {!sequenceLoading && !analysisLoading && (
           <div style={{
             padding: '0.75rem',
             backgroundColor: colors.backgroundAlt,
@@ -185,10 +167,10 @@ export function RepeatsOverlay({
         )}
 
         {/* Stats */}
-        {!loading && sequence.length > 0 && (
+        {!sequenceLoading && !analysisLoading && sequence.length > 0 && (
           <div style={{
             display: 'grid',
-            gridTemplateColumns: 'repeat(3, 1fr)',
+            gridTemplateColumns: 'repeat(4, 1fr)',
             gap: '1rem',
           }}>
             <div style={{ textAlign: 'center', padding: '0.75rem', backgroundColor: colors.backgroundAlt, borderRadius: '4px' }}>
@@ -203,11 +185,15 @@ export function RepeatsOverlay({
               <div style={{ color: colors.accent, fontSize: '0.75rem' }}>Palindromes</div>
               <div style={{ color: colors.text, fontFamily: 'monospace', fontSize: '1.5rem' }}>{palindromes.length}</div>
             </div>
+            <div style={{ textAlign: 'center', padding: '0.75rem', backgroundColor: colors.backgroundAlt, borderRadius: '4px' }}>
+              <div style={{ color: colors.info, fontSize: '0.75rem' }}>Tandem Repeats</div>
+              <div style={{ color: colors.text, fontFamily: 'monospace', fontSize: '1.5rem' }}>{tandem.length}</div>
+            </div>
           </div>
         )}
 
         {/* Repeats table */}
-        {!loading && sequence.length > 0 && (
+        {!sequenceLoading && !analysisLoading && sequence.length > 0 && (
           <div style={{
             maxHeight: '300px',
             overflowY: 'auto',
@@ -262,7 +248,7 @@ export function RepeatsOverlay({
         )}
 
         {/* Legend */}
-        {!loading && sequence.length > 0 && (
+        {!sequenceLoading && !analysisLoading && sequence.length > 0 && (
           <div style={{
             display: 'flex',
             justifyContent: 'center',
@@ -273,10 +259,11 @@ export function RepeatsOverlay({
             <span><span style={{ color: colors.primary }}>→→</span> Direct (same strand)</span>
             <span><span style={{ color: colors.warning }}>→←</span> Inverted (hairpin)</span>
             <span><span style={{ color: colors.accent }}>↔</span> Palindrome (self-complementary)</span>
+            <span><span style={{ color: colors.info }}>⟲</span> Tandem (consecutive copies)</span>
           </div>
         )}
 
-        {!loading && sequence.length === 0 && (
+        {!sequenceLoading && !analysisLoading && sequence.length === 0 && (
           <div style={{ textAlign: 'center', padding: '2rem', color: colors.textMuted }}>
             No sequence data available. Select a phage to analyze.
           </div>
