@@ -226,19 +226,33 @@ export function applyDiff(
   referenceSequence: string,
   mode: ViewMode,
   frame: ReadingFrame,
-  startIndex: number = 0
+  startIndex: number = 0,
+  totalLength?: number
 ): GridRow[] {
   const forwardFrame: 0 | 1 | 2 = frame >= 0
     ? (frame as 0 | 1 | 2)
     : ((Math.abs(frame) - 1) as 0 | 1 | 2);
     
   let refToCompare: string;
+  let aaAlignStart: number | null = null;
   
   if (mode === 'aa') {
-    // Calculate local offset into the reference chunk that aligns with global frame
-    // We want (startIndex + offset - forwardFrame) % 3 == 0
-    const offset = ((forwardFrame - startIndex) % 3 + 3) % 3;
-    refToCompare = translateSequence(referenceSequence, offset as 0 | 1 | 2);
+    if (frame >= 0) {
+      // Calculate local offset into the reference chunk that aligns with global frame
+      // We want (startIndex + offset - forwardFrame) % 3 == 0
+      const offset = ((forwardFrame - startIndex) % 3 + 3) % 3;
+      refToCompare = translateSequence(referenceSequence, offset as 0 | 1 | 2);
+      aaAlignStart = startIndex + offset;
+    } else {
+      // Reverse frame: translate reverse-complement and mirror to forward coordinates.
+      const totalLen = totalLength ?? (startIndex + referenceSequence.length);
+      const globalRcStart = totalLen - startIndex - referenceSequence.length;
+      const offset = ((forwardFrame - globalRcStart) % 3 + 3) % 3;
+      const gap = ((referenceSequence.length - offset) % 3 + 3) % 3;
+      const rc = reverseComplement(referenceSequence);
+      refToCompare = translateSequence(rc, offset as 0 | 1 | 2).split('').reverse().join('');
+      aaAlignStart = startIndex + gap;
+    }
   } else {
     refToCompare = referenceSequence;
   }
@@ -268,8 +282,7 @@ export function applyDiff(
         // cell.position = startIndex + offset + k*3
         // k = (cell.position - (startIndex + offset)) / 3
         
-        const offset = ((forwardFrame - startIndex) % 3 + 3) % 3;
-        const alignStart = startIndex + offset;
+        const alignStart = aaAlignStart ?? startIndex;
         
         // Only valid if cell.position is aligned to the frame grid (which it should be from buildGrid)
         refIndex = Math.floor((cell.position - alignStart) / 3);

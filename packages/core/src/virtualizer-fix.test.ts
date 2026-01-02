@@ -64,5 +64,19 @@ describe('virtualizer', () => {
       const diffed2 = applyDiff(grid2, 'GTG', 'aa', 0, 3);
       expect(diffed2[0].cells[0].diff).toBe('same');
     });
+
+    test('AA mode diff aligns for reverse frames', () => {
+      const sequence = 'ATGAAAT';
+      const grid = buildGrid(sequence, 0, {
+        viewportCols: 10,
+        viewportRows: 1,
+        mode: 'aa',
+        frame: -1,
+        totalLength: sequence.length,
+      });
+
+      const diffed = applyDiff(grid, sequence, 'aa', -1, 0, sequence.length);
+      expect(diffed[0].cells.map(c => c.diff)).toEqual(['same', 'same']);
+    });
   });
 });

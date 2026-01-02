@@ -10,6 +10,68 @@
 import type { KmerVector } from './kmer-frequencies';
 import { indexToKmer } from './kmer-frequencies';
 
+// ============================================================================
+// WASM PCA Loader (best-effort, sync callers)
+// ============================================================================
+
+interface WasmPcaResultF32 {
+  eigenvectors: Float32Array;
+  eigenvalues: Float32Array;
+  mean: Float32Array;
+  total_variance: number;
+  n_components: number;
+  n_features: number;
+  free(): void;
+}
+
+type WasmPcaFn = (
+  data: Float32Array,
+  nSamples: number,
+  nFeatures: number,
+  nComponents: number,
+  maxIterations: number,
+  tolerance: number
+) => WasmPcaResultF32;
+
+let wasmPca: WasmPcaFn | null = null;
+let wasmPcaAvailable = false;
+let wasmPcaInitStarted = false;
+
+// Heuristic: only use WASM when the matrix is large enough to amortize boundary/copy overhead.
+// `nSamples * nFeatures` roughly corresponds to the hot-loop work per power-iteration step.
+const PCA_WASM_MIN_ELEMENTS = 80_000;
+
+async function initWasmPca(): Promise<void> {
+  if (wasmPcaInitStarted) return;
+  wasmPcaInitStarted = true;
+
+  try {
+    const wasm = await import('@phage/wasm-compute');
+    // wasm-compute may require explicit async init (depending on build target).
+    // Keep this best-effort so we can fall back cleanly if init fails.
+    const maybeInit = (wasm as unknown as { default?: () => Promise<void> }).default;
+    if (typeof maybeInit === 'function') {
+      await maybeInit();
+    }
+
+    const fn = (wasm as unknown as { pca_power_iteration_f32?: unknown }).pca_power_iteration_f32;
+    if (typeof fn !== 'function') return;
+
+    wasmPca = fn as WasmPcaFn;
+
+    // Quick smoke-test so we don't mark available with a mismatched ABI.
+    const test = wasmPca(new Float32Array([0, 0, 2, 0, 0, 1, 2, 1]), 4, 2, 2, 50, 1e-6);
+    wasmPcaAvailable = test.n_features === 2 && test.n_components === 2;
+    test.free();
+  } catch {
+    wasmPcaAvailable = false;
+    wasmPca = null;
+  }
+}
+
+// Initialize on module load (non-blocking)
+initWasmPca().catch(() => { /* WASM unavailable */ });
+
 export interface PCAProjection {
   phageId: number;
   name: string;
@@ -67,6 +129,24 @@ function centerData(data: Float32Array[], mean: Float32Array): Float32Array[] {
     }
     return centered;
   });
+}
+
+function canonicalizeSign(v: Float32Array): void {
+  if (v.length === 0) return;
+  let maxIdx = 0;
+  let maxAbs = Math.abs(v[0]);
+  for (let i = 1; i < v.length; i++) {
+    const abs = Math.abs(v[i]);
+    if (abs > maxAbs) {
+      maxAbs = abs;
+      maxIdx = i;
+    }
+  }
+  if (v[maxIdx] < 0) {
+    for (let i = 0; i < v.length; i++) {
+      v[i] = -v[i];
+    }
+  }
 }
 
 /**
@@ -137,6 +217,14 @@ function deflate(v: Float32Array, u: Float32Array): void {
   }
 }
 
+function dotCentered(sample: Float32Array, mean: Float32Array, loading: Float32Array): number {
+  let sum = 0;
+  for (let i = 0; i < sample.length; i++) {
+    sum += (sample[i] - mean[i]) * loading[i];
+  }
+  return sum;
+}
+
 /**
  * Power iteration to find the top eigenvector of X^T * X
  * Uses the trick: X^T * X * v = X^T * (X * v) to avoid forming the d x d matrix
@@ -150,10 +238,12 @@ function powerIteration(
 ): { eigenvector: Float32Array; eigenvalue: number } {
   const n = X.length;
 
-  // Initialize with random vector - use explicit type to allow reassignment
+  // Initialize with deterministic vector (avoids Math.random() so output is stable).
+  // Mirrors the deterministic initialization used by the WASM PCA kernel.
   let v: Float32Array = new Float32Array(dim);
   for (let i = 0; i < dim; i++) {
-    v[i] = Math.random() - 0.5;
+    const seed = ((i * 7919 + 104729) % 1000) / 1000;
+    v[i] = seed - 0.5;
   }
 
   // Remove projections onto previous components
@@ -204,6 +294,8 @@ function powerIteration(
     }
   }
 
+  canonicalizeSign(v);
+
   // The eigenvalue is scaled by n-1 for sample covariance
   // Guard against n=1 (single sample)
   return { eigenvector: v, eigenvalue: eigenvalue / Math.max(1, n - 1) };
@@ -236,7 +328,79 @@ export function performPCA(
   // Extract frequency data
   const data = vectors.map(v => v.frequencies);
 
-  // Compute mean and center data
+  const nComponents = Math.min(numComponents, Math.min(n, dim));
+  const matrixElements = n * dim;
+  const shouldUseWasm = matrixElements >= PCA_WASM_MIN_ELEMENTS;
+
+  // Fast path: WASM PCA (Float32 ABI), falls back to JS implementation.
+  if (shouldUseWasm && wasmPcaAvailable && wasmPca) {
+    try {
+      const flat = new Float32Array(n * dim);
+      for (let i = 0; i < n; i++) {
+        flat.set(data[i], i * dim);
+      }
+
+      const result = wasmPca(flat, n, dim, nComponents, maxIterations, tolerance);
+      try {
+        // Copy out WASM-backed buffers before free() to avoid use-after-free.
+        const mean = new Float32Array(result.mean);
+        const totalVariance = result.total_variance;
+        const eigenvalues = Array.from(result.eigenvalues);
+
+        const loadings: Float32Array[] = [];
+        for (let k = 0; k < result.n_components; k++) {
+          const slice = result.eigenvectors.subarray(k * dim, (k + 1) * dim);
+          const loading = new Float32Array(slice);
+          canonicalizeSign(loading);
+          loadings.push(loading);
+        }
+
+        const varianceExplained = eigenvalues.map(ev =>
+          totalVariance > 0 ? ev / totalVariance : 0
+        );
+        const cumulativeVariance: number[] = [];
+        let cumSum = 0;
+        for (const ve of varianceExplained) {
+          cumSum += ve;
+          cumulativeVariance.push(cumSum);
+        }
+
+        const projections: PCAProjection[] = vectors.map((vec) => {
+          const proj: PCAProjection = {
+            phageId: vec.phageId,
+            name: vec.name,
+            pc1: dotCentered(vec.frequencies, mean, loadings[0]!),
+            pc2: loadings.length > 1 ? dotCentered(vec.frequencies, mean, loadings[1]!) : 0,
+            gcContent: vec.gcContent,
+            genomeLength: vec.genomeLength,
+          };
+          if (loadings.length > 2) {
+            proj.pc3 = dotCentered(vec.frequencies, mean, loadings[2]!);
+          }
+          return proj;
+        });
+
+        return {
+          projections,
+          eigenvalues,
+          varianceExplained,
+          cumulativeVariance,
+          loadings,
+          mean,
+          totalVariance,
+        };
+      } finally {
+        result.free();
+      }
+    } catch {
+      // Fall through to JS PCA.
+    }
+  } else if (shouldUseWasm && !wasmPcaInitStarted) {
+    // Warm the WASM module for the next call without blocking this synchronous API.
+    initWasmPca().catch(() => { /* WASM unavailable */ });
+  }
+
+  // JS fallback: Compute mean and center data
   const mean = computeMean(data, dim);
   const centered = centerData(data, mean);
 
@@ -253,7 +417,6 @@ export function performPCA(
   // Find top principal components using power iteration
   const eigenvalues: number[] = [];
   const loadings: Float32Array[] = [];
-  const nComponents = Math.min(numComponents, Math.min(n, dim));
 
   for (let k = 0; k < nComponents; k++) {
     const { eigenvector, eigenvalue } = powerIteration(

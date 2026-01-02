@@ -55,6 +55,12 @@ async function initWasmKmerCounter(): Promise<void> {
   if (wasmAvailable) return;
   try {
     const wasm = await import('@phage/wasm-compute');
+    // wasm-compute may require explicit async init (depending on build target).
+    // Keep this best-effort so we can fall back cleanly if init fails.
+    const maybeInit = (wasm as unknown as { default?: () => Promise<void> }).default;
+    if (typeof maybeInit === 'function') {
+      await maybeInit();
+    }
     wasmCountKmersDense = wasm.count_kmers_dense;
     wasmScanKLWindows = wasm.scan_kl_windows;
 
