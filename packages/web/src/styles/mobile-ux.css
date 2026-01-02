@@ -1052,18 +1052,13 @@ html {
   }
 
   /* Fix: iOS form elements have default styling that can't be overridden without this */
+  /* Also: font-size 16px prevents iOS Safari from zooming on input focus */
   input,
   textarea,
   select {
     -webkit-appearance: none;
     appearance: none;
     border-radius: 0; /* iOS adds rounded corners by default */
-  }
-
-  /* Fix: prevent iOS Safari from zooming inputs with small font sizes */
-  input,
-  textarea,
-  select {
     font-size: 16px;
   }
 
