@@ -1,4 +1,4 @@
-import type { PhageRepository } from '@phage-explorer/db-runtime';
+import type { PhageRepository } from '../db';
 import type { SequenceSource, SequenceWindow } from './types';
 
 /**
@@ -35,4 +35,3 @@ export class RepositorySequenceSource implements SequenceSource {
     return this.repo.getFullGenomeLength(this.phageId);
   }
 }
-

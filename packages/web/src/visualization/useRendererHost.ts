@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import type { Theme } from '@phage-explorer/core';
-import type { PhageRepository } from '@phage-explorer/db-runtime';
+import type { PhageRepository } from '../db';
 import type { RenderFrameInput, SequenceSource } from './types';
 import { RendererHost } from './rendererHost';
 
@@ -57,4 +57,3 @@ export function useRendererHost(opts: UseRendererHostOptions) {
 
   return { render, setPhage };
 }
-

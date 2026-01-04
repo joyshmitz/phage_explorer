@@ -1,5 +1,5 @@
 import type { Theme } from '@phage-explorer/core';
-import type { PhageRepository } from '@phage-explorer/db-runtime';
+import type { PhageRepository } from '../db';
 import { GlyphAtlas } from './glyphAtlas';
 import { RepositorySequenceSource } from './repoSequenceSource';
 import { SequenceGridRenderer } from './sequenceGridRenderer';

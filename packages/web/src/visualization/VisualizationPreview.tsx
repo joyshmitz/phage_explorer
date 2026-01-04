@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useRendererHost } from './useRendererHost';
 import type { Theme } from '@phage-explorer/core';
-import type { PhageRepository } from '@phage-explorer/db-runtime';
+import type { PhageRepository } from '../db';
 import type { RenderFrameInput, SequenceSource } from './types';
 import { getMockSequence, hasMockSequence } from './mockSequenceSource';
 
@@ -100,4 +100,3 @@ export const VisualizationPreview: React.FC<VisualizationPreviewProps> = ({ repo
     </div>
   );
 };
-
