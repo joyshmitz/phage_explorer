@@ -9,7 +9,11 @@ import {
   type LoadingStage,
 } from '../visualization/structure-loader';
 
-let structureCacheModule: typeof import('../db/structure-cache') | null = null;
+type StructureCacheModule = {
+  isStructureCached: (pdbId: string) => Promise<boolean>;
+};
+
+let structureCacheModule: StructureCacheModule | null = null;
 async function isStructureCached(pdbId: string): Promise<boolean> {
   try {
     if (!structureCacheModule) {

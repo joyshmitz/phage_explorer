@@ -131,7 +131,6 @@ export async function cacheStructure(
 async function evictIfNeeded(db: IDBDatabase): Promise<void> {
   const tx = db.transaction(STORE_NAME, 'readwrite');
   const store = tx.objectStore(STORE_NAME);
-  const index = store.index('accessedAt');
 
   // Get all entries to calculate total size
   const entries: CachedStructure[] = await new Promise((resolve, reject) => {

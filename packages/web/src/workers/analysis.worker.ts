@@ -78,14 +78,6 @@ const CODON_TABLE: Record<string, string> = {
 // Byte-backed sequence helpers (no giant intermediate strings)
 // ============================================================
 
-function isACGTAsciiByte(b: number): boolean {
-  // Upper + lower case; treat U as T for robustness.
-  return (
-    b === 65 || b === 67 || b === 71 || b === 84 || b === 85 ||
-    b === 97 || b === 99 || b === 103 || b === 116 || b === 117
-  );
-}
-
 function asciiToAcgt05(b: number): 0 | 1 | 2 | 3 | 4 {
   // Uppercase
   if (b === 65 || b === 97) return 0; // A/a
@@ -94,24 +86,6 @@ function asciiToAcgt05(b: number): 0 | 1 | 2 | 3 | 4 {
   if (b === 84 || b === 116) return 3; // T/t
   if (b === 85 || b === 117) return 3; // U/u -> T
   return 4; // N/ambiguous
-}
-
-function encodeAsciiToAcgt05(src: Uint8Array, dst?: Uint8Array): Uint8Array {
-  const out = dst ?? new Uint8Array(src.length);
-  for (let i = 0; i < src.length; i++) {
-    out[i] = asciiToAcgt05(src[i]);
-  }
-  return out;
-}
-
-interface Rolling2BitState {
-  /** Packed 2-bit codes for the last k bases. */
-  value: number;
-  /** Consecutive valid (ACGT) bases observed so far (resets on ambiguity). */
-  valid: number;
-  /** Bitmask for keeping only the last k codes (2*k bits). */
-  mask: number;
-  k: number;
 }
 
 function popcount32(x: number): number {
@@ -163,35 +137,6 @@ function uniqueTrimerRatioAt(seq: string, start: number, windowSize: number): nu
 
   const unique = popcount32(seenLo) + popcount32(seenHi);
   return unique / maxPossible;
-}
-
-function createRolling2BitState(k: number): Rolling2BitState {
-  // This representation is limited to k <= 15 (2*k <= 30) to stay in safe 32-bit bitwise ops.
-  const safeK = Math.max(1, Math.min(15, Math.floor(k)));
-  return {
-    value: 0,
-    valid: 0,
-    mask: (1 << (safeK * 2)) - 1,
-    k: safeK,
-  };
-}
-
-/**
- * Rolling 2-bit update with deterministic ambiguity handling.
- *
- * ABI rule: anything not A/C/G/T (code 4) resets rolling state, so no k-mer spans ambiguity.
- * Returns true if the rolling window is "full" (k consecutive valid bases observed).
- */
-function rolling2bitUpdate(state: Rolling2BitState, code: 0 | 1 | 2 | 3 | 4): boolean {
-  if (code > 3) {
-    state.value = 0;
-    state.valid = 0;
-    return false;
-  }
-
-  state.value = ((state.value << 2) | code) & state.mask;
-  state.valid = Math.min(state.k, state.valid + 1);
-  return state.valid === state.k;
 }
 
 function decodeAsciiBytes(bytes: Uint8Array): string {
@@ -312,7 +257,11 @@ async function calculateGCSkewWasm(sequence: string, windowSize = 1000): Promise
 
   try {
     const wasm = await getWasmCompute();
-    if (wasm && typeof wasm.compute_gc_skew === 'function') {
+    if (
+      wasm &&
+      typeof wasm.compute_gc_skew === 'function' &&
+      typeof wasm.compute_cumulative_gc_skew === 'function'
+    ) {
       // Use WASM for acceleration
       const skew = Array.from(wasm.compute_gc_skew(seq, windowSize, stepSize));
       const cumulative = Array.from(wasm.compute_cumulative_gc_skew(seq));
@@ -379,7 +328,7 @@ async function calculateComplexity(sequence: string, windowSize = 100): Promise<
   // Bead: phage_explorer-yvs8.4
   try {
     const wasm = await getWasmCompute();
-    if (wasm) {
+    if (wasm && typeof wasm.compute_windowed_entropy_acgt === 'function') {
       const wasmEntropy = wasm.compute_windowed_entropy_acgt(seq, windowSize, stepSize);
       const windowCount = wasmEntropy.length;
 
@@ -626,7 +575,7 @@ async function findRepeats(sequence: string, minLength = 8, maxGap = 5000): Prom
 
   try {
     const wasm = await getWasmCompute();
-    if (wasm && remaining > 0 && seq.length <= wasmLengthThreshold) {
+    if (wasm && remaining > 0 && seq.length <= wasmLengthThreshold && typeof wasm.detect_palindromes === 'function') {
       didUseWasm = true;
 
       // Palindromes: treat `minLength` as a minimum total length target, but Rust takes arm length.
@@ -671,7 +620,7 @@ async function findRepeats(sequence: string, minLength = 8, maxGap = 5000): Prom
         palResult.free();
       }
 
-      if (repeats.length < maxResults) {
+      if (repeats.length < maxResults && typeof wasm.detect_tandem_repeats === 'function') {
         // Tandem repeats: scan for consecutive repeats of a unit of length ~minLength/2..minLength.
         // This keeps results useful and avoids flooding the UI with tiny microsatellites.
         const minUnit = Math.max(2, Math.floor(minLength / 2));
@@ -762,7 +711,7 @@ async function calculateCodonUsage(sequence: string): Promise<CodonUsageResult> 
   let didUseWasm = false;
   try {
     const wasm = await getWasmCompute();
-    if (wasm) {
+    if (wasm && typeof wasm.count_codon_usage === 'function') {
       const result = wasm.count_codon_usage(seq, 0);
       try {
         const parsed: unknown = JSON.parse(result.json);
@@ -855,7 +804,7 @@ async function calculateKmerSpectrum(sequence: string, k = 6): Promise<KmerSpect
   if (!spectrum && canUseDenseKmerCounts(k)) {
     try {
       const wasm = await getWasmCompute();
-      if (wasm && textEncoder) {
+      if (wasm && textEncoder && typeof wasm.count_kmers_dense === 'function') {
         // Convert sequence to bytes for WASM
         const seqBytes = textEncoder.encode(seq);
         const result = wasm.count_kmers_dense(seqBytes, k);

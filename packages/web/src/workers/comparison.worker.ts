@@ -73,26 +73,25 @@ async function tryComputeDiffWasm(
   const wasm = await getWasmCompute();
   if (!wasm) return null;
 
-  // Check for required functions
-  if (typeof wasm.myers_diff !== 'function' && typeof wasm.equal_len_diff !== 'function') {
-    return null;
-  }
+  const myersDiff = typeof wasm.myers_diff === 'function' ? wasm.myers_diff : null;
+  const equalLenDiff = typeof wasm.equal_len_diff === 'function' ? wasm.equal_len_diff : null;
+  if (!myersDiff && !equalLenDiff) return null;
 
   try {
     const seqABytes = textEncoder.encode(sequenceA);
     const seqBBytes = textEncoder.encode(sequenceB);
 
     // Use fast O(n) path for equal-length sequences
-    const useEqualLen = seqABytes.length === seqBBytes.length && typeof wasm.equal_len_diff === 'function';
+    const useEqualLen = seqABytes.length === seqBBytes.length && !!equalLenDiff;
 
     // If we can't use equal_len_diff and myers_diff doesn't exist, fall back to JS
-    if (!useEqualLen && typeof wasm.myers_diff !== 'function') {
+    if (!useEqualLen && !myersDiff) {
       return null;
     }
 
-    const result = useEqualLen
-      ? wasm.equal_len_diff(seqABytes, seqBBytes)
-      : wasm.myers_diff(seqABytes, seqBBytes);
+    const diffFn = useEqualLen ? equalLenDiff : myersDiff;
+    if (!diffFn) return null;
+    const result = diffFn(seqABytes, seqBBytes);
 
     try {
       // Check for errors or truncation

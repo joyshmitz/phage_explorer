@@ -58,11 +58,67 @@ import { canUseWasm, canUseWasmSimd } from './browser-capabilities';
 // Types
 // ============================================================================
 
+import type {
+  BondDetectionResult,
+  CgrCountsResult,
+  CodonUsageResult,
+  DenseKmerResult,
+  DotPlotBuffers,
+  MinHashSignature,
+  MyersDiffResult,
+  RepeatResult,
+  SequenceHandle,
+} from '@phage/wasm-compute';
+
 /**
  * The wasm-compute module type.
- * This is the dynamic import type of '@phage/wasm-compute'.
+ * We keep this as a minimal structural interface so we can avoid `typeof import(...)`
+ * type annotations (enforced by our ESLint config) while still providing strong typing
+ * for the exports we actually use across the app.
  */
-export type WasmComputeModule = typeof import('@phage/wasm-compute');
+export interface WasmComputeModule {
+  /**
+   * Optional wasm-bindgen init export (varies by bundler/build target).
+   * Some builds expose an async init function; others (especially CJS wrappers)
+   * may expose the module namespace on `default`.
+   */
+  default?: unknown;
+  /** Optional panic hook for better error messages. */
+  init_panic_hook?: () => void;
+
+  // --- Sequence analysis ---
+  compute_gc_skew?: (seq: string, window_size: number, step_size: number) => Float64Array;
+  compute_cumulative_gc_skew?: (seq: string) => Float64Array;
+  compute_windowed_entropy_acgt?: (seq: string, window_size: number, step_size: number) => Float64Array;
+
+  count_codon_usage?: (seq: string, frame: number) => CodonUsageResult;
+  count_kmers_dense?: (seq: Uint8Array, k: number) => DenseKmerResult;
+  count_kmers_dense_canonical?: (seq: Uint8Array, k: number) => DenseKmerResult;
+
+  detect_palindromes?: (seq: string, min_len: number, max_gap: number) => RepeatResult;
+  detect_tandem_repeats?: (seq: string, min_unit: number, max_unit: number, min_copies: number) => RepeatResult;
+
+  // --- Dot plot ---
+  dotplot_self_buffers?: (seq: Uint8Array, bins: number, window: number) => DotPlotBuffers;
+  SequenceHandle?: new (seq: Uint8Array) => SequenceHandle;
+
+  // --- Diff ---
+  equal_len_diff?: (seq_a: Uint8Array, seq_b: Uint8Array) => MyersDiffResult;
+  myers_diff?: (seq_a: Uint8Array, seq_b: Uint8Array) => MyersDiffResult;
+  myers_diff_with_limit?: (seq_a: Uint8Array, seq_b: Uint8Array, max_edits: number) => MyersDiffResult;
+
+  // --- Visualizations ---
+  hilbert_rgba?: (seq_bytes: Uint8Array, order: number, colors_rgb: Uint8Array) => Uint8Array;
+  cgr_counts?: (seq_bytes: Uint8Array, k: number) => CgrCountsResult;
+
+  // --- 3D structure ---
+  detect_bonds_spatial?: (positions: Float32Array, elements: string) => BondDetectionResult;
+
+  // --- MinHash / similarity ---
+  minhash_signature?: (seq: Uint8Array, k: number, num_hashes: number) => MinHashSignature;
+  minhash_signature_canonical?: (seq: Uint8Array, k: number, num_hashes: number) => MinHashSignature;
+  minhash_jaccard_from_signatures?: (sig_a: Uint32Array, sig_b: Uint32Array) => number;
+}
 
 export type WasmComputeVariant = 'baseline' | 'simd';
 

@@ -16,6 +16,7 @@ import {
 // @see packages/web/src/lib/wasm-loader.ts
 // @see phage_explorer-8qk2.2
 import { getWasmCompute } from '../lib/wasm-loader';
+import type { WasmComputeModule } from '../lib/wasm-loader';
 
 // Alias for compatibility with existing code
 const getWasmModule = getWasmCompute;
@@ -193,8 +194,12 @@ function elementToWasmChar(element: string): string {
  */
 async function detectBondsWasm(
   atoms: AtomRecord[],
-  wasm: typeof import('@phage/wasm-compute')
+  wasm: WasmComputeModule
 ): Promise<Bond[]> {
+  if (typeof wasm.detect_bonds_spatial !== 'function') {
+    throw new Error('detect_bonds_spatial not available');
+  }
+
   // Prepare flat arrays for WASM
   const positions = new Float32Array(atoms.length * 3);
   const elements: string[] = [];
@@ -279,8 +284,12 @@ function buildBackboneTraces(atoms: AtomRecord[]): { x: number; y: number; z: nu
   const chainMap = new Map<string, AtomRecord[]>();
   for (const atom of atoms) {
     if (atom.atomName !== 'CA' && atom.atomName !== 'C' && atom.atomName !== 'N') continue;
-    if (!chainMap.has(atom.chainId)) chainMap.set(atom.chainId, []);
-    chainMap.get(atom.chainId)!.push(atom);
+    let chainAtoms = chainMap.get(atom.chainId);
+    if (!chainAtoms) {
+      chainAtoms = [];
+      chainMap.set(atom.chainId, chainAtoms);
+    }
+    chainAtoms.push(atom);
   }
   const traces: { x: number; y: number; z: number }[][] = [];
   for (const [, chainAtoms] of chainMap) {

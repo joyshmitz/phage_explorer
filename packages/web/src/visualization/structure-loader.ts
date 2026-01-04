@@ -370,8 +370,13 @@ export interface LoadStructureOptions {
 }
 
 // Lazy-loaded cache module to avoid circular dependencies
-let cacheModule: typeof import('../db/structure-cache') | null = null;
-async function getCache() {
+type StructureCacheModule = {
+  getCachedStructure: (pdbId: string) => Promise<{ data: ArrayBuffer; format: 'pdb' | 'mmcif' } | null>;
+  cacheStructure: (pdbId: string, data: ArrayBuffer, format: 'pdb' | 'mmcif') => Promise<void>;
+};
+
+let cacheModule: StructureCacheModule | null = null;
+async function getCache(): Promise<StructureCacheModule> {
   if (!cacheModule) {
     cacheModule = await import('../db/structure-cache');
   }

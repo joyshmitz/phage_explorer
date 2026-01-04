@@ -1,5 +1,4 @@
 /* tslint:disable */
-/* eslint-disable */
 export const memory: WebAssembly.Memory;
 export const __wbg_bonddetectionresult_free: (a: number, b: number) => void;
 export const __wbg_cgrcountsresult_free: (a: number, b: number) => void;
