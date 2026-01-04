@@ -506,6 +506,13 @@ export function useSequenceGrid(options: UseSequenceGridOptions): UseSequenceGri
 
     rendererRef.current = renderer;
 
+    // Initialize sequence and diff state on new renderer.
+    // This is critical because the sequence/diff effects won't re-run
+    // when renderer is recreated due to visual pipeline changes (scanlines, glow, etc).
+    // Without this, the new renderer has currentState=null and render() exits early.
+    renderer.setSequence(displaySequence, viewMode, readingFrame, aminoSequence);
+    renderer.setDiffMode(diffSequence, diffEnabled, diffMask ?? null);
+
     // Initialize zoom preset state
     setZoomPreset(renderer.getZoomPreset());
     latestRangeRef.current = renderer.getVisibleRange();
