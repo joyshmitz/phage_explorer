@@ -1023,6 +1023,31 @@ html {
 }
 
 /* =============================================================================
+   UNIVERSAL MOBILE HORIZONTAL SCROLL PREVENTION
+   Applied to ALL mobile browsers, not just iOS Safari
+   ============================================================================= */
+
+@media (max-width: 1024px) {
+  /* Prevent any element from exceeding viewport width */
+  .app-shell,
+  .app-body,
+  .app-header,
+  .panel,
+  .detail-card,
+  .overlay-content,
+  .bottom-sheet__content {
+    max-width: 100vw;
+    overflow-x: hidden;
+  }
+
+  /* Ensure the main content area doesn't cause overflow */
+  #root {
+    overflow-x: hidden;
+    max-width: 100vw;
+  }
+}
+
+/* =============================================================================
    iOS SAFARI SPECIFIC FIXES
    Addresses known Safari/WebKit bugs and quirks
    ============================================================================= */

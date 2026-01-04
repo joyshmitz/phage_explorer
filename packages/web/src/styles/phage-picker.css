@@ -133,9 +133,13 @@
   flex: 1;
   overflow-y: auto;
   overflow-x: hidden;
-  margin: 0 calc(-1 * var(--space-4));
-  padding: 0 var(--space-4);
+  /* Removed negative margin - it causes horizontal overflow on mobile */
+  /* The BottomSheet padding handles the inset */
+  margin: 0;
+  padding: 0;
   overscroll-behavior: contain;
+  /* Improve scroll performance */
+  -webkit-overflow-scrolling: touch;
 }
 
 /* Empty state */
