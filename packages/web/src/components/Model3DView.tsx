@@ -365,7 +365,11 @@ function Model3DViewBase({ phage }: Model3DViewProps): React.ReactElement {
   } = useStructureQuery({
     idOrUrl: pdbId ?? undefined,
     enabled: show3DModel && Boolean(pdbId),
-    includeBonds: 'auto',
+    // Force bond detection when ball-and-stick mode is selected.
+    // Without bonds, the sticks won't render. 'auto' skips bonds for large
+    // structures (>15K atoms) to save computation, which is fine for ribbon/surface
+    // modes but breaks ball-and-stick.
+    includeBonds: renderMode === 'ball' ? true : 'auto',
     includeFunctionalGroups: showFunctionalGroups,
   });
 

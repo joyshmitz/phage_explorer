@@ -1844,7 +1844,9 @@ export class CanvasSequenceGridRenderer {
     const currentScrollX = this.getScrollX(range, layout.cols, this.cellWidth);
     const lastScrollX = this.lastScrollX ?? currentScrollX;
     const deltaX = lastScrollX - currentScrollX;
-    if (Math.abs(deltaX) > 0.5) return false;
+    // Allow small horizontal movement (trackpad noise filtered in VirtualScroller,
+    // but add tolerance here as defense in depth)
+    if (Math.abs(deltaX) > 2) return false;
 
     // Shift previous frame into the back buffer. Use the main canvas as source.
     // NOTE: This may include post-process artifacts from the last non-scroll frame,

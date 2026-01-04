@@ -298,6 +298,18 @@ export class VirtualScroller {
       deltaY *= this.options.viewportHeight;
     }
 
+    // Filter out small horizontal deltas during primarily vertical scrolls.
+    // Trackpads often send tiny horizontal noise during vertical scrolling, which
+    // breaks scroll blit optimization in the renderer (causing full redraws and jank).
+    // Threshold: ignore horizontal if |deltaX| < 3px AND |deltaY| > |deltaX| * 2
+    if (Math.abs(deltaX) < 3 && Math.abs(deltaY) > Math.abs(deltaX) * 2) {
+      deltaX = 0;
+    }
+    // Similarly filter vertical noise during horizontal scrolls
+    if (Math.abs(deltaY) < 3 && Math.abs(deltaX) > Math.abs(deltaY) * 2) {
+      deltaY = 0;
+    }
+
     // Always use direct scrolling for wheel events
     // The wheel/trackpad already provides its own momentum
     this.scrollBy(deltaX, deltaY);
@@ -320,6 +332,14 @@ export class VirtualScroller {
     } else if (deltaMode === 2) {
       dx *= this.options.viewportWidth;
       dy *= this.options.viewportHeight;
+    }
+
+    // Filter trackpad noise (see handleWheel for full explanation)
+    if (Math.abs(dx) < 3 && Math.abs(dy) > Math.abs(dx) * 2) {
+      dx = 0;
+    }
+    if (Math.abs(dy) < 3 && Math.abs(dx) > Math.abs(dy) * 2) {
+      dy = 0;
     }
 
     // Always use direct scrolling for wheel events
