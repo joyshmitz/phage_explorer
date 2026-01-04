@@ -2,8 +2,9 @@ import { describe, expect, it } from 'bun:test';
 import { computeDotPlot } from '@phage-explorer/core';
 
 const wasm = await import('@phage/wasm-compute');
-if (typeof wasm.default === 'function') {
-  await wasm.default();
+const maybeInit = (wasm as unknown as { default?: () => Promise<void> }).default;
+if (typeof maybeInit === 'function') {
+  await maybeInit();
 }
 
 function encodeAscii(sequence: string): Uint8Array {
@@ -105,4 +106,3 @@ describe('dotplot_self_buffers (WASM) parity', () => {
     }
   });
 });
-

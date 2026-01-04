@@ -162,6 +162,14 @@ test.describe('Production Health Checks', () => {
     expect(dimensions.canvasWidth, 'Canvas buffer width should be non-zero').toBeGreaterThan(0);
     expect(dimensions.canvasHeight, 'Canvas buffer height should be non-zero').toBeGreaterThan(0);
     expect(dimensions.hasContext, 'Canvas should have 2D context').toBe(true);
+
+    // Assert no critical JS errors during render (ignore known non-critical worker noise)
+    const criticalErrors = errorCollector.errors.filter(e =>
+      !e.text.includes('Worker simulation') &&
+      !e.text.includes('error: undefined') &&
+      !e.text.includes('ResizeObserver')
+    );
+    expect(criticalErrors, 'Found critical JavaScript errors while rendering canvas').toHaveLength(0);
   });
 
   test('critical-path: database loads successfully', async ({ page }) => {

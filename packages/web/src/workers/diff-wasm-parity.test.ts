@@ -10,8 +10,9 @@
 import { describe, expect, it } from 'bun:test';
 
 const wasm = await import('@phage/wasm-compute');
-if (typeof wasm.default === 'function') {
-  await wasm.default();
+const maybeInit = (wasm as unknown as { default?: () => Promise<void> }).default;
+if (typeof maybeInit === 'function') {
+  await maybeInit();
 }
 
 function encodeAscii(sequence: string): Uint8Array {
@@ -33,13 +34,13 @@ function encodeAscii(sequence: string): Uint8Array {
 function jsEqualLenDiff(
   seqA: string,
   seqB: string
-): { mask: Uint8Array; matches: number; mismatches: number } {
+): { mask: Uint8Array<ArrayBuffer>; matches: number; mismatches: number } {
   if (seqA.length !== seqB.length) {
     throw new Error('Sequences must have equal length');
   }
 
   const n = seqA.length;
-  const mask = new Uint8Array(n);
+  const mask: Uint8Array<ArrayBuffer> = new Uint8Array(n);
   let matches = 0;
   let mismatches = 0;
 
