@@ -262,9 +262,26 @@ export class VirtualScroller {
 
   /**
    * Handle wheel event
+   *
+   * IMPORTANT: Desktop wheel events should use DIRECT scrolling, not momentum.
+   * Reasons:
+   * 1. Desktop trackpads/mice already have native momentum (especially macOS)
+   * 2. Adding VirtualScroller momentum on top creates "double momentum" and fighting
+   * 3. Wheel events come continuously during scroll - overwriting velocity each time
+   *    while momentum animation is decaying causes jerky, inconsistent scrolling
+   *
+   * Momentum is designed for touch FLING gestures where:
+   * - User lifts finger with velocity
+   * - No more input events arrive
+   * - Momentum animates the deceleration
+   *
+   * For wheel events, the input device handles the momentum.
    */
   handleWheel(event: WheelEvent): void {
     event.preventDefault();
+
+    // Stop any ongoing momentum animation - wheel takes over
+    this.stopMomentum();
 
     // Calculate scroll delta
     let deltaX = event.deltaX;
@@ -281,21 +298,19 @@ export class VirtualScroller {
       deltaY *= this.options.viewportHeight;
     }
 
-    if (this.options.momentum) {
-      // Add velocity for momentum scrolling
-      this.state.velocityX = deltaX * 0.3;
-      this.state.velocityY = deltaY * 0.3;
-      this.startMomentum();
-    } else {
-      // Direct scrolling
-      this.scrollBy(deltaX, deltaY);
-    }
+    // Always use direct scrolling for wheel events
+    // The wheel/trackpad already provides its own momentum
+    this.scrollBy(deltaX, deltaY);
   }
 
   /**
    * Handle wheel deltas directly (worker-safe alternative to WheelEvent)
+   * Uses direct scrolling - see handleWheel() for rationale
    */
   handleWheelDelta(deltaX: number, deltaY: number, deltaMode: 0 | 1 | 2 = 0): void {
+    // Stop any ongoing momentum animation - wheel takes over
+    this.stopMomentum();
+
     let dx = deltaX;
     let dy = deltaY;
 
@@ -307,13 +322,8 @@ export class VirtualScroller {
       dy *= this.options.viewportHeight;
     }
 
-    if (this.options.momentum) {
-      this.state.velocityX = dx * 0.3;
-      this.state.velocityY = dy * 0.3;
-      this.startMomentum();
-    } else {
-      this.scrollBy(dx, dy);
-    }
+    // Always use direct scrolling for wheel events
+    this.scrollBy(dx, dy);
   }
 
   /**
