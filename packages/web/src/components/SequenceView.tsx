@@ -279,6 +279,23 @@ function SequenceViewBase({
     }
   }, [postProcess, scanlines, scanlineIntensity, glow]);
 
+  // Stable callbacks to avoid renderer recreation on every render.
+  // CRITICAL: Inline functions in useSequenceGrid options cause the renderer
+  // to be destroyed and recreated on every React render, breaking scrolling.
+  const handleVisibleRangeChange = useCallback(
+    (range: { startIndex: number }) => {
+      setScrollPosition(range.startIndex);
+    },
+    [setScrollPosition]
+  );
+
+  const handleZoomChange = useCallback(
+    (scale: number) => {
+      setStoreZoomScale(scale);
+    },
+    [setStoreZoomScale]
+  );
+
   // Sequence grid hook with zoom support
   const {
     canvasRef,
@@ -315,12 +332,8 @@ function SequenceViewBase({
     // Let the renderer pick a mobile-aware default zoom when the store has not yet set one.
     initialZoomScale: storeZoomScale ?? undefined,
     densityMode,
-    onVisibleRangeChange: (range) => {
-      setScrollPosition(range.startIndex);
-    },
-    onZoomChange: (scale) => {
-      setStoreZoomScale(scale);
-    },
+    onVisibleRangeChange: handleVisibleRangeChange,
+    onZoomChange: handleZoomChange,
   });
 
   // Keep the renderer in sync when other UI components set scrollPosition
