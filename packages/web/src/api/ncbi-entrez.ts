@@ -351,20 +351,24 @@ export async function fetchDatedPhageSequences(
 
   // Step 3: Process into phylodynamics data
   const sequences = allRecords
-    .filter(r => r.collection_date)
-    .map(r => {
-      const date = parseCollectionDate(r.collection_date!);
+    .filter((record) => record.collection_date)
+    .map((record): PhylodynamicsData['sequences'][number] | null => {
+      const date = parseCollectionDate(record.collection_date!);
       if (!date) return null;
-      return {
-        accession: r.accession,
-        organism: r.organism,
+
+      const sequence: PhylodynamicsData['sequences'][number] = {
+        accession: record.accession,
+        organism: record.organism,
         collectionDate: date,
-        country: r.country,
-        host: r.host,
-        sequenceLength: r.sequence_length,
+        sequenceLength: record.sequence_length,
       };
+
+      if (record.country) sequence.country = record.country;
+      if (record.host) sequence.host = record.host;
+
+      return sequence;
     })
-    .filter((s): s is PhylodynamicsData['sequences'][number] => !!s)
+    .filter((seq): seq is PhylodynamicsData['sequences'][number] => seq !== null)
     .sort((a, b) => a.collectionDate.getTime() - b.collectionDate.getTime());
 
   if (sequences.length === 0) {
