@@ -312,7 +312,8 @@ function SequenceViewBase({
     reducedMotion,
     enablePinchZoom: true,
     snapToCodon,
-    initialZoomScale: storeZoomScale ?? (densityMode === 'compact' ? 0.85 : 1.0),
+    // Let the renderer pick a mobile-aware default zoom when the store has not yet set one.
+    initialZoomScale: storeZoomScale ?? undefined,
     densityMode,
     onVisibleRangeChange: (range) => {
       setScrollPosition(range.startIndex);

@@ -62,8 +62,9 @@ function getMobileAwareZoom(): number {
   const landscape = window.innerWidth > window.innerHeight;
   // In landscape we want more columns visible, so start slightly zoomed out
   if (landscape && width < 800) return 0.9;
-  if (width < 480) return 1.1;   // Small phones portrait
-  if (width < 768) return 1.05;  // Larger phones portrait
+  // Match the renderer's default zoom logic for consistent first-run behavior.
+  if (width < 480) return 1.4;  // Small phones: zoom in for readability
+  if (width < 768) return 1.2;  // Larger phones: slight zoom
   return 1.0;                     // Tablets/desktop
 }
 

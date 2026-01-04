@@ -572,7 +572,7 @@ export function BottomSheet({
             ['--bottom-sheet-min-height-dvh' as string]: `${minHeight}dvh`,
             ['--bottom-sheet-max-height-vh' as string]: `${maxHeight}vh`,
             ['--bottom-sheet-max-height-dvh' as string]: `${maxHeight}dvh`,
-          } as React.CSSProperties
+          } as unknown as React.CSSProperties
         }
       >
         {/* Drag handle */}
