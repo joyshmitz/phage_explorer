@@ -1312,7 +1312,6 @@ export class CanvasSequenceGridRenderer {
     this.lastScrollX = this.getScrollX(range, layout.cols, this.cellWidth);
     this.lastViewport = { width: clientWidth, height: clientHeight };
     this.lastRowHeight = rowHeight;
-
     this.isRendering = false;
   }
 

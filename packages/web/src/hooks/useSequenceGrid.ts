@@ -596,7 +596,10 @@ export function useSequenceGrid(options: UseSequenceGridOptions): UseSequenceGri
           renderer.pause();
         }
       },
-      { threshold: 0.05 }
+      // Use a 0 threshold so we resume as soon as *any* pixel becomes visible.
+      // WebKit can otherwise keep the renderer paused when only a small sliver is in view,
+      // which looks like a permanently black/blank sequence grid.
+      { threshold: 0 }
     );
 
     observer.observe(canvas);
