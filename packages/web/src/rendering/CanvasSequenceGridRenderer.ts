@@ -1862,8 +1862,8 @@ export class CanvasSequenceGridRenderer {
     if (Math.abs(deltaX) > 2) return false;
 
     // Shift previous frame into the back buffer. Use the main canvas as source.
-    // NOTE: This may include post-process artifacts from the last non-scroll frame,
-    // but we skip heavy effects while scrolling, so this keeps motion smooth.
+    // The lastFrameHadPostProcess check above ensures we never blit post-processed content,
+    // avoiding visual inconsistency between blitted and freshly rendered regions.
     const source = this.canvas;
     ctx.drawImage(
       source,
