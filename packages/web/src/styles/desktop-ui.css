@@ -628,8 +628,10 @@
    ============================================================================= */
 
 .dashboard-layout {
-  /* Default: no grid, just pass through to children */
-  display: contents;
+  /* Default: use a real box so the main content can size naturally inside
+     `.app-body`'s flex column. `display: contents` turns grandchildren into
+     flex items, which makes the core panel shrink and clip on small viewports. */
+  display: block;
 }
 
 /* Only apply grid layout when sidebar is present */

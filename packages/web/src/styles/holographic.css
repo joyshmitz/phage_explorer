@@ -86,6 +86,10 @@
     radial-gradient(ellipse at 40% 60%, rgba(255, 0, 110, 0.08) 0%, transparent 40%),
     linear-gradient(180deg, #030014 0%, #050020 50%, #030014 100%);
   background-size: 200% 200%, 200% 200%, 100% 100%, 100% 100%;
+}
+
+/* Only animate expensive backgrounds when app FX are enabled. */
+[data-theme="holographic"] .app-shell.fx-enabled {
   animation: holographic-shift 20s ease infinite;
 }
 
@@ -106,6 +110,18 @@
     inset 0 0 60px rgba(0, 245, 255, 0.03);
   position: relative;
   overflow: hidden;
+}
+
+/* Performance mode: disable backdrop-filter (major GPU cost on iOS and lower-end GPUs). */
+[data-theme="holographic"] .app-shell.fx-disabled .panel,
+[data-theme="holographic"] .app-shell.fx-disabled .detail-card {
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  background: rgba(5, 0, 30, 0.9);
+  box-shadow:
+    0 8px 24px rgba(0, 0, 0, 0.35),
+    0 0 0 1px rgba(191, 0, 255, 0.08),
+    inset 0 0 40px rgba(0, 245, 255, 0.02);
 }
 
 /* Holographic shimmer overlay on panels */
@@ -142,6 +158,13 @@
     0 0 40px rgba(191, 0, 255, 0.05);
 }
 
+/* Performance mode: avoid sticky+blur flicker and reduce compositing. */
+[data-theme="holographic"] .app-shell.fx-disabled .app-header {
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  background: rgba(3, 0, 20, 0.95);
+}
+
 /* =============================================================================
    GLASSMORPHIC DATABASE STATUS BAR
    ============================================================================= */
@@ -154,6 +177,12 @@
   box-shadow:
     0 4px 20px rgba(0, 0, 0, 0.3),
     inset 0 0 30px rgba(0, 245, 255, 0.02);
+}
+
+[data-theme="holographic"] .app-shell.fx-disabled .db-status-bar {
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  background: rgba(5, 0, 30, 0.85);
 }
 
 [data-theme="holographic"] .db-status-icon {
@@ -193,6 +222,10 @@
   animation: border-glow 3s ease-in-out infinite;
 }
 
+[data-theme="holographic"] .app-shell.fx-disabled .list-item.active {
+  animation: none;
+}
+
 [data-theme="holographic"] .list-item.active::before {
   background: linear-gradient(180deg, #00f5ff 0%, #bf00ff 100%);
   box-shadow: 0 0 10px rgba(0, 245, 255, 0.5);
@@ -211,6 +244,12 @@
   transition: all 0.3s ease;
   position: relative;
   overflow: hidden;
+}
+
+[data-theme="holographic"] .app-shell.fx-disabled .btn {
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  background: rgba(5, 0, 30, 0.9);
 }
 
 [data-theme="holographic"] .btn::before {
@@ -257,6 +296,11 @@
   text-shadow: 0 0 5px rgba(0, 245, 255, 0.3);
   backdrop-filter: blur(5px);
   -webkit-backdrop-filter: blur(5px);
+}
+
+[data-theme="holographic"] .app-shell.fx-disabled .badge {
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
 }
 
 [data-theme="holographic"] .badge-info {

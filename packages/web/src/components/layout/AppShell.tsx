@@ -29,7 +29,7 @@ export const AppShell: React.FC<AppShellProps> = ({
   enableBackgroundEffects = true,
 }) => {
   return (
-    <div className="app-shell">
+    <div className={`app-shell ${enableBackgroundEffects ? 'fx-enabled' : 'fx-disabled'}`}>
       <SkipNavigation />
       {enableBackgroundEffects && (
         <>

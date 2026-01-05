@@ -225,6 +225,7 @@ export class CanvasSequenceGridRenderer {
   private scanlines: boolean;
   private glow: boolean;
   private animationFrameId: number | ReturnType<typeof setTimeout> | null = null;
+  private layoutRetryTimer: ReturnType<typeof setTimeout> | null = null;
   private isRendering = false;
   private postProcess?: PostProcessPipeline;
   private reducedMotion: boolean;
@@ -335,12 +336,15 @@ export class CanvasSequenceGridRenderer {
       if (this.scrollEndTimer) {
         clearTimeout(this.scrollEndTimer);
       }
-      // End scrolling state after 150ms of inactivity, then do final quality render
+      // End scrolling state after 400ms of inactivity, then do final quality render.
+      // NOTE: 400ms is longer than typical mouse wheel inter-tick gaps (~100-200ms),
+      // preventing post-processing from toggling on/off between discrete wheel events.
+      // This eliminates the visual flicker that occurred with the shorter 150ms timeout.
       this.scrollEndTimer = setTimeout(() => {
         this.isScrolling = false;
         this.needsFullRedraw = true;
         this.scheduleRender(); // Final high-quality render after scroll stops
-      }, 150);
+      }, 400);
 
       this.onVisibleRangeChange?.(range);
       this.scheduleRender();
@@ -1167,6 +1171,10 @@ export class CanvasSequenceGridRenderer {
       this.cancelRaf(this.animationFrameId);
       this.animationFrameId = null;
     }
+    if (this.layoutRetryTimer !== null) {
+      clearTimeout(this.layoutRetryTimer);
+      this.layoutRetryTimer = null;
+    }
   }
 
   /**
@@ -1195,11 +1203,11 @@ export class CanvasSequenceGridRenderer {
     if (clientWidth === 0 || clientHeight === 0) {
       // Canvas not laid out yet (common on iOS with dvh before layout completes).
       // Schedule a retry after a short delay to recover once dimensions are available.
-      if (this.animationFrameId === null && !this.paused) {
-        this.animationFrameId = globalThis.setTimeout(() => {
-          this.animationFrameId = null;
+      if (this.layoutRetryTimer === null && !this.paused) {
+        this.layoutRetryTimer = globalThis.setTimeout(() => {
+          this.layoutRetryTimer = null;
           this.scheduleRender();
-        }, 50) as unknown as number;
+        }, 50);
       }
       return;
     }
@@ -2173,6 +2181,10 @@ export class CanvasSequenceGridRenderer {
   dispose(): void {
     if (this.animationFrameId !== null) {
       this.cancelRaf(this.animationFrameId);
+    }
+    if (this.layoutRetryTimer !== null) {
+      clearTimeout(this.layoutRetryTimer);
+      this.layoutRetryTimer = null;
     }
     if (this.scrollEndTimer !== null) {
       clearTimeout(this.scrollEndTimer);
