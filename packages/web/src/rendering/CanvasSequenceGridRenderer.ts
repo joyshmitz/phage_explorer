@@ -690,7 +690,7 @@ export class CanvasSequenceGridRenderer {
       this.renderRowCellsDual(ctx, row, cols, rowStart, rowEnd, sequence, aminoSequence ?? '', diffSequence, diffEnabled, diffMask);
     } else {
       // Single row mode
-      this.renderRowCells(ctx, rowStart, rowEnd, sequence, viewMode, diffSequence, diffEnabled, diffMask);
+      this.renderRowCells(ctx, rowStart, rowEnd, sequence, aminoSequence ?? '', viewMode, diffSequence, diffEnabled, diffMask);
     }
   }
 
@@ -702,6 +702,7 @@ export class CanvasSequenceGridRenderer {
     rowStart: number,
     rowEnd: number,
     sequence: string,
+    aminoSequence: string,
     viewMode: ViewMode,
     diffSequence: string | null,
     diffEnabled: boolean,
@@ -710,6 +711,58 @@ export class CanvasSequenceGridRenderer {
     const { cellWidth, cellHeight } = this;
     const drawAmino = viewMode === 'aa';
     const validDiffMask = diffMask && diffMask.length === sequence.length ? diffMask : null;
+
+    if (drawAmino) {
+      const rawFrame = this.currentState?.readingFrame ?? 0;
+      const isReverse = rawFrame < 0;
+      const forwardFrame: 0 | 1 | 2 = isReverse
+        ? ((Math.abs(rawFrame) - 1) as 0 | 1 | 2)
+        : (rawFrame as 0 | 1 | 2);
+      const seqLength = sequence.length;
+
+      let aaRowStart = rowStart;
+      if (!isReverse) {
+        const offset = ((aaRowStart - forwardFrame) % 3 + 3) % 3;
+        aaRowStart -= offset;
+      } else {
+        const target = seqLength - 3 - forwardFrame;
+        const offset = ((target - aaRowStart) % 3 + 3) % 3;
+        const shift = (3 - offset) % 3;
+        aaRowStart -= shift;
+      }
+
+      for (let i = aaRowStart; i < rowEnd; i += 3) {
+        let aaIndex: number;
+        if (!isReverse) {
+          const codonOffset = i - forwardFrame;
+          if (codonOffset < 0) continue;
+          aaIndex = Math.floor(codonOffset / 3);
+        } else {
+          const rcStart = seqLength - 3 - i;
+          const codonOffset = rcStart - forwardFrame;
+          if (codonOffset < 0) continue;
+          aaIndex = Math.floor(codonOffset / 3);
+        }
+        
+        const aaChar = aminoSequence[aaIndex] ?? 'X';
+        const col = i - rowStart;
+        const x = col * cellWidth;
+        const destWidth = Math.min(cellWidth * 3, (rowEnd - i) * cellWidth);
+        
+        let drawX = x;
+        let drawWidth = destWidth;
+        if (i < rowStart) {
+          const clip = (rowStart - i) * cellWidth;
+          drawX += clip;
+          drawWidth -= clip;
+        }
+        
+        if (drawWidth > 0) {
+          this.glyphAtlas.drawAminoAcid(ctx, aaChar, drawX, 0, drawWidth, cellHeight);
+        }
+      }
+      return;
+    }
 
     for (let i = rowStart; i < rowEnd; i++) {
       const col = i - rowStart;
@@ -786,9 +839,13 @@ export class CanvasSequenceGridRenderer {
     // AA row (bottom) - aligned to codons
     let aaRowStart = rowStart;
     if (!isReverse) {
-      while ((aaRowStart - forwardFrame) % 3 !== 0) aaRowStart++;
+      const offset = ((aaRowStart - forwardFrame) % 3 + 3) % 3;
+      aaRowStart -= offset;
     } else {
-      while ((seqLength - 3 - aaRowStart - forwardFrame) % 3 !== 0) aaRowStart++;
+      const target = seqLength - 3 - forwardFrame;
+      const offset = ((target - aaRowStart) % 3 + 3) % 3;
+      const shift = (3 - offset) % 3;
+      aaRowStart -= shift;
     }
 
     ctx.strokeStyle = this.theme.colors.borderLight ?? '#374151';
@@ -812,7 +869,18 @@ export class CanvasSequenceGridRenderer {
       const col = i - rowStart;
       const x = col * cellWidth;
       const destWidth = Math.min(cellWidth * 3, (rowEnd - i) * cellWidth);
-      this.glyphAtlas.drawAminoAcid(ctx, aaChar, x, cellHeight, destWidth, cellHeight);
+      
+      let drawX = x;
+      let drawWidth = destWidth;
+      if (i < rowStart) {
+        const clip = (rowStart - i) * cellWidth;
+        drawX += clip;
+        drawWidth -= clip;
+      }
+
+      if (drawWidth > 0) {
+        this.glyphAtlas.drawAminoAcid(ctx, aaChar, drawX, cellHeight, drawWidth, cellHeight);
+      }
 
       const lineX = x + destWidth;
       ctx.moveTo(lineX, 0);
@@ -1753,9 +1821,13 @@ export class CanvasSequenceGridRenderer {
       // Second pass: amino acids (bottom row)
       let aaRowStart = rowStart;
       if (!isReverse) {
-        while ((aaRowStart - forwardFrame) % 3 !== 0) aaRowStart++;
+        const offset = ((aaRowStart - forwardFrame) % 3 + 3) % 3;
+        aaRowStart -= offset;
       } else {
-        while ((seqLength - 3 - aaRowStart - forwardFrame) % 3 !== 0) aaRowStart++;
+        const target = seqLength - 3 - forwardFrame;
+        const offset = ((target - aaRowStart) % 3 + 3) % 3;
+        const shift = (3 - offset) % 3;
+        aaRowStart -= shift;
       }
 
       // Batch codon boundary lines
@@ -1780,12 +1852,25 @@ export class CanvasSequenceGridRenderer {
         const col = i - rowStart;
         const x = col * cellWidth;
         const destWidth = Math.min(cellWidth * 3, (rowEnd - i) * cellWidth);
-        this.glyphAtlas.drawAminoAcid(ctx, aaChar, x, rowY + cellHeight, destWidth, cellHeight);
+        
+        let drawX = x;
+        let drawWidth = destWidth;
+        if (i < rowStart) {
+          const clip = (rowStart - i) * cellWidth;
+          drawX += clip;
+          drawWidth -= clip;
+        }
+
+        if (drawWidth > 0) {
+          this.glyphAtlas.drawAminoAcid(ctx, aaChar, drawX, rowY + cellHeight, drawWidth, cellHeight);
+        }
 
         // Add line to batch
-        const lineX = x + destWidth;
-        ctx.moveTo(lineX, rowY);
-        ctx.lineTo(lineX, rowY + rowHeight);
+        if (i >= rowStart) {
+          const lineX = x + destWidth;
+          ctx.moveTo(lineX, rowY);
+          ctx.lineTo(lineX, rowY + rowHeight);
+        }
       }
       
       ctx.stroke();

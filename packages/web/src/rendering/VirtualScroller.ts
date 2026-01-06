@@ -150,6 +150,11 @@ export class VirtualScroller {
   getVisibleRange(): VisibleRange {
     const { itemHeight, itemWidth, viewportWidth, viewportHeight, overscan } = this.options;
     const { scrollX, scrollY } = this.state;
+    // The sequence grid layout currently guarantees totalWidth <= viewportWidth, so maxScrollX is 0.
+    // If we allow rubber-band overscroll on X in that case, tiny trackpad diagonal deltas can shift
+    // startCol/startIndex even though the renderer does not implement horizontal panning.
+    // Clamp X to 0 when horizontal scrolling isn't possible to keep range/startIndex stable.
+    const effectiveScrollX = this.maxScrollX === 0 ? 0 : scrollX;
 
     // Calculate visible row range
     const startRow = Math.max(0, Math.floor(scrollY / itemHeight) - overscan);
@@ -157,7 +162,7 @@ export class VirtualScroller {
     const endRow = Math.min(this.rows, startRow + visibleRows);
 
     // Calculate visible column range (for horizontal scrolling if needed)
-    const startCol = Math.max(0, Math.floor(scrollX / itemWidth));
+    const startCol = Math.max(0, Math.floor(effectiveScrollX / itemWidth));
     const visibleCols = Math.ceil(viewportWidth / itemWidth);
     const endCol = Math.min(this.cols, startCol + visibleCols);
 
@@ -170,7 +175,7 @@ export class VirtualScroller {
 
     // Calculate pixel offsets for sub-cell scrolling
     const offsetY = -(scrollY % itemHeight);
-    const offsetX = -(scrollX % itemWidth);
+    const offsetX = effectiveScrollX === 0 ? 0 : -(effectiveScrollX % itemWidth);
 
     return {
       startIndex,
@@ -211,8 +216,12 @@ export class VirtualScroller {
    * Scroll to absolute position
    */
   scrollTo(x: number, y: number): void {
-    const newScrollX = this.applyRubberBand(x, this.maxScrollX);
+    const newScrollX = this.maxScrollX === 0 ? 0 : this.applyRubberBand(x, this.maxScrollX);
     const newScrollY = this.applyRubberBand(y, this.maxScrollY);
+
+    if (this.maxScrollX === 0 && this.state.velocityX !== 0) {
+      this.state.velocityX = 0;
+    }
 
     if (newScrollX !== this.state.scrollX || newScrollY !== this.state.scrollY) {
       this.state.scrollX = newScrollX;
@@ -310,6 +319,12 @@ export class VirtualScroller {
       deltaY = 0;
     }
 
+    // Horizontal panning isn't currently supported by the sequence grid renderer (and maxScrollX is 0),
+    // so ignore X deltas to avoid "phantom" index drift on diagonal trackpad scroll.
+    if (this.maxScrollX === 0) {
+      deltaX = 0;
+    }
+
     // Always use direct scrolling for wheel events
     // The wheel/trackpad already provides its own momentum
     this.scrollBy(deltaX, deltaY);
@@ -340,6 +355,10 @@ export class VirtualScroller {
     }
     if (Math.abs(dy) < 3 && Math.abs(dx) > Math.abs(dy) * 2) {
       dy = 0;
+    }
+
+    if (this.maxScrollX === 0) {
+      dx = 0;
     }
 
     // Always use direct scrolling for wheel events
@@ -407,13 +426,21 @@ export class VirtualScroller {
         return;
       }
 
-      const dominance = 1.2;
-      if (absDx >= absDy * dominance) {
-        this.touchAxisLock = 'x';
-      } else if (absDy >= absDx * dominance) {
+      const canScrollX = this.maxScrollX > 0;
+      const canScrollY = this.maxScrollY > 0;
+      if (!canScrollX && canScrollY) {
         this.touchAxisLock = 'y';
+      } else if (canScrollX && !canScrollY) {
+        this.touchAxisLock = 'x';
       } else {
-        this.touchAxisLock = absDx > absDy ? 'x' : 'y';
+        const dominance = 1.2;
+        if (absDx >= absDy * dominance) {
+          this.touchAxisLock = 'x';
+        } else if (absDy >= absDx * dominance) {
+          this.touchAxisLock = 'y';
+        } else {
+          this.touchAxisLock = absDx > absDy ? 'x' : 'y';
+        }
       }
 
       // Rebase to avoid a jump when the lock is chosen.
@@ -474,13 +501,21 @@ export class VirtualScroller {
         return;
       }
 
-      const dominance = 1.2;
-      if (absDx >= absDy * dominance) {
-        this.touchAxisLock = 'x';
-      } else if (absDy >= absDx * dominance) {
+      const canScrollX = this.maxScrollX > 0;
+      const canScrollY = this.maxScrollY > 0;
+      if (!canScrollX && canScrollY) {
         this.touchAxisLock = 'y';
+      } else if (canScrollX && !canScrollY) {
+        this.touchAxisLock = 'x';
       } else {
-        this.touchAxisLock = absDx > absDy ? 'x' : 'y';
+        const dominance = 1.2;
+        if (absDx >= absDy * dominance) {
+          this.touchAxisLock = 'x';
+        } else if (absDy >= absDx * dominance) {
+          this.touchAxisLock = 'y';
+        } else {
+          this.touchAxisLock = absDx > absDy ? 'x' : 'y';
+        }
       }
 
       this.touchStartX = x;
@@ -520,7 +555,9 @@ export class VirtualScroller {
    */
   handleTouchEnd(): void {
     // Start momentum if velocity is significant
-    const speed = Math.abs(this.state.velocityX) + Math.abs(this.state.velocityY);
+    const speed =
+      (this.maxScrollX > 0 ? Math.abs(this.state.velocityX) : 0) +
+      (this.maxScrollY > 0 ? Math.abs(this.state.velocityY) : 0);
     if (this.options.momentum && speed > 2) {
       this.startMomentum();
     } else if (this.options.snapToMultiple) {
@@ -673,7 +710,8 @@ export class VirtualScroller {
     const { scrollX, scrollY } = this.state;
     const { itemWidth, itemHeight } = this.options;
 
-    const absoluteX = scrollX + x;
+    const effectiveScrollX = this.maxScrollX === 0 ? 0 : scrollX;
+    const absoluteX = effectiveScrollX + x;
     const absoluteY = scrollY + y;
 
     const col = Math.floor(absoluteX / itemWidth);
@@ -704,9 +742,10 @@ export class VirtualScroller {
 
     const { itemWidth, itemHeight } = this.options;
     const { scrollX, scrollY } = this.state;
+    const effectiveScrollX = this.maxScrollX === 0 ? 0 : scrollX;
 
     return {
-      x: col * itemWidth - scrollX,
+      x: col * itemWidth - effectiveScrollX,
       y: row * itemHeight - scrollY,
     };
   }

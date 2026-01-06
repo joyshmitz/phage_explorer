@@ -394,7 +394,8 @@ export class GeneMapRenderer {
     const position = x / scale;
 
     for (const gene of this.state.genes) {
-      if (position >= gene.startPos && position <= gene.endPos) {
+      // Gene positions follow 0-based half-open coordinates [startPos, endPos).
+      if (position >= gene.startPos && position < gene.endPos) {
         return gene;
       }
     }
