@@ -20,10 +20,15 @@ export function SelectionPressureOverlay({ repository }: Props): React.ReactElem
   const [referenceSeq, setReferenceSeq] = useState<string | null>(null);
   const [targetSeq, setTargetSeq] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   useEffect(() => {
+    let cancelled = false;
+
     const load = async () => {
-        if (!currentPhage) {
+        setLoadError(null);
+
+        if (!currentPhage || phages.length < 2) {
           setLoading(false);
           return;
         }
@@ -34,32 +39,48 @@ export function SelectionPressureOverlay({ repository }: Props): React.ReactElem
         // Use diff reference if set, else previous phage
         let refId = diffRefId;
         if (!refId) {
-            const idx = phages.findIndex(p => p.id === currentPhage.id);
-            const prevIdx = idx > 0 ? idx - 1 : (idx + 1) % phages.length;
-            refId = phages[prevIdx]?.id;
+          const idx = phages.findIndex(p => p.id === currentPhage.id);
+          const prevIdx = idx > 0 ? idx - 1 : (idx + 1) % phages.length;
+          refId = phages[prevIdx]?.id;
         }
         
         if (!refId || refId === currentPhage.id) {
-            setLoading(false);
-            return;
+          setLoading(false);
+          setLoadError('Select a different reference phage to compare.');
+          return;
         }
 
         try {
-            const [tSeq, rSeq] = await Promise.all([
-                repository.getSequenceWindow(currentPhage.id, 0, 100000), // Limit for performance
-                repository.getSequenceWindow(refId, 0, 100000)
-            ]);
-            setTargetSeq(tSeq);
-            setReferenceSeq(rSeq);
+          const MAX_BASES = 100_000;
+          const [lenTarget, lenRef] = await Promise.all([
+            repository.getFullGenomeLength(currentPhage.id),
+            repository.getFullGenomeLength(refId),
+          ]);
+          const endTarget = Math.min(lenTarget, MAX_BASES);
+          const endRef = Math.min(lenRef, MAX_BASES);
+
+          const [tSeq, rSeq] = await Promise.all([
+            repository.getSequenceWindow(currentPhage.id, 0, endTarget),
+            repository.getSequenceWindow(refId, 0, endRef),
+          ]);
+
+          if (cancelled) return;
+          setTargetSeq(tSeq);
+          setReferenceSeq(rSeq);
         } catch (e) {
-            setTargetSeq(null);
-            setReferenceSeq(null);
-            console.error(e);
+          if (cancelled) return;
+          setTargetSeq(null);
+          setReferenceSeq(null);
+          setLoadError(e instanceof Error ? e.message : 'Failed to load sequences');
         } finally {
-            setLoading(false);
+          if (!cancelled) setLoading(false);
         }
     };
     load();
+
+    return () => {
+      cancelled = true;
+    };
   }, [currentPhage, diffRefId, phages, repository]);
 
   const analysis = useMemo(() => {
@@ -74,6 +95,7 @@ export function SelectionPressureOverlay({ repository }: Props): React.ReactElem
   });
 
   if (loading) return <Text>Loading sequences...</Text>;
+  if (loadError) return <Text color={colors.error}>Error: {loadError}</Text>;
   if (!analysis) return <Text>Comparison data unavailable (needs 2 phages)</Text>;
 
   const width = 80;

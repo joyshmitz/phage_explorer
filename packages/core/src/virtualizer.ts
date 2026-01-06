@@ -46,9 +46,18 @@ export function buildGrid(
 ): GridRow[] {
   const { viewportCols, viewportRows, mode, frame, contextBefore } = config;
   const rows: GridRow[] = [];
-  const forwardFrame: 0 | 1 | 2 = frame >= 0
-    ? (frame as 0 | 1 | 2)
-    : ((Math.abs(frame) - 1) as 0 | 1 | 2);
+  
+  // Calculate effective forward frame for alignment
+  let forwardFrame: 0 | 1 | 2;
+  if (frame >= 0) {
+    forwardFrame = frame as 0 | 1 | 2;
+  } else {
+    // Reverse frame: Aligns to (TotalLength - rcFrame) % 3
+    const rcFrame = (Math.abs(frame) - 1);
+    const len = config.totalLength ?? sequence.length;
+    // (len - rcFrame) % 3
+    forwardFrame = ((len - rcFrame) % 3 + 3) % 3 as 0 | 1 | 2;
+  }
 
   if (mode === 'dual') {
     // Dual mode - Interleaved DNA and AA rows
@@ -101,7 +110,8 @@ export function buildGrid(
             }
 
             if (codon.length === 3) {
-              const aa = translateCodon(codon);
+              const effectiveCodon = frame < 0 ? reverseComplement(codon) : codon;
+              const aa = translateCodon(effectiveCodon);
               cells.push({
                 char: aa,
                 position: absolutePos, // Associate with middle base
@@ -300,7 +310,7 @@ export function applyDiff(
 
       const refChar = refToCompare[refIndex];
       // Compare (case-insensitive for DNA just in case, though usually uppercase)
-      const diff: GridCell['diff'] = refChar === cell.char ? 'same' : 'different';
+      const diff: GridCell['diff'] = refChar.toUpperCase() === cell.char.toUpperCase() ? 'same' : 'different';
 
       return { ...cell, diff };
     }),
@@ -374,5 +384,6 @@ export function findGeneAtPosition(
   position: number,
   genes: Array<{ startPos: number; endPos: number; name: string | null }>
 ): { startPos: number; endPos: number; name: string | null } | null {
-  return genes.find(g => position >= g.startPos && position <= g.endPos) ?? null;
+  // Gene positions follow 0-based half-open coordinates [startPos, endPos).
+  return genes.find(g => position >= g.startPos && position < g.endPos) ?? null;
 }

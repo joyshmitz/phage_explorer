@@ -1,4 +1,5 @@
-import { translateCodon, CODON_TABLE } from './codons';
+import { translateCodon, CODON_TABLE, reverseComplement } from './codons';
+import type { GeneInfo } from './types';
 
 export interface SelectionWindow {
   start: number;
@@ -53,7 +54,8 @@ function countSites(codon: string): { syn: number; nonSyn: number } {
 export function calculateSelectionPressure(
   seqA: string,
   seqB: string,
-  windowSize = 150
+  windowSize = 150,
+  genes?: GeneInfo[]
 ): SelectionAnalysis {
   const len = Math.min(seqA.length, seqB.length);
   if (len < 3) {
@@ -62,6 +64,7 @@ export function calculateSelectionPressure(
 
   // Align window to codons
   let effectiveWindow = Math.max(3, Math.min(windowSize, len));
+  // Round down to nearest multiple of 3
   effectiveWindow -= (effectiveWindow % 3);
   
   const windows: SelectionWindow[] = [];
@@ -69,25 +72,103 @@ export function calculateSelectionPressure(
   let totalDS = 0;
   let validWindows = 0;
 
-  // Process in codon windows
+  // Process in windows
   for (let i = 0; i < len; i += effectiveWindow) {
     const start = i;
     const end = Math.min(len, start + effectiveWindow);
     
     // Skip if remainder is too small for a codon
     if (end - start < 3) break;
+
+    // Determine context (gene/strand/frame)
+    let activeStrand = '+';
+    let frameOffset = 0;
+    let isCoding = true;
+
+    if (genes && genes.length > 0) {
+      // Find gene overlapping this window center
+      const center = start + (end - start) / 2;
+      const gene = genes.find(g => center >= g.startPos && center < g.endPos && g.type === 'CDS');
+      
+      if (!gene) {
+        isCoding = false;
+      } else {
+        activeStrand = gene.strand === '-' ? '-' : '+';
+        // Calculate frame offset: how many bases to skip to align to codon start
+        // For + strand:
+        //   Window index `j` corresponds to genomic position `start + j`.
+        //   Codon boundaries align to `gene.startPos`, so `j ≡ gene.startPos - start (mod 3)`.
+        // For - strand:
+        //   We reverse-complement the window, so window index `j` corresponds to genomic position `end - 1 - j`.
+        //   Codon boundaries align to `gene.endPos` (translation start at gene.endPos-1),
+        //   so `end - 1 - j ≡ gene.endPos - 1 (mod 3)` -> `j ≡ end - gene.endPos (mod 3)`.
+        if (activeStrand === '+') {
+           // Window index `j` corresponds to genomic position `start + j`.
+           // For + strand, codon boundaries are aligned to gene.startPos.
+           frameOffset = (gene.startPos - start) % 3;
+           if (frameOffset < 0) frameOffset += 3;
+        } else {
+           // For reverse strand we reverse-complement the window.
+           // After RC, window index `j` corresponds to genomic position `end - 1 - j`.
+           // Codon boundaries for a reverse gene align to gene.endPos (translation start at gene.endPos-1),
+           // so we need `end - 1 - j ≡ gene.endPos - 1 (mod 3)` -> `j ≡ end - gene.endPos (mod 3)`.
+           frameOffset = (end - gene.endPos) % 3;
+           if (frameOffset < 0) frameOffset += 3;
+        }
+      }
+    }
+
+    if (!isCoding) {
+      // Push empty/neutral window for intergenic regions
+      windows.push({
+        start,
+        end,
+        dN: 0, dS: 0, omega: 1.0, classification: 'unknown'
+      });
+      continue;
+    }
     
     let Sd = 0; // Synonymous differences
     let Nd = 0; // Non-synonymous differences
     let S_sites = 0; // Synonymous sites
     let N_sites = 0; // Non-synonymous sites
 
-    for (let j = start; j < end; j += 3) {
-      const codonA = seqA.slice(j, j + 3).toUpperCase();
-      const codonB = seqB.slice(j, j + 3).toUpperCase();
+    // Extract window sequences
+    let windowSeqA = seqA.slice(start, end);
+    let windowSeqB = seqB.slice(start, end);
+
+    // Apply strand transformation
+    if (activeStrand === '-') {
+      windowSeqA = reverseComplement(windowSeqA);
+      windowSeqB = reverseComplement(windowSeqB);
+      // Note: Reversing means the 'start' of our analysis array now corresponds to 'end' of genomic window.
+      // But frameOffset was calculated relative to 'start'.
+      // If we reversed, the first base in windowSeqA corresponds to seqA[end-1].
+      // frameOffset for reverse strand needs to ensure we start reading codons correctly.
+      // If we simply RC the window, we might break codons at the edges.
+      // We should probably rely on the fact that we process 3 bases at a time.
+      // Let's adjust frameOffset logic above.
+      // If we RC, the 5' end of the resulting string corresponds to the 3' end of the genomic window.
+      // This is the start of translation for reverse genes.
+      // So alignment should be relative to the *end* of the window vs gene.endPos?
+      // No, gene.endPos is the 5' end of the gene on the reverse strand (start of translation).
+      // Wait. Standard: startPos < endPos.
+      // Forward gene: ATG at startPos.
+      // Reverse gene: ATG at endPos (on - strand).
+      // So if we RC the window, index 0 corresponds to end-1.
+      // gene.endPos corresponds to index relative to end?
+      // Let's assume we just want to align to reading frame.
+      // If we just skip 'frameOffset' bases from the RC string, we should be in frame.
+    }
+
+    // Iterate codons within the window
+    for (let j = frameOffset; j < windowSeqA.length - 2; j += 3) {
+      const codonA = windowSeqA.slice(j, j + 3).toUpperCase();
+      const codonB = windowSeqB.slice(j, j + 3).toUpperCase();
 
       if (codonA.length < 3 || codonB.length < 3) continue;
       if (codonA.includes('N') || codonB.includes('N')) continue;
+      if (codonA.includes('-') || codonB.includes('-')) continue;
 
       // Estimate sites (average of both)
       const sitesA = countSites(codonA);
@@ -142,20 +223,23 @@ export function calculateSelectionPressure(
       classification = 'unknown';
     }
 
-    if (S_sites > 0 && N_sites > 0) {
-        windows.push({
-            start,
-            end,
-            dN,
-            dS,
-            omega,
-            classification
-        });
-        totalDN += dN;
-        totalDS += dS;
-        validWindows++;
-    }
-  }
+	    if (S_sites > 0 && N_sites > 0) {
+	        windows.push({
+	            start,
+	            end,
+	            dN,
+	            dS,
+	            omega,
+	            classification
+	        });
+	        totalDN += dN;
+	        totalDS += dS;
+	        validWindows++;
+	    } else {
+	      // No usable codons in this window (e.g., gaps/ambiguity); ignore it entirely.
+	      continue;
+	    }
+	  }
 
   const globalOmega = (totalDS > 0 && validWindows > 0) ? (totalDN / totalDS) : 1.0;
 

@@ -24,24 +24,32 @@ export function SelectionPressureOverlay({ repository, currentPhage }: Selection
 
   const [targetSequence, setTargetSequence] = useState<string>('');
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   // Fetch target sequence when overlay is open
   useEffect(() => {
     if (!isOpen('selectionPressure') || !repository || !currentPhage) {
       setTargetSequence('');
       setLoading(false);
+      setError(null);
       return;
     }
 
     let cancelled = false;
+    setTargetSequence('');
     setLoading(true);
+    setError(null);
 
     repository.getFullGenomeLength(currentPhage.id)
       .then(len => repository.getSequenceWindow(currentPhage.id, 0, len))
       .then(seq => {
         if (!cancelled) setTargetSequence(seq);
       })
-      .catch(err => console.error('Failed to load target sequence', err))
+      .catch((err) => {
+        if (cancelled) return;
+        setTargetSequence('');
+        setError(err instanceof Error ? err.message : 'Failed to load target sequence');
+      })
       .finally(() => {
         if (!cancelled) setLoading(false);
       });
@@ -51,8 +59,8 @@ export function SelectionPressureOverlay({ repository, currentPhage }: Selection
 
   const analysis = useMemo(() => {
     if (!diffEnabled || !targetSequence || !diffReferenceSequence) return null;
-    return calculateSelectionPressure(targetSequence, diffReferenceSequence, 150);
-  }, [diffEnabled, targetSequence, diffReferenceSequence]);
+    return calculateSelectionPressure(targetSequence, diffReferenceSequence, 150, currentPhage?.genes);
+  }, [diffEnabled, targetSequence, diffReferenceSequence, currentPhage]);
 
   useEffect(() => {
     if (!isOpen('selectionPressure') || !canvasRef.current || !analysis) return;
@@ -123,6 +131,10 @@ export function SelectionPressureOverlay({ repository, currentPhage }: Selection
 
         {loading ? (
            <AnalysisPanelSkeleton />
+        ) : error ? (
+           <div style={{ padding: '2rem', textAlign: 'center', color: colors.error }}>
+             Error: {error}
+           </div>
         ) : !analysis ? (
            <div style={{ padding: '2rem', textAlign: 'center', color: colors.textMuted }}>
              {!diffEnabled ? 'Requires reference comparison (enable Diff mode).' : 'Preparing analysis...'}

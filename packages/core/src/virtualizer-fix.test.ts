@@ -40,6 +40,25 @@ describe('virtualizer', () => {
       expect(grid[0].cells.map(c => c.char).join('')).toBe('SI');
       expect(grid[0].cells.map(c => c.position)).toEqual([1, 4]);
     });
+
+    test('dual mode handles reverse frames correctly', () => {
+      const sequence = 'TAC';
+      const grid = buildGrid(sequence, 0, {
+        viewportCols: 3,
+        viewportRows: 2,
+        mode: 'dual',
+        frame: -1,
+        totalLength: sequence.length,
+      });
+
+      const aaRow = grid.find(r => r.type === 'aa');
+      if (!aaRow) {
+        throw new Error('Expected an AA row');
+      }
+
+      const aaChar = aaRow.cells.find(c => c.char !== ' ')?.char;
+      expect(aaChar).toBe('V');
+    });
   });
 
   describe('applyDiff', () => {
@@ -77,6 +96,22 @@ describe('virtualizer', () => {
 
       const diffed = applyDiff(grid, sequence, 'aa', -1, 0, sequence.length);
       expect(diffed[0].cells.map(c => c.diff)).toEqual(['same', 'same']);
+    });
+
+    test('DNA mode diff is case-insensitive', () => {
+      // Grid has uppercase 'A'
+      const grid = buildGrid('A', 0, {
+        viewportCols: 1,
+        viewportRows: 1,
+        mode: 'dna',
+        frame: 0,
+      });
+
+      // Reference has lowercase 'a'
+      const diffed = applyDiff(grid, 'a', 'dna', 0, 0);
+
+      expect(diffed[0].cells[0].char).toBe('A');
+      expect(diffed[0].cells[0].diff).toBe('same');
     });
   });
 });
