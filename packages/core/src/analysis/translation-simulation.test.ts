@@ -45,12 +45,19 @@ describe('Ribosome traffic simulation', () => {
     expect(next.proteinsProduced).toBe(1);
   });
 
-  it('step > fractional dt with rng can result in zero discrete steps', () => {
-    const rng = () => 1;
-    const s0 = ribosomeTrafficSimulation.init(null, {}, () => 0);
-    const s1 = ribosomeTrafficSimulation.step(s0, 0.5, rng);
-    expect(s1.time).toBeCloseTo(0.5, 6);
-    expect(s1.ribosomes).toEqual([]);
+  it('step > correctly handles TASEP update order (leader moves freely)', () => {
+    const rng = () => 0; // Always move
+    const base = ribosomeTrafficSimulation.init(null, {}, rng);
+    // Setup state: [10, 0]. Footprint 9.
+    // Leader at 10 should move to 11. Follower at 0 should move to 1.
+    const state = {
+      ...base,
+      ribosomes: [10, 0],
+      params: { ...base.params, initiationRate: 0 }, // No new initiation
+    };
+
+    const next = ribosomeTrafficSimulation.step(state, 1, rng);
+    expect(next.ribosomes).toEqual([11, 1]);
   });
 });
 

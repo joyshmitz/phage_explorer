@@ -184,10 +184,11 @@ function runSingleTasepStep(
     let stalls = 0;
     let proteins = proteinsProduced;
 
-    // Rebuild positions from 3' to 5' to handle exclusion.
-    const newPositionsReversed: number[] = [];
+    // Process ribosomes from 3' end (oldest) to 5' end (newest)
+    // Input `ribosomes` is sorted [Oldest ... Newest]
+    const newPositions: number[] = [];
     
-    for (let i = ribosomes.length - 1; i >= 0; i--) {
+    for (let i = 0; i < ribosomes.length; i++) {
         const pos = ribosomes[i];
         
         // Check if this ribosome is at the end (termination)
@@ -199,7 +200,7 @@ function runSingleTasepStep(
                 continue;
             } else {
                 // Failed: stay
-                newPositionsReversed.push(pos);
+                newPositions.push(pos);
                 continue;
             }
         }
@@ -207,45 +208,45 @@ function runSingleTasepStep(
         // Elongation
         const rate = codonRates[pos] || 0.1;
         
-        // Check obstruction from the ribosome ahead
+        // Check obstruction from the ribosome ahead (which was just processed)
         let blocked = false;
-        if (newPositionsReversed.length > 0) {
-            const nextPos = newPositionsReversed[newPositionsReversed.length - 1]; 
-            if (nextPos - pos < footprint) {
+        if (newPositions.length > 0) {
+            const leadingPos = newPositions[newPositions.length - 1]; 
+            if (leadingPos - pos < footprint) {
                 blocked = true;
             }
         }
         
         if (blocked) {
             stalls++;
-            newPositionsReversed.push(pos);
+            newPositions.push(pos);
         } else {
             // Try move
             if (random() < rate) {
-                newPositionsReversed.push(pos + 1);
+                newPositions.push(pos + 1);
             } else {
-                newPositionsReversed.push(pos);
+                newPositions.push(pos);
             }
         }
     }
     
     // 3. Initiation
-    // Check if first ribosome (now the last element of newPositionsReversed) blocks start
+    // Check if the most upstream ribosome (last processed) blocks start
     let startBlocked = false;
-    if (newPositionsReversed.length > 0) {
-        if (newPositionsReversed[newPositionsReversed.length - 1] < footprint) {
+    if (newPositions.length > 0) {
+        if (newPositions[newPositions.length - 1] < footprint) {
             startBlocked = true;
         }
     }
     
     if (!startBlocked) {
         if (random() < alpha) {
-            newPositionsReversed.push(0);
+            newPositions.push(0);
         }
     }
     
     return {
-      ribosomes: newPositionsReversed.reverse(),
+      ribosomes: newPositions, // Order preserved [Oldest ... Newest]
       proteinsProduced: proteins,
       stallEvents: stallEvents + stalls,
     };

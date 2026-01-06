@@ -19,7 +19,8 @@ import { ribosomeTrafficSimulation } from './analysis/translation-simulation';
 const clamp = (v: number, min: number, max: number) => Math.min(max, Math.max(min, v));
 
 // Helper for 2D grid neighbor selection (used in Plaque Sim)
-function randomNeighbor(index: number, size: number, rng: () => number): number | null {
+// Toroidal wrap-around to avoid edge effects
+function randomNeighbor(index: number, size: number, rng: () => number): number {
   const x = index % size;
   const y = Math.floor(index / size);
   const dirs = [
@@ -27,9 +28,9 @@ function randomNeighbor(index: number, size: number, rng: () => number): number 
     [1, 1], [1, -1], [-1, 1], [-1, -1],
   ];
   const [dx, dy] = dirs[Math.floor(rng() * dirs.length)];
-  const nx = x + dx;
-  const ny = y + dy;
-  if (nx < 0 || ny < 0 || nx >= size || ny >= size) return null;
+  // Wrap around (toroidal)
+  const nx = (x + dx + size) % size;
+  const ny = (y + dy + size) % size;
   return ny * size + nx;
 }
 
@@ -125,8 +126,7 @@ function runPlaqueStep(state: PlaqueAutomataState, rng: () => number): PlaqueAut
       let target = i;
       // Single step diffusion logic
       if (random() < diffusion) {
-        const neighbor = randomNeighbor(i, size, random);
-        if (neighbor !== null) target = neighbor;
+        target = randomNeighbor(i, size, random);
       }
 
       const targetState = currentGrid[target];
@@ -135,8 +135,9 @@ function runPlaqueStep(state: PlaqueAutomataState, rng: () => number): PlaqueAut
           nextGrid[target] = 2; // Infect
           nextAges[target] = 0;
         } else {
-          // Bounce off
-          if (nextGrid[target] !== 2 && nextGrid[target] !== 5) nextGrid[target] = 4;
+          // Bounce off: Stay at current position (i)
+          // Do NOT overwrite target (which is occupied by bacteria)
+          if (nextGrid[i] !== 2 && nextGrid[i] !== 5) nextGrid[i] = 4;
         }
       } else {
          // Empty, already infected, lysogen, or another phage: move there if not occupied by bacteria/infected
@@ -167,16 +168,14 @@ function runPlaqueStep(state: PlaqueAutomataState, rng: () => number): PlaqueAut
           const burstCount = Math.max(1, Math.floor(burst));
           for (let b = 0; b < burstCount; b++) {
             const nb = randomNeighbor(i, size, random);
-            if (nb !== null) {
-              const nbState = currentGrid[nb];
-              // Infect neighbors immediately if bacteria
-              if (nbState === 1 && random() < adsorption) {
-                 nextGrid[nb] = 2; 
-                 nextAges[nb] = 0;
-              } else if (nextGrid[nb] === 0) {
-                 // Otherwise spawn free phage in empty space
-                 nextGrid[nb] = 4; 
-              }
+            const nbState = currentGrid[nb];
+            // Infect neighbors immediately if bacteria
+            if (nbState === 1 && random() < adsorption) {
+                nextGrid[nb] = 2; 
+                nextAges[nb] = 0;
+            } else if (nextGrid[nb] === 0) {
+                // Otherwise spawn free phage in empty space
+                nextGrid[nb] = 4; 
             }
           }
         }
@@ -426,11 +425,17 @@ export function makeInfectionSimulation(): Simulation<InfectionKineticsState> {
       const I = state.infected;
       const P = state.phage;
 
+      // Normalize units to seconds (assuming dt is in seconds)
+      const kSec = k / 60; // mL/min -> mL/sec
+      const growthSec = growth / 3600; // per hour -> per sec
+      const decaySec = decay / 3600; // per hour -> per sec
+      const latentSec = Math.max(1, latent * 60); // min -> sec
+
       // Note: 'latent' is treated here as the mean lifetime of the infected state (1/latent rate),
       // effectively modeling lysis as an exponential decay process rather than a fixed time delay.
-      const dB = (growth * B - k * B * P) * dt;
-      const dI = (k * B * P - I / Math.max(1, latent)) * dt;
-      const dP = ((burst / Math.max(1, latent)) * I - k * B * P - decay * P) * dt;
+      const dB = (growthSec * B - kSec * B * P) * dt;
+      const dI = (kSec * B * P - I / latentSec) * dt;
+      const dP = ((burst / latentSec) * I - kSec * B * P - decaySec * P) * dt;
 
       const nextB = clamp(B + dB, 0, 1e12);
       const nextI = clamp(I + dI, 0, 1e12);

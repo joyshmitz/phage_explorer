@@ -363,7 +363,7 @@ export const SIMULATION_METADATA: SimulationMeta[] = [
   },
   {
     id: 'packaging-motor',
-    name: 'Packaging Motor Pressure',
+    name: 'Packaging Motor',
     description: 'Feel the 60 atmospheres building in the capsid',
     icon: '📦',
     priority: 5,
