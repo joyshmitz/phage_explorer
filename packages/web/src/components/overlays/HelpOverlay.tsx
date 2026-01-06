@@ -220,7 +220,7 @@ export function HelpOverlay(): React.ReactElement | null {
                 }}>
                   {layerHotkeys.map((hotkey, index) => (
                     <div
-                      key={index}
+                      key={hotkey.description}
                       style={{
                         display: 'flex',
                         alignItems: 'center',
@@ -247,7 +247,8 @@ export function HelpOverlay(): React.ReactElement | null {
                           color: colors.textMuted,
                           fontSize: '0.7rem',
                           padding: '0.1rem 0.3rem',
-                          backgroundColor: colors.backgroundAlt,
+                          backgroundColor: colors.background,
+                          border: `1px solid ${colors.borderLight}`,
                           borderRadius: '2px',
                           flexShrink: 0,
                         }}>
