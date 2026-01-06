@@ -67,6 +67,15 @@ function renderDetails(sim: Simulation, state: SimState): React.ReactElement {
           B {state.bacteria.toExponential(2)} · I {state.infected.toExponential(2)} · P {state.phage.toExponential(2)}
         </Text>
       );
+    case 'resistance-cocktail':
+      return (
+        <Text>
+          S {state.sensitiveBacteria.toExponential(2)} · 
+          R_part {state.partialResistant.reduce((a, b) => a + b, 0).toExponential(2)} · 
+          R_full {state.fullyResistant.toExponential(2)} · 
+          P {state.phageCounts.reduce((a, b) => a + b, 0).toExponential(2)}
+        </Text>
+      );
     default:
       return <Text>State active</Text>;
   }
@@ -132,7 +141,20 @@ export function SimulationView({ onClose }: SimulationViewProps): React.ReactEle
       return;
     }
     if (input === 'r' || input === 'R') {
-      if (initialRef.current) resetSimulation(initialRef.current);
+      if (initialRef.current && latestStateRef.current) {
+        // Preserve current parameters on reset
+        const currentParams = latestStateRef.current.params;
+        const resetState = {
+          ...initialRef.current,
+          params: currentParams,
+        };
+        resetSimulation(resetState);
+        // Also update initialRef so subsequent resets keep these params? 
+        // No, initialRef should ideally represent the "clean" state structure.
+        // But for params, we want them sticky.
+      } else if (initialRef.current) {
+        resetSimulation(initialRef.current);
+      }
       return;
     }
     if (input === '.' && simState && simulation) {

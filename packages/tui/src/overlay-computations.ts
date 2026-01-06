@@ -120,7 +120,8 @@ export function computeBendability(sequence: string, window = 400): NumericOverl
 
 export function computePromoterMarks(sequence: string): MarkOverlay {
   const hits = detectPromoters(sequence);
-  const marks = hits.map(h => h.pos);
+  // TUI overlays display 1-based coordinates; store marks accordingly.
+  const marks = hits.map(h => h.pos + 1);
   const motifsFound = hits.map(h => `${h.motif} (${h.strand})`);
   return {
     id: 'promoter',
@@ -167,7 +168,8 @@ export function computeRepeatMarks(sequence: string, minLen = 6): MarkOverlay {
       }
 
       if (isPalindrome) {
-        marks.push(i);
+        // TUI overlays display 1-based coordinates; store marks accordingly.
+        marks.push(i + 1);
         break; // Found one at this position, move to next pos
       }
     }

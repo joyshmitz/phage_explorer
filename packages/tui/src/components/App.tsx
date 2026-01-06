@@ -342,7 +342,7 @@ export function App({ repository, foldEmbeddings = [] }: AppProps): React.ReactE
         };
 
         const entries = await Promise.all(
-          phages.map(async (p) => {
+          phages.slice(0, 50).map(async (p) => {
             const len = await repository.getFullGenomeLength(p.id);
             const seq = await repository.getSequenceWindow(p.id, 0, len);
             const label = `${p.name ?? `phage-${p.id}`} (${p.host ?? 'unknown host'}) #${p.id}`;
