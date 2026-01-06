@@ -58,7 +58,9 @@ function getDepthLayer(category: string, shortcut: KeyCombo | KeyCombo[], action
 
   // Layer 1 vs 2: Check shortcut complexity
   const combos = Array.isArray(shortcut) ? shortcut : [shortcut];
-  const hasModifiers = combos.some(c => c.modifiers && (c.modifiers.alt || c.modifiers.ctrl || c.modifiers.meta));
+  const hasModifiers = combos.some(c =>
+    c.modifiers && (c.modifiers.alt || c.modifiers.ctrl || c.modifiers.meta || c.modifiers.shift)
+  );
 
   // Single key without modifiers = Layer 1 (quick overlays)
   if (!hasModifiers) return 1;
