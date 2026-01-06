@@ -378,15 +378,25 @@ if [[ $WITH_DATABASE -eq 1 ]]; then
       log_success "Database installed: $DB_PATH"
     else
       log_warn "Pre-built database not available"
-      log "You can build it by running: phage-explorer --build-db"
+      log "Build it from source (requires bun) and copy it into place:"
+      log "  git clone https://github.com/$OWNER/$REPO.git"
+      log "  cd $REPO && bun install && bun run build:db"
+      log "  mkdir -p \"$DATA_DIR\" && cp phage.db \"$DB_PATH\""
     fi
   else
     log_warn "No version specified, cannot download database"
-    log "You can build it by running: phage-explorer --build-db"
+    log "Build it from source (requires bun) and copy it into place:"
+    log "  git clone https://github.com/$OWNER/$REPO.git"
+    log "  cd $REPO && bun install && bun run build:db"
+    log "  mkdir -p \"$DATA_DIR\" && cp phage.db \"$DB_PATH\""
   fi
 else
   log "Skipping database download (use --with-database to include)"
-  log "You can build the database later with: phage-explorer --build-db"
+  log "You can download it later by re-running this installer with --with-database."
+  log "Or build it from source and copy it into place:"
+  log "  git clone https://github.com/$OWNER/$REPO.git"
+  log "  cd $REPO && bun install && bun run build:db"
+  log "  mkdir -p \"$DATA_DIR\" && cp phage.db \"$DB_PATH\""
 fi
 
 # ─────────────────────────────────────────────────────────────────────────────

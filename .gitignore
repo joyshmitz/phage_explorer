@@ -74,6 +74,7 @@ packages/web/audit-ui.ts
 # Temporary beads tracking data
 .beads/beads.left.*
 .beads/bd.sock.startlock
+.beads/last-touched
 
 # Web static database must be deployed with the site
 # (kept small ~1.4MB; required for initial load)
