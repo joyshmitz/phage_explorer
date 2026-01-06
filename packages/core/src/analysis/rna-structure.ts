@@ -42,7 +42,7 @@ export interface CodonStress {
 export interface RegulatoryHypothesis {
   start: number;
   end: number;
-  type: 'stem-loop' | 'riboswitch' | 'attenuator' | 'packaging-signal' | 'slippery-site';
+  type: 'stem-loop' | 'riboswitch' | 'attenuator' | 'packaging-signal' | 'slippery-site' | 'rbs' | 'terminator';
   confidence: number;    // 0-1
   description: string;
   sequence: string;
@@ -93,6 +93,20 @@ const RIBOSWITCH_MOTIFS = [
   'GGGAU', // SAM riboswitch fragment
   'GCGAA', // FMN riboswitch fragment
 ];
+
+// Shine-Dalgarno patterns
+const SD_PATTERNS = [
+  { pattern: 'AGGAGG', score: 100 },
+  { pattern: 'AGGAG', score: 90 },
+  { pattern: 'AGGA', score: 80 },
+  { pattern: 'GGAGG', score: 80 },
+  { pattern: 'GAGG', score: 70 },
+  { pattern: 'AGAG', score: 60 },
+  { pattern: 'AGG', score: 50 },
+  { pattern: 'GGA', score: 50 },
+];
+
+const START_CODONS = ['AUG', 'GUG', 'UUG']; // RNA versions
 
 // ============================================================================
 // Helper Functions
@@ -337,13 +351,17 @@ export function computeSynonymousStress(
     });
   }
 
-  // Calculate percentiles
-  const sortedStress = [...allStress].sort((a, b) => a - b);
-  const maxStress = Math.max(...allStress, 0.01);
+  // Calculate percentiles efficiently O(N log N)
+  const indices = Array.from({ length: allStress.length }, (_, i) => i);
+  indices.sort((a, b) => allStress[a] - allStress[b]);
 
-  for (const result of results) {
-    const rank = sortedStress.filter(s => s <= result.stress).length;
-    result.stressPercentile = rank / sortedStress.length;
+  const maxStress = Math.max(...allStress, 0.01);
+  const n = allStress.length;
+
+  for (let rank = 0; rank < n; rank++) {
+    const originalIndex = indices[rank];
+    const result = results[originalIndex];
+    result.stressPercentile = (rank + 1) / n;
     result.stress = result.stress / maxStress; // Normalize to 0-1
     result.isConstrained = result.stressPercentile >= 0.8; // Top 20%
   }
@@ -490,6 +508,112 @@ export function detectRegulatoryElements(
 }
 
 /**
+ * Find RBS candidates (Shine-Dalgarno sequences upstream of start codons)
+ */
+function findRBS(rna: string): RegulatoryHypothesis[] {
+  const results: RegulatoryHypothesis[] = [];
+  
+  for (const startCodon of START_CODONS) {
+    let pos = 0;
+    while ((pos = rna.indexOf(startCodon, pos)) !== -1) {
+      if (pos < 4) {
+        pos++;
+        continue;
+      }
+
+      // Scan -20 to -4 upstream
+      const upstreamStart = Math.max(0, pos - 20);
+      const upstreamEnd = pos - 4;
+      const upstream = rna.slice(upstreamStart, upstreamEnd);
+
+      for (const sd of SD_PATTERNS) {
+        const sdPos = upstream.indexOf(sd.pattern);
+        if (sdPos !== -1) {
+          const rbsStart = upstreamStart + sdPos;
+          const spacing = pos - (rbsStart + sd.pattern.length);
+          const spacingScore = spacing >= 5 && spacing <= 9 ? 20 : spacing >= 3 && spacing <= 12 ? 10 : 0;
+          const totalScore = sd.score + spacingScore;
+
+          if (totalScore >= 60) {
+            results.push({
+              type: 'rbs',
+              start: rbsStart,
+              end: pos + 3,
+              confidence: Math.min(1, totalScore / 100),
+              sequence: rna.slice(rbsStart, pos + 3),
+              description: `SD: ${sd.pattern}, spacing: ${spacing} nt`,
+            });
+            break; 
+          }
+        }
+      }
+      pos++;
+    }
+  }
+  return results;
+}
+
+/**
+ * Find rho-independent terminators (Stem-loop + U-tract)
+ */
+function findTerminators(rna: string): RegulatoryHypothesis[] {
+  const results: RegulatoryHypothesis[] = [];
+  
+  // Search for stem-loops followed by U-tract
+  const stems = findStemLoops(rna, 5); // Use existing finder, min stem 5
+  
+  for (const [start, end] of stems) {
+    // end is exclusive index of the pairing region? 
+    // findStemLoops returns [i, j] inclusive indices of the base pair.
+    // So stem ends at j.
+    // Check downstream for U-tract
+    const j = end;
+    if (j + 10 >= rna.length) continue;
+    
+    const downstream = rna.slice(j + 1, j + 15);
+    const uCount = (downstream.match(/U/g) || []).length;
+    
+    if (uCount >= 4) {
+      // It's a candidate
+      // Estimate loop size
+      // [i, j] is the outer pair.
+	      // Need to find inner pair? `findStemLoops` returns ALL pairs.
+	      // We need to group them into structures.
+	      // Simplified: Just take the pair and check U-tract.
+	      // Calculate a confidence score
+	      // Actually `findStemLoops` iterates.
+	      
+	      results.push({
+	        type: 'terminator',
+	        start,
+        end: j + 1 + uCount, // Include U-tract roughly
+        confidence: 0.7 + (uCount >= 6 ? 0.2 : 0),
+        sequence: rna.slice(start, j + 10),
+        description: `Terminator with ${uCount} U's`,
+      });
+    }
+  }
+  
+  // Deduplicate (since findStemLoops returns nested pairs)
+  return deduplicateHypotheses(results);
+}
+
+function deduplicateHypotheses(items: RegulatoryHypothesis[]): RegulatoryHypothesis[] {
+  const sorted = [...items].sort((a, b) => b.confidence - a.confidence);
+  const filtered: RegulatoryHypothesis[] = [];
+  
+  for (const item of sorted) {
+    const overlap = filtered.some(e => 
+      (item.start >= e.start && item.start < e.end) || 
+      (item.end > e.start && item.end <= e.end) ||
+      (item.start <= e.start && item.end >= e.end)
+    );
+    if (!overlap) filtered.push(item);
+  }
+  return filtered.sort((a, b) => a.start - b.start);
+}
+
+/**
  * Full RNA structure analysis
  */
 export function analyzeRNAStructure(
@@ -501,6 +625,7 @@ export function analyzeRNAStructure(
   } = {}
 ): RNAStructureAnalysis {
   const { windowSize = 120, stepSize = 30, frame = 0 } = options;
+  const rna = dnaToRna(sequence);
 
   // Sliding window MFE analysis
   const windows = analyzeRNAWindows(sequence, windowSize, stepSize);
@@ -511,8 +636,16 @@ export function analyzeRNAStructure(
   // Find high-stress (structure-constrained) regions
   const highStressRegions = findHighStressRegions(codonStress);
 
-  // Detect regulatory elements
-  const regulatoryHypotheses = detectRegulatoryElements(sequence, codonStress);
+  // Detect regulatory elements (advanced + basic)
+  const advancedRegulatory = detectRegulatoryElements(sequence, codonStress);
+  const rbs = findRBS(rna);
+  const terminators = findTerminators(rna);
+  
+  const allRegulatory = deduplicateHypotheses([
+    ...advancedRegulatory, 
+    ...rbs, 
+    ...terminators
+  ]);
 
   // Global metrics
   const globalMFE = windows.reduce((sum, w) => sum + w.mfe, 0) / Math.max(windows.length, 1);
@@ -522,7 +655,7 @@ export function analyzeRNAStructure(
     windows,
     codonStress,
     highStressRegions,
-    regulatoryHypotheses,
+    regulatoryHypotheses: allRegulatory,
     globalMFE,
     avgSynonymousStress,
   };
