@@ -118,6 +118,12 @@ export function createLambdaPhage(): Model3D {
       edges.push([curr, below]);
     }
   }
+  // Close bottom ring
+  for (let i = 0; i < 6; i++) {
+    const curr = tailStart + 4 * 6 + i;
+    const next = tailStart + 4 * 6 + ((i + 1) % 6);
+    edges.push([curr, next]);
+  }
 
   // Tail tip
   const tipStart = vertices.length;
@@ -180,6 +186,12 @@ export function createT4Phage(): Model3D {
       edges.push([curr, below]);
     }
   }
+  // Close bottom ring
+  for (let i = 0; i < 8; i++) {
+    const curr = tailStart + 4 * 8 + i;
+    const next = tailStart + 4 * 8 + ((i + 1) % 8);
+    edges.push([curr, next]);
+  }
 
   // Baseplate
   const baseStart = vertices.length;
@@ -241,6 +253,12 @@ export function createT7Phage(): Model3D {
       edges.push([curr, next]);
       edges.push([curr, below]);
     }
+  }
+  // Close bottom ring
+  for (let i = 0; i < 6; i++) {
+    const curr = tailStart + 4 * 6 + i;
+    const next = tailStart + 4 * 6 + ((i + 1) % 6);
+    edges.push([curr, next]);
   }
 
   // Small tail fibers

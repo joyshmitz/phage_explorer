@@ -122,7 +122,12 @@ export const Sparkline: React.FC<SparklineProps> = ({
       if (showPeaks && curr >= prev && curr >= next) markers.push({ x: points[i].x, y: points[i].y, type: 'peak' });
       if (showValleys && curr <= prev && curr <= next) markers.push({ x: points[i].x, y: points[i].y, type: 'valley' });
     }
-    const maxMarkers = 4;
+    
+    // Sort by prominence (distance from vertical center) to show most significant features first
+    const centerY = height / 2;
+    markers.sort((a, b) => Math.abs(b.y - centerY) - Math.abs(a.y - centerY));
+
+    const maxMarkers = 6;
     markers.slice(0, maxMarkers).forEach(m => {
       ctx.fillStyle = m.type === 'peak' ? theme.palette.error : theme.palette.info;
       ctx.beginPath();

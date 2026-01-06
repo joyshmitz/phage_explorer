@@ -13,6 +13,7 @@ import type {
   EvolutionReplayState,
   PackagingMotorState,
   InfectionKineticsState,
+  ResistanceCocktailState,
   DotPlotConfig,
   DotPlotResult,
   BiasDecomposition,
@@ -36,6 +37,7 @@ export type {
   EvolutionReplayState,
   PackagingMotorState,
   InfectionKineticsState,
+  ResistanceCocktailState,
 };
 
 /**

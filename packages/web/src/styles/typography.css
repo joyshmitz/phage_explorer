@@ -3,7 +3,7 @@
  *
  * Premium typography with Stripe-level polish.
  * Design principles:
- * - Monospace-first for code/data display
+ * - Sans-serif UI chrome with monospace reserved for data/code
  * - Clear hierarchy with refined scale
  * - Optimized for readability at all sizes
  * - Responsive typography for mobile
@@ -37,7 +37,7 @@
 /*
  * Typography Scale
  * Using a modular scale with 1.25 ratio (major third)
- * Base size: 15px for better monospace readability
+ * Base size: 15px balanced for UI chrome + data surfaces
  */
 :root {
   /* Font families */
@@ -93,11 +93,9 @@
 
 /* Base typography */
 html {
-  font-family: var(--font-mono);
-  font-size: 15px; /* Slightly smaller base for monospace */
+  font-family: var(--font-sans);
+  font-size: 15px; /* Balanced base size for UI chrome + data */
   line-height: var(--leading-normal);
-  font-feature-settings: var(--font-features-code);
-  font-variant-ligatures: contextual;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;

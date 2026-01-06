@@ -143,7 +143,7 @@ registerRoute(
 
 // Cache local WASM files with CacheFirst (immutable, versioned by build)
 registerRoute(
-  ({ url }) => url.pathname.endsWith('.wasm'),
+  ({ url }) => url.origin === self.location.origin && url.pathname.endsWith('.wasm'),
   new CacheFirst({
     cacheName: CACHE_NAMES.wasm,
     plugins: [

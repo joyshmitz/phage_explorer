@@ -2,28 +2,11 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   loadStructure,
-  extractPdbId,
   type BondDetail,
   type LoadedStructure,
   type ProgressInfo,
   type LoadingStage,
 } from '../visualization/structure-loader';
-
-type StructureCacheModule = {
-  isStructureCached: (pdbId: string) => Promise<boolean>;
-};
-
-let structureCacheModule: StructureCacheModule | null = null;
-async function isStructureCached(pdbId: string): Promise<boolean> {
-  try {
-    if (!structureCacheModule) {
-      structureCacheModule = await import('../db/structure-cache');
-    }
-    return await structureCacheModule.isStructureCached(pdbId);
-  } catch {
-    return false;
-  }
-}
 
 export interface UseStructureQueryOptions {
   idOrUrl?: string | null;
@@ -60,10 +43,8 @@ export function useStructureQuery(options: UseStructureQueryOptions): StructureQ
 
   const [progress, setProgress] = useState(0);
   const [loadingStage, setLoadingStage] = useState<LoadingStage | null>(null);
-  const [fromCache, setFromCache] = useState(false);
   const progressCallbackRef = useRef<((info: ProgressInfo) => void) | null>(null);
   const lastIdRef = useRef<string | null>(null);
-  const wasCachedRef = useRef(false);
 
   // Create a stable progress callback
   progressCallbackRef.current = useCallback((info: ProgressInfo) => {
@@ -84,11 +65,6 @@ export function useStructureQuery(options: UseStructureQueryOptions): StructureQ
       // Reset progress and cache status on new load
       setProgress(0);
       setLoadingStage(null);
-      setFromCache(false);
-
-      // Check if structure is cached before loading
-      const pdbId = extractPdbId(idOrUrl);
-      wasCachedRef.current = await isStructureCached(pdbId);
 
       return loadStructure(idOrUrl, signal, progressCallbackRef.current ?? undefined, {
         includeBonds,
@@ -107,7 +83,6 @@ export function useStructureQuery(options: UseStructureQueryOptions): StructureQ
     if (query.data && !query.isFetching) {
       setProgress(100);
       setLoadingStage(null);
-      setFromCache(wasCachedRef.current);
     }
   }, [query.data, query.isFetching]);
 
@@ -120,7 +95,7 @@ export function useStructureQuery(options: UseStructureQueryOptions): StructureQ
     refetch: query.refetch,
     progress,
     loadingStage,
-    fromCache,
+    fromCache: query.data?.fromCache ?? false,
   };
 }
 

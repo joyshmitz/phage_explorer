@@ -181,6 +181,7 @@ export function useSimulation(simId: SimulationId): UseSimulationResult {
         DEFAULT_DT * speedRef.current
       );
       if (mountedRef.current && generationRef.current === gen) {
+        stateRef.current = newState; // Immediate update to prevent stutter
         setState(newState);
         const elapsed = performance.now() - start;
         setAvgStepMs(prev => (prev === 0 ? elapsed : prev * 0.8 + elapsed * 0.2));
@@ -211,6 +212,7 @@ export function useSimulation(simId: SimulationId): UseSimulationResult {
         DEFAULT_DT * speedRef.current
       ).then((newState) => {
         if (!mountedRef.current || generationRef.current !== gen) return;
+        stateRef.current = newState; // Immediate update to prevent stutter
         setState(newState);
         const elapsed = performance.now() - start;
         setAvgStepMs(prev => (prev === 0 ? elapsed : prev * 0.8 + elapsed * 0.2));

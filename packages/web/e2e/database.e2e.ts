@@ -1,6 +1,14 @@
 import { test, expect } from '@playwright/test';
 
 test('database loads successfully', async ({ page }) => {
+  // Capture console errors from the start (before navigation)
+  const errors: string[] = [];
+  page.on('console', (msg) => {
+    if (msg.type() === 'error') {
+      errors.push(msg.text());
+    }
+  });
+
   // Clear IndexedDB before test
   await page.goto('http://localhost:5173');
   await page.evaluate(() => {
@@ -27,14 +35,6 @@ test('database loads successfully', async ({ page }) => {
   // Check for "Database Load Failed" text
   const failedText = await page.locator('text=/Database Load Failed/i').count();
   expect(failedText).toBe(0);
-
-  // Check console for errors
-  const errors: string[] = [];
-  page.on('console', (msg) => {
-    if (msg.type() === 'error') {
-      errors.push(msg.text());
-    }
-  });
 
   // Wait a bit more for any async errors
   await page.waitForTimeout(3000);

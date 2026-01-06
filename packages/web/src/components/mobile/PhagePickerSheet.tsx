@@ -164,12 +164,14 @@ export function PhagePickerSheet({
     void workerRef.current.setFuzzyIndex({ index: 'phage-picker', entries });
   }, [phages, workerReady]);
 
+  // Memoize lookup map for performance
+  const phagesById = useMemo(() => new Map(phages.map((p) => [p.id, p])), [phages]);
+
   // Filter phages by search query
   const filteredPhages = useMemo(() => {
     if (!searchQuery.trim()) return phages;
     if (rankedIds && rankedIds.length > 0) {
-      const byId = new Map(phages.map((p) => [p.id, p] as const));
-      const ranked = rankedIds.map((id) => byId.get(id)).filter(Boolean) as PhageListItem[];
+      const ranked = rankedIds.map((id) => phagesById.get(id)).filter(Boolean) as PhageListItem[];
       if (ranked.length > 0) return ranked;
     }
     // Fallback while the worker warms up / for very small datasets.
@@ -179,7 +181,7 @@ export function PhagePickerSheet({
         phage.name.toLowerCase().includes(query) ||
         phage.host?.toLowerCase().includes(query)
     );
-  }, [phages, searchQuery, rankedIds]);
+  }, [phages, searchQuery, rankedIds, phagesById]);
 
   // Run fuzzy search in worker when query changes.
   useEffect(() => {

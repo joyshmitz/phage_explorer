@@ -13,3 +13,4 @@ export { RibosomeVisualizer } from './RibosomeVisualizer';
 export { EvolutionVisualizer } from './EvolutionVisualizer';
 export { InfectionKineticsVisualizer } from './InfectionKineticsVisualizer';
 export { PackagingMotorVisualizer } from './PackagingMotorVisualizer';
+export { ResistanceVisualizer } from './ResistanceVisualizer';

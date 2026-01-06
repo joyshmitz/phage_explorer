@@ -62,7 +62,9 @@ export const Histogram: React.FC<HistogramProps> = ({
       const h = (count / maxCount) * drawHeight;
       const x = padding.left + i * barWidth;
       const y = padding.top + (drawHeight - h);
-      ctx.fillRect(x, y, Math.max(0, barWidth - 1), h);
+      // Remove gap if bars are too thin
+      const w = barWidth > 2 ? barWidth - 1 : barWidth;
+      ctx.fillRect(x, y, Math.max(0.5, w), h);
     });
 
     // Density line (simple moving average)

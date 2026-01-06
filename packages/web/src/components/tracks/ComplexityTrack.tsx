@@ -62,7 +62,7 @@ function calculateComplexity(
   let inLowComplexity = false;
   let lowComplexityStart = 0;
 
-  for (let i = 0; i < sequence.length - windowSize; i += windowSize) {
+  for (let i = 0; i <= sequence.length - windowSize; i += windowSize) {
     const window = sequence.slice(i, i + windowSize);
     const entropy = shannonEntropy(window);
     // Normalize to 0-1 (max entropy for DNA is 2 bits)

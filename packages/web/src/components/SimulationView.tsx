@@ -13,6 +13,7 @@ import {
   EvolutionVisualizer,
   InfectionKineticsVisualizer,
   PackagingMotorVisualizer,
+  ResistanceVisualizer,
 } from './simulations';
 
 const SIM_ID_MAP: Record<string, SimulationId> = {
@@ -31,6 +32,7 @@ const SIM_ID_MAP: Record<string, SimulationId> = {
   'plaque-automata': 'plaque-automata',
   'evolution-replay': 'evolution-replay',
   'resistance-evolution': 'evolution-replay',
+  'resistance-cocktail': 'resistance-cocktail',
 };
 
 function normalizeSimId(simId: string | undefined): SimulationId {
@@ -57,6 +59,8 @@ function VisualizerRouter({
       return <InfectionKineticsVisualizer state={state as any} width={width} height={height} />;
     case 'packaging-motor':
       return <PackagingMotorVisualizer state={state as any} width={width} height={height} />;
+    case 'resistance-cocktail':
+      return <ResistanceVisualizer state={state as any} width={width} height={height} />;
     default:
       return (
         <pre

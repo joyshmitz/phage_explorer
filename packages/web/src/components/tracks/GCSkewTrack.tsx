@@ -39,7 +39,7 @@ function calculateGCSkew(
   let minVal = Infinity;
   let maxVal = -Infinity;
 
-  for (let i = 0; i < sequence.length - windowSize; i += windowSize) {
+  for (let i = 0; i <= sequence.length - windowSize; i += windowSize) {
     const window = sequence.slice(i, i + windowSize).toUpperCase();
     let g = 0;
     let c = 0;

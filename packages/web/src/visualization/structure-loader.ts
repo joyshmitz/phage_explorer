@@ -52,6 +52,8 @@ export interface LoadedStructure {
   radius: number;
   atomCount: number;
   functionalGroups: FunctionalGroup[];
+  /** True when the raw structure file was loaded from IndexedDB cache */
+  fromCache: boolean;
   timings?: WorkerTimings;
 }
 
@@ -565,6 +567,7 @@ export async function loadStructure(
           radius,
           atomCount: atoms.length,
           functionalGroups,
+          fromCache,
           timings,
         });
       }

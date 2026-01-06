@@ -320,7 +320,8 @@ async function calculateComplexity(sequence: string, windowSize = 100): Promise<
   const linguistic: number[] = [];
   const lowComplexityRegions: Array<{ start: number; end: number }> = [];
 
-  const stepSize = Math.max(1, Math.floor(windowSize / 2));
+  const windowSizeInt = Math.max(1, Math.floor(windowSize));
+  const stepSize = Math.max(1, Math.floor(windowSizeInt / 2));
   let inLowRegion = false;
   let regionStart = 0;
 
@@ -329,13 +330,13 @@ async function calculateComplexity(sequence: string, windowSize = 100): Promise<
   try {
     const wasm = await getWasmCompute();
     if (wasm && typeof wasm.compute_windowed_entropy_acgt === 'function') {
-      const wasmEntropy = wasm.compute_windowed_entropy_acgt(seq, windowSize, stepSize);
+      const wasmEntropy = wasm.compute_windowed_entropy_acgt(seq, windowSizeInt, stepSize);
       const windowCount = wasmEntropy.length;
 
       for (let i = 0; i < windowCount; i++) {
         const e = wasmEntropy[i] ?? 0;
         entropy.push(e);
-        linguistic.push(uniqueTrimerRatioAt(seq, i * stepSize, windowSize));
+        linguistic.push(uniqueTrimerRatioAt(seq, i * stepSize, windowSizeInt));
 
         const isLow = e < 0.5;
         const pos = i * stepSize;
@@ -360,8 +361,8 @@ async function calculateComplexity(sequence: string, windowSize = 100): Promise<
     }
   }
 
-  for (let i = 0; i < seq.length - windowSize; i += stepSize) {
-    const window = seq.slice(i, i + windowSize);
+  for (let i = 0; i < seq.length - windowSizeInt; i += stepSize) {
+    const window = seq.slice(i, i + windowSizeInt);
 
     // Shannon entropy
     const counts: Record<string, number> = {};
@@ -381,7 +382,7 @@ async function calculateComplexity(sequence: string, windowSize = 100): Promise<
     entropy.push(ent / 2); // Normalize to 0-1
 
     // Linguistic complexity (unique trimers), low-allocation fast path.
-    linguistic.push(uniqueTrimerRatioAt(seq, i, windowSize));
+    linguistic.push(uniqueTrimerRatioAt(seq, i, windowSizeInt));
 
     // Track low complexity regions
     const isLow = ent / 2 < 0.5;
@@ -409,14 +410,15 @@ function calculateBendability(sequence: string, windowSize = 50): BendabilityRes
   const values: number[] = [];
   const flexibleRegions: Array<{ start: number; end: number; avgBendability: number }> = [];
 
-  const stepSize = windowSize / 4;
+  const windowSizeInt = Math.max(1, Math.floor(windowSize));
+  const stepSize = Math.max(1, Math.floor(windowSizeInt / 4));
   let inFlexRegion = false;
   let regionStart = 0;
   let regionSum = 0;
   let regionCount = 0;
 
-  for (let i = 0; i < seq.length - windowSize; i += stepSize) {
-    const window = seq.slice(i, i + windowSize);
+  for (let i = 0; i <= seq.length - windowSizeInt; i += stepSize) {
+    const window = seq.slice(i, i + windowSizeInt);
     let sum = 0, count = 0;
 
     for (let j = 0; j < window.length - 1; j++) {
