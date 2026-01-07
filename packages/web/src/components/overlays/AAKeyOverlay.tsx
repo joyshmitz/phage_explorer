@@ -12,6 +12,7 @@ import { useHotkey } from '../../hooks';
 import { ActionIds } from '../../keyboard';
 import { Overlay } from './Overlay';
 import { useOverlay } from './OverlayProvider';
+import { OverlayStack, OverlaySection, OverlaySectionHeader, OverlayGrid } from './primitives';
 
 const GROUPS: Array<{ id: string; label: string; members: AminoAcid[] }> = [
   { id: 'hydrophobic', label: 'Hydrophobic', members: ['A', 'V', 'L', 'I', 'M', 'F', 'W', 'P'] },
@@ -23,7 +24,6 @@ const GROUPS: Array<{ id: string; label: string; members: AminoAcid[] }> = [
 
 export function AAKeyOverlay(): React.ReactElement | null {
   const { theme } = useTheme();
-  const colors = theme.colors;
   const { isOpen, toggle } = useOverlay();
 
   // Hotkey toggle: Shift+K
@@ -44,21 +44,14 @@ export function AAKeyOverlay(): React.ReactElement | null {
       hotkey="Shift+K"
       size="lg"
     >
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+      <OverlayStack>
         {GROUPS.map(group => (
-          <div
+          <OverlaySection
             key={group.id}
-            style={{
-              border: `1px solid ${colors.borderLight}`,
-              borderRadius: '6px',
-              padding: '0.75rem',
-              backgroundColor: colors.backgroundAlt,
-            }}
+            header={<OverlaySectionHeader title={group.label} />}
+            style={{ backgroundColor: 'var(--color-background-alt)' }}
           >
-            <div style={{ color: colors.primary, fontWeight: 700, marginBottom: '0.5rem' }}>
-              {group.label}
-            </div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '0.5rem' }}>
+            <OverlayGrid minColumnWidth="180px" gap="0.5rem">
               {group.members.map(code => {
                 const info = AMINO_ACIDS[code];
                 const palette = theme.aminoAcids[code];
@@ -68,18 +61,18 @@ export function AAKeyOverlay(): React.ReactElement | null {
                     style={{
                       display: 'flex',
                       alignItems: 'center',
-                      gap: '0.5rem',
-                      padding: '0.5rem',
-                      borderRadius: '4px',
-                      backgroundColor: colors.background,
-                      border: `1px solid ${colors.borderLight}`,
+                      gap: 'var(--chrome-gap)',
+                      padding: 'var(--chrome-padding-compact-x)',
+                      borderRadius: 'var(--radius-sm)',
+                      backgroundColor: 'var(--color-background)',
+                      border: '1px solid var(--color-border-light)',
                     }}
                   >
                     <div
                       style={{
                         width: '38px',
                         height: '38px',
-                        borderRadius: '6px',
+                        borderRadius: 'var(--radius-md)',
                         backgroundColor: palette.bg,
                         color: palette.fg,
                         display: 'flex',
@@ -93,23 +86,23 @@ export function AAKeyOverlay(): React.ReactElement | null {
                       {code}
                     </div>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.15rem' }}>
-                      <span style={{ color: colors.text, fontWeight: 600 }}>
+                      <span style={{ color: 'var(--color-text)', fontWeight: 600 }}>
                         {info.name} ({info.threeCode})
                       </span>
-                      <span style={{ color: colors.textDim, fontSize: '0.85rem' }}>
+                      <span style={{ color: 'var(--color-text-dim)', fontSize: '0.85rem' }}>
                         Property: {info.property}
                       </span>
                     </div>
                   </div>
                 );
               })}
-            </div>
-          </div>
+            </OverlayGrid>
+          </OverlaySection>
         ))}
-        <div style={{ color: colors.textMuted, fontSize: '0.85rem', textAlign: 'center' }}>
+        <div style={{ color: 'var(--color-text-muted)', fontSize: '0.85rem', textAlign: 'center' }}>
           Colors use the active theme palette. Press K or ESC to close.
         </div>
-      </div>
+      </OverlayStack>
     </Overlay>
   );
 }

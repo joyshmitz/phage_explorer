@@ -8,3 +8,15 @@ export type { GenomeTrackProps } from './GenomeTrack';
 export * from './GelCanvas';
 export * from '../../primitives/colorScales';
 export * from '../../primitives/ColorLegend';
+
+// Overlay chrome primitives (UI structure components)
+export {
+  OverlaySection,
+  OverlaySectionHeader,
+  OverlayToolbar,
+  OverlayGrid,
+  OverlayRow,
+  OverlayKeyValue,
+  OverlayBadge,
+  OverlayStack,
+} from './OverlayChrome';

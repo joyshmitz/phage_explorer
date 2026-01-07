@@ -12,10 +12,19 @@
  */
 
 import React, { useMemo, useState } from 'react';
-import { useTheme } from '../../hooks/useTheme';
 import { useHotkey } from '../../hooks';
 import { Overlay } from './Overlay';
 import { useOverlay } from './OverlayProvider';
+import {
+  OverlayStack,
+  OverlayToolbar,
+  OverlaySection,
+  OverlaySectionHeader,
+  OverlayGrid,
+  OverlayRow,
+  OverlayKeyValue,
+  OverlayBadge,
+} from './primitives';
 import { ActionIds, ActionRegistryList, formatKeyCombo, type KeyCombo, type ActionScope } from '../../keyboard';
 
 type DepthLayer = 0 | 1 | 2 | 3 | 4;
@@ -90,8 +99,6 @@ function groupByLayer(hotkeys: HotkeyInfo[]): Record<DepthLayer, HotkeyInfo[]> {
 }
 
 export function HelpOverlay(): React.ReactElement | null {
-  const { theme } = useTheme();
-  const colors = theme.colors;
   const { isOpen, toggle } = useOverlay();
   const [detailLevel, setDetailLevel] = useState<'essential' | 'detailed'>('essential');
 
@@ -138,131 +145,61 @@ export function HelpOverlay(): React.ReactElement | null {
       hotkey="?"
       size="lg"
     >
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+      <OverlayStack>
         {/* Detail level toggle */}
-        <div style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          padding: '0.5rem',
-          backgroundColor: colors.backgroundAlt,
-          borderRadius: '4px',
-        }}>
-          <span style={{ color: colors.textDim }}>
+        <OverlayToolbar>
+          <span style={{ color: 'var(--color-text-dim)' }}>
             Showing: {detailLevel === 'essential' ? 'Essential' : 'All'} shortcuts
           </span>
           <button
             onClick={() => setDetailLevel(prev => prev === 'essential' ? 'detailed' : 'essential')}
             style={{
-              background: colors.accent,
-              color: colors.background,
+              background: 'var(--color-accent)',
+              color: 'var(--color-background)',
               border: 'none',
               padding: '0.25rem 0.75rem',
-              borderRadius: '4px',
+              borderRadius: 'var(--radius-sm)',
               cursor: 'pointer',
               fontSize: '0.85rem',
             }}
           >
             Press D to toggle
           </button>
-        </div>
+        </OverlayToolbar>
 
         {/* Depth Layers */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+        <OverlayStack>
           {visibleLayers.map(layer => {
             const layerHotkeys = grouped[layer];
             if (layerHotkeys.length === 0) return null;
             const layerInfo = LAYER_LABELS[layer];
 
             return (
-              <div
+              <OverlaySection
                 key={layer}
-                style={{
-                  border: `1px solid ${colors.borderLight}`,
-                  borderRadius: '4px',
-                  overflow: 'hidden',
-                }}
+                header={
+                  <OverlaySectionHeader
+                    badge={`L${layer}`}
+                    title={layerInfo.name}
+                    description={layerInfo.description}
+                  />
+                }
               >
-                {/* Layer header */}
-                <div style={{
-                  backgroundColor: colors.backgroundAlt,
-                  padding: '0.5rem 0.75rem',
-                  borderBottom: `1px solid ${colors.borderLight}`,
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '0.5rem',
-                }}>
-                  <span style={{
-                    color: colors.accent,
-                    fontWeight: 'bold',
-                    fontSize: '0.75rem',
-                    padding: '0.125rem 0.375rem',
-                    backgroundColor: colors.background,
-                    borderRadius: '3px',
-                    fontFamily: 'monospace',
-                  }}>
-                    L{layer}
-                  </span>
-                  <span style={{ color: colors.primary, fontWeight: 'bold' }}>
-                    {layerInfo.name}
-                  </span>
-                  <span style={{ color: colors.textDim, fontSize: '0.85rem', marginLeft: 'auto' }}>
-                    {layerInfo.description}
-                  </span>
-                </div>
-
-                {/* Shortcuts grid */}
-                <div style={{
-                  display: 'grid',
-                  gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
-                  gap: '0.25rem',
-                  padding: '0.5rem',
-                }}>
+                <OverlayGrid>
                   {layerHotkeys.map((hotkey, index) => (
-                    <div
-                      key={hotkey.description}
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        padding: '0.25rem 0.5rem',
-                        borderRadius: '2px',
-                        backgroundColor: index % 2 === 0 ? 'transparent' : colors.backgroundAlt,
-                        gap: '0.5rem',
-                      }}
-                    >
-                      <span style={{
-                        color: colors.accent,
-                        fontFamily: 'monospace',
-                        fontSize: '0.9rem',
-                        minWidth: '70px',
-                        flexShrink: 0,
-                      }}>
-                        {hotkey.key}
-                      </span>
-                      <span style={{ color: colors.text, flex: 1 }}>
-                        {hotkey.description}
-                      </span>
+                    <OverlayRow key={hotkey.description} alternate={index % 2 !== 0}>
+                      <OverlayKeyValue label={hotkey.key} value={hotkey.description} />
                       {hotkey.scope === 'contextual' && (
-                        <span style={{
-                          color: colors.textMuted,
-                          fontSize: '0.7rem',
-                          padding: '0.1rem 0.3rem',
-                          backgroundColor: colors.background,
-                          border: `1px solid ${colors.borderLight}`,
-                          borderRadius: '2px',
-                          flexShrink: 0,
-                        }}>
-                          contextual
-                        </span>
+                        <OverlayBadge variant="muted">contextual</OverlayBadge>
                       )}
-                    </div>
+                    </OverlayRow>
                   ))}
-                </div>
-              </div>
+                </OverlayGrid>
+              </OverlaySection>
             );
           })}
-        </div>
-      </div>
+        </OverlayStack>
+      </OverlayStack>
     </Overlay>
   );
 }
