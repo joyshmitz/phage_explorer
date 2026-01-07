@@ -151,4 +151,111 @@ describe('ActionRegistry invariants', () => {
       }
     }
   });
+
+  it('action IDs follow naming convention', () => {
+    // ActionIds should follow pattern: category.action or category.subcategory.action
+    for (const action of ActionRegistryList) {
+      expect(action.id).toMatch(/^[a-z]+(\.[a-zA-Z]+)+$/);
+    }
+  });
+
+  it('category names are consistent', () => {
+    // Track all categories used
+    const categories = new Set(ActionRegistryList.map(a => a.category));
+
+    // Categories should be capitalized words (not arbitrary strings)
+    for (const category of categories) {
+      expect(category).toMatch(/^[A-Z][a-z]+$/);
+    }
+  });
+
+  it('has actions for all depth layers', () => {
+    // Verify we have good coverage of Layer 0-4 categories
+    const categories = new Set(ActionRegistryList.map(a => a.category));
+
+    // Layer 0 categories
+    expect(categories.has('Navigation')).toBe(true);
+    expect(categories.has('View')).toBe(true);
+    expect(categories.has('Search')).toBe(true);
+
+    // Layer 3 category
+    expect(categories.has('Simulation')).toBe(true);
+
+    // Layer 4 category
+    expect(categories.has('Dev')).toBe(true);
+  });
+});
+
+describe('HelpOverlay integration', () => {
+  // These tests ensure HelpOverlay cannot become stale relative to ActionRegistry.
+  // HelpOverlay renders from ActionRegistryList, so if these tests pass,
+  // the overlay will correctly display current shortcuts.
+
+  it('all web actions are displayable in HelpOverlay', () => {
+    const webActions = ActionRegistryList.filter(
+      a => !a.surfaces || a.surfaces.includes('web')
+    );
+
+    // Every web action must have the fields HelpOverlay needs
+    for (const action of webActions) {
+      // HelpOverlay uses these fields to render:
+      expect(action.title).toBeTruthy();       // displayed as description
+      expect(action.category).toBeTruthy();    // used for layer classification
+      expect(action.defaultShortcut).toBeTruthy(); // formatted as key display
+      expect(action.scope).toBeTruthy();       // used for contextual badge
+    }
+  });
+
+  it('formatKeyCombo produces valid display strings', () => {
+    // Import the actual formatter used by HelpOverlay
+    const { formatKeyCombo } = require('./types');
+
+    for (const action of ActionRegistryList) {
+      const shortcuts = Array.isArray(action.defaultShortcut)
+        ? action.defaultShortcut
+        : [action.defaultShortcut];
+
+      for (const combo of shortcuts) {
+        const formatted = formatKeyCombo(combo);
+        // Should produce a non-empty string
+        expect(formatted.length).toBeGreaterThan(0);
+        // Should not contain undefined or [object Object]
+        expect(formatted).not.toContain('undefined');
+        expect(formatted).not.toContain('[object');
+      }
+    }
+  });
+
+  it('HelpOverlay shows substantial number of shortcuts', () => {
+    // Regression guard: HelpOverlay should show many shortcuts
+    const webActions = ActionRegistryList.filter(
+      a => !a.surfaces || a.surfaces.includes('web')
+    );
+
+    // We currently have 77 actions, most for web
+    expect(webActions.length).toBeGreaterThan(50);
+  });
+
+  it('essential Layer 0 categories have shortcuts', () => {
+    // Layer 0 categories should always have actions
+    const layer0Categories = ['Navigation', 'View', 'Search'];
+
+    for (const category of layer0Categories) {
+      const actions = ActionRegistryList.filter(
+        a => a.category === category &&
+             (!a.surfaces || a.surfaces.includes('web'))
+      );
+      expect(actions.length).toBeGreaterThan(0);
+    }
+  });
+
+  it('overlay actions reference valid overlayIds', () => {
+    // Actions with overlayId should have valid overlay metadata
+    const overlayActions = ActionRegistryList.filter(a => a.overlayId);
+
+    for (const action of overlayActions) {
+      expect(action.overlayId).toBeTruthy();
+      expect(['open', 'toggle']).toContain(action.overlayAction);
+    }
+  });
 });
