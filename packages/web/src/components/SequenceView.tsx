@@ -390,15 +390,24 @@ function SequenceViewBase({
 
   // Keep the renderer in sync when other UI components set scrollPosition
   // (e.g. gene map clicks, collaboration state sync).
+  //
+  // IMPORTANT: This effect must ONLY respond to storeScrollPosition changes, NOT scrollPosition.
+  // If we include scrollPosition in deps, the effect fires when the user scrolls:
+  //   1. User scrolls → hook's scrollPosition updates immediately
+  //   2. Effect fires because scrollPosition changed
+  //   3. storeScrollPosition is still stale (store update hasn't propagated yet)
+  //   4. Effect sees mismatch and calls scrollToPosition(staleValue) → scroll reset!
+  //
+  // By only depending on storeScrollPosition, we only sync when external sources
+  // (gene map, collaboration) update the store - not when the user scrolls.
   const lastExternalScrollRef = useRef<number | null>(null);
   useEffect(() => {
     if (typeof storeScrollPosition !== 'number' || !Number.isFinite(storeScrollPosition)) return;
-    const current = scrollPosition;
-    if (Math.abs(storeScrollPosition - current) < 1) return;
+    // Skip if we've already applied this store value
     if (lastExternalScrollRef.current === storeScrollPosition) return;
     lastExternalScrollRef.current = storeScrollPosition;
     scrollToPosition(storeScrollPosition);
-  }, [storeScrollPosition, scrollPosition, scrollToPosition]);
+  }, [storeScrollPosition, scrollToPosition]);
 
   const lastExternalZoomRef = useRef<number | null>(null);
   useEffect(() => {
