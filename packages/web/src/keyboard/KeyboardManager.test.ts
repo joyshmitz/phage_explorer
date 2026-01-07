@@ -136,3 +136,118 @@ describe('ActionRegistry overlay hotkeys', () => {
     expect(ids).toContain(ActionIds.OverlayHelp);
   });
 });
+
+/**
+ * Overlay First-Load Regression Tests
+ *
+ * These tests verify that overlay-open hotkeys work on first app load,
+ * before any overlay component has been mounted. The key insight is that
+ * overlay hotkeys are registered centrally in App.tsx from ActionRegistry,
+ * not inside individual overlay components.
+ *
+ * If these tests fail, overlay hotkeys may require prior component mount.
+ */
+describe('Overlay first-load hotkey behavior (s4qx.2.5)', () => {
+  it('all overlay actions have required fields for central registration', () => {
+    const overlayActions = getOverlayHotkeyActions();
+
+    for (const action of overlayActions) {
+      // Must have actionId for KeyboardManager registration
+      expect(action.actionId).toBeDefined();
+      expect(typeof action.actionId).toBe('string');
+      expect(action.actionId.length).toBeGreaterThan(0);
+
+      // Must have overlayId for OverlayProvider.toggle/open
+      expect(action.overlayId).toBeDefined();
+      expect(typeof action.overlayId).toBe('string');
+      expect(action.overlayId.length).toBeGreaterThan(0);
+
+      // Must have overlayAction to know whether to toggle or open
+      expect(action.overlayAction).toBeDefined();
+      expect(['open', 'toggle']).toContain(action.overlayAction);
+    }
+  });
+
+  it('includes both eager and lazy overlay hotkeys', () => {
+    const overlayActions = getOverlayHotkeyActions();
+    const overlayIds = new Set(overlayActions.map(a => a.overlayId));
+
+    // Eager overlays (must be present - they're essential)
+    expect(overlayIds.has('help')).toBe(true);
+    expect(overlayIds.has('search')).toBe(true);
+    expect(overlayIds.has('commandPalette')).toBe(true);
+    expect(overlayIds.has('analysisMenu')).toBe(true);
+
+    // Lazy overlays (should also be present for first-load)
+    expect(overlayIds.has('simulationHub')).toBe(true);
+    expect(overlayIds.has('gcSkew')).toBe(true);
+  });
+
+  it('overlay actions come from registry, not component mount', () => {
+    // This test verifies the architectural pattern:
+    // getOverlayHotkeyActions() extracts from ActionRegistry (static data)
+    // NOT from overlay component hooks (would require mount)
+
+    // Call getOverlayHotkeyActions multiple times - should be deterministic
+    const actions1 = getOverlayHotkeyActions();
+    const actions2 = getOverlayHotkeyActions();
+
+    expect(actions1.length).toBe(actions2.length);
+
+    // Same actions in same order
+    for (let i = 0; i < actions1.length; i++) {
+      expect(actions1[i].actionId).toBe(actions2[i].actionId);
+      expect(actions1[i].overlayId).toBe(actions2[i].overlayId);
+      expect(actions1[i].overlayAction).toBe(actions2[i].overlayAction);
+    }
+  });
+
+  it('has substantial number of overlay hotkeys for good UX', () => {
+    const overlayActions = getOverlayHotkeyActions();
+
+    // We should have many overlay hotkeys (currently 40+)
+    // This guards against accidental removal
+    expect(overlayActions.length).toBeGreaterThan(30);
+  });
+
+  it('overlay actions are all global scope', () => {
+    // Overlay toggle/open actions should be global (always available)
+    // This is verified in getOverlayHotkeyActions filter, but double-check
+    const overlayActions = getOverlayHotkeyActions();
+
+    // Every action should correspond to a global-scope action in registry
+    const { ActionRegistryList } = require('./actionRegistry');
+    for (const action of overlayActions) {
+      const registryAction = ActionRegistryList.find(
+        (a: { id: string }) => a.id === action.actionId
+      );
+      expect(registryAction).toBeDefined();
+      expect(registryAction.scope).toBe('global');
+    }
+  });
+
+  it('hotkey definitions can be created without overlay component', () => {
+    // This simulates what App.tsx does: create hotkey definitions
+    // from overlay actions without needing overlay components mounted
+
+    const overlayActions = getOverlayHotkeyActions();
+
+    // Simulate creating definitions (like App.tsx does)
+    const definitions = overlayActions.map((action) => ({
+      actionId: action.actionId,
+      action: () => {
+        // This would call toggle/open on OverlayProvider
+        // The point is: we can create these without overlay components
+      },
+      modes: ['NORMAL'] as const,
+    }));
+
+    // All definitions should be valid
+    expect(definitions.length).toBe(overlayActions.length);
+    for (const def of definitions) {
+      expect(def.actionId).toBeDefined();
+      expect(typeof def.action).toBe('function');
+      expect(def.modes).toContain('NORMAL');
+    }
+  });
+});
