@@ -19,4 +19,15 @@ export {
   OverlayKeyValue,
   OverlayBadge,
   OverlayStack,
+  // Data display
+  OverlayDescription,
+  OverlayStatCard,
+  OverlayStatGrid,
+  // State primitives
+  OverlayLoadingState,
+  OverlayEmptyState,
+  OverlayErrorState,
+  // Legend primitives
+  OverlayLegend,
+  OverlayLegendItem,
 } from './OverlayChrome';

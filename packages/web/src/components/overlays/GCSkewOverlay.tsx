@@ -3,6 +3,7 @@
  *
  * Displays cumulative GC skew plot for origin/terminus detection.
  * Uses canvas for the sparkline visualization.
+ * Demonstrates the overlay chrome primitives pattern.
  */
 
 import React, { useEffect, useRef, useState } from 'react';
@@ -14,7 +15,17 @@ import { ActionIds } from '../../keyboard';
 import { getOverlayContext, useBeginnerMode } from '../../education';
 import { Overlay } from './Overlay';
 import { useOverlay } from './OverlayProvider';
-import { AnalysisPanelSkeleton } from '../ui/Skeleton';
+import {
+  OverlayStack,
+  OverlayDescription,
+  OverlayStatGrid,
+  OverlayStatCard,
+  OverlayLoadingState,
+  OverlayEmptyState,
+  OverlayLegend,
+  OverlayLegendItem,
+} from './primitives';
+import { ChartOverlaySkeleton } from '../ui/Skeleton';
 import { InfoButton } from '../ui';
 import { getOrchestrator } from '../../workers/ComputeOrchestrator';
 import type { GCSkewResult } from '../../workers/types';
@@ -230,6 +241,10 @@ export function GCSkewOverlay({
   const windowSize = 500;
   const genomeLength = sequence.length;
 
+  const isLoading = sequenceLoading || analysisLoading;
+  const hasData = result && result.cumulative.length >= 2;
+  const isEmpty = !isLoading && (sequence.length === 0 || !result || result.cumulative.length < 2);
+
   return (
     <Overlay
       id="gcSkew"
@@ -237,70 +252,47 @@ export function GCSkewOverlay({
       hotkey="g"
       size="lg"
     >
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+      <OverlayStack>
         {/* Loading State */}
-        {(sequenceLoading || analysisLoading) && (
-          <AnalysisPanelSkeleton message={sequenceLoading ? "Loading sequence data..." : "Computing GC skew..."} rows={3} />
+        {isLoading && (
+          <OverlayLoadingState message={sequenceLoading ? "Loading sequence data..." : "Computing GC skew..."}>
+            <ChartOverlaySkeleton />
+          </OverlayLoadingState>
         )}
 
         {/* Description */}
-        {!sequenceLoading && !analysisLoading && (
-          <div style={{
-            padding: '0.75rem',
-            backgroundColor: colors.backgroundAlt,
-            borderRadius: '4px',
-            color: colors.textDim,
-            fontSize: '0.9rem',
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
-              <strong style={{ color: colors.primary }}>Cumulative GC Skew</strong>
-              {beginnerModeEnabled && (
-                <InfoButton
-                  size="sm"
-                  label="Learn about GC skew"
-                  tooltip={overlayHelp?.summary ?? 'GC skew compares the abundance of G vs C bases along the genome.'}
-                  onClick={() => showContextFor(overlayHelp?.glossary?.[0] ?? 'gc-skew')}
-                />
-              )}
-            </div>
-            <div>
-              Helps identify the origin (ori) and terminus (ter) of replication. The minimum typically
-              corresponds to the origin, maximum to the terminus.
-            </div>
-          </div>
+        {!isLoading && (
+          <OverlayDescription
+            title="Cumulative GC Skew"
+            action={beginnerModeEnabled ? (
+              <InfoButton
+                size="sm"
+                label="Learn about GC skew"
+                tooltip={overlayHelp?.summary ?? 'GC skew compares the abundance of G vs C bases along the genome.'}
+                onClick={() => showContextFor(overlayHelp?.glossary?.[0] ?? 'gc-skew')}
+              />
+            ) : undefined}
+          >
+            Helps identify the origin (ori) and terminus (ter) of replication. The minimum typically
+            corresponds to the origin, maximum to the terminus.
+          </OverlayDescription>
         )}
 
         {/* Stats */}
-        {!sequenceLoading && !analysisLoading && result && genomeLength > 0 && (
-          <div style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(4, 1fr)',
-            gap: '1rem',
-          }}>
-            <div style={{ textAlign: 'center', padding: '0.5rem', backgroundColor: colors.backgroundAlt, borderRadius: '4px' }}>
-              <div style={{ color: colors.textMuted, fontSize: '0.75rem' }}>Genome Length</div>
-              <div style={{ color: colors.text, fontFamily: 'monospace' }}>{genomeLength.toLocaleString()} bp</div>
-            </div>
-            <div style={{ textAlign: 'center', padding: '0.5rem', backgroundColor: colors.backgroundAlt, borderRadius: '4px' }}>
-              <div style={{ color: colors.textMuted, fontSize: '0.75rem' }}>Window Size</div>
-              <div style={{ color: colors.text, fontFamily: 'monospace' }}>{windowSize} bp</div>
-            </div>
-            <div style={{ textAlign: 'center', padding: '0.5rem', backgroundColor: colors.backgroundAlt, borderRadius: '4px' }}>
-              <div style={{ color: colors.error, fontSize: '0.75rem' }}>Origin (ori)</div>
-              <div style={{ color: colors.text, fontFamily: 'monospace' }}>~{Math.round(result.originPosition ?? 0).toLocaleString()} bp</div>
-            </div>
-            <div style={{ textAlign: 'center', padding: '0.5rem', backgroundColor: colors.backgroundAlt, borderRadius: '4px' }}>
-              <div style={{ color: colors.success, fontSize: '0.75rem' }}>Terminus (ter)</div>
-              <div style={{ color: colors.text, fontFamily: 'monospace' }}>~{Math.round(result.terminusPosition ?? 0).toLocaleString()} bp</div>
-            </div>
-          </div>
+        {!isLoading && result && genomeLength > 0 && (
+          <OverlayStatGrid columns={4}>
+            <OverlayStatCard label="Genome Length" value={`${genomeLength.toLocaleString()} bp`} />
+            <OverlayStatCard label="Window Size" value={`${windowSize} bp`} />
+            <OverlayStatCard label="Origin (ori)" value={`~${Math.round(result.originPosition ?? 0).toLocaleString()} bp`} labelColor="var(--color-error)" />
+            <OverlayStatCard label="Terminus (ter)" value={`~${Math.round(result.terminusPosition ?? 0).toLocaleString()} bp`} labelColor="var(--color-success)" />
+          </OverlayStatGrid>
         )}
 
         {/* Canvas for sparkline */}
-        {!sequenceLoading && !analysisLoading && result && result.cumulative.length >= 2 && (
+        {!isLoading && hasData && (
           <div style={{
-            border: `1px solid ${colors.borderLight}`,
-            borderRadius: '4px',
+            border: '1px solid var(--color-border-light)',
+            borderRadius: 'var(--radius-sm)',
             overflow: 'hidden',
           }}>
             <canvas
@@ -315,58 +307,52 @@ export function GCSkewOverlay({
         )}
 
         {/* Legend */}
-        {!sequenceLoading && !analysisLoading && result && result.cumulative.length >= 2 && (
-          <div style={{
-            display: 'flex',
-            justifyContent: 'center',
-            gap: '2rem',
-            color: colors.textMuted,
-            fontSize: '0.85rem',
-          }}>
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}>
-              <span style={{ color: colors.primary }}>━</span>
-              <span>Cumulative GC Skew</span>
-              {beginnerModeEnabled && (
+        {!isLoading && hasData && (
+          <OverlayLegend>
+            <OverlayLegendItem
+              indicator="━"
+              color={colors.primary}
+              label="Cumulative GC Skew"
+              action={beginnerModeEnabled ? (
                 <InfoButton
                   size="sm"
                   label="What is GC skew?"
                   tooltip="GC skew highlights replication patterns by tracking G vs C imbalance along the genome."
                   onClick={() => showContextFor('gc-skew')}
                 />
-              )}
-            </span>
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}>
-              <span style={{ color: colors.error }}>●</span>
-              <span>Origin (minimum)</span>
-              {beginnerModeEnabled && (
+              ) : undefined}
+            />
+            <OverlayLegendItem
+              indicator="●"
+              color={colors.error}
+              label="Origin (minimum)"
+              action={beginnerModeEnabled ? (
                 <InfoButton
                   size="sm"
                   label="What is the replication origin?"
                   tooltip="The origin is where DNA replication typically starts; in cumulative skew it often aligns with the minimum."
                   onClick={() => showContextFor('replication-origin')}
                 />
-              )}
-            </span>
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}>
-              <span style={{ color: colors.success }}>●</span>
-              <span>Terminus (maximum)</span>
-            </span>
-          </div>
+              ) : undefined}
+            />
+            <OverlayLegendItem
+              indicator="●"
+              color={colors.success}
+              label="Terminus (maximum)"
+            />
+          </OverlayLegend>
         )}
 
-        {/* No data message */}
-        {!sequenceLoading && !analysisLoading && (sequence.length === 0 || !result || result.cumulative.length < 2) && (
-          <div style={{
-            textAlign: 'center',
-            padding: '2rem',
-            color: colors.textMuted,
-          }}>
-            {sequence.length === 0
-              ? 'No sequence data available. Select a phage to analyze.'
+        {/* Empty State */}
+        {isEmpty && (
+          <OverlayEmptyState
+            message={sequence.length === 0
+              ? 'No sequence data available.'
               : 'Sequence too short for GC skew analysis (requires > 1000 bp).'}
-          </div>
+            hint={sequence.length === 0 ? 'Select a phage to analyze.' : undefined}
+          />
         )}
-      </div>
+      </OverlayStack>
     </Overlay>
   );
 }

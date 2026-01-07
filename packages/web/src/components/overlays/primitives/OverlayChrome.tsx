@@ -395,3 +395,324 @@ export function OverlayStack({
     </div>
   );
 }
+
+/* ============================================================================
+ * OverlayDescription - Info/description box with consistent styling
+ * ========================================================================== */
+
+interface OverlayDescriptionProps {
+  children: ReactNode;
+  /** Title shown in accent color */
+  title?: string;
+  /** Additional action element (e.g., InfoButton) */
+  action?: ReactNode;
+  /** Additional CSS classes */
+  className?: string;
+  /** Custom styles */
+  style?: CSSProperties;
+}
+
+const descriptionStyle: CSSProperties = {
+  padding: 'var(--chrome-padding-x)',
+  backgroundColor: 'var(--color-background-alt)',
+  borderRadius: 'var(--radius-sm)',
+  color: 'var(--color-text-dim)',
+  fontSize: '0.9rem',
+};
+
+export function OverlayDescription({
+  children,
+  title,
+  action,
+  className = '',
+  style,
+}: OverlayDescriptionProps): React.ReactElement {
+  return (
+    <div className={`overlay-description ${className}`} style={{ ...descriptionStyle, ...style }}>
+      {(title || action) && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--chrome-gap)', flexWrap: 'wrap', marginBottom: 'var(--chrome-gap-compact)' }}>
+          {title && <strong style={{ color: 'var(--color-primary)' }}>{title}</strong>}
+          {action}
+        </div>
+      )}
+      <div>{children}</div>
+    </div>
+  );
+}
+
+/* ============================================================================
+ * OverlayStatCard - Single stat display card
+ * ========================================================================== */
+
+interface OverlayStatCardProps {
+  /** Label shown above the value */
+  label: string;
+  /** The stat value */
+  value: ReactNode;
+  /** Label color override (for semantic colors like error/success) */
+  labelColor?: string;
+  /** Additional CSS classes */
+  className?: string;
+  /** Custom styles */
+  style?: CSSProperties;
+}
+
+const statCardStyle: CSSProperties = {
+  textAlign: 'center',
+  padding: 'var(--chrome-padding-compact-y) var(--chrome-padding-compact-x)',
+  backgroundColor: 'var(--color-background-alt)',
+  borderRadius: 'var(--radius-sm)',
+};
+
+export function OverlayStatCard({
+  label,
+  value,
+  labelColor,
+  className = '',
+  style,
+}: OverlayStatCardProps): React.ReactElement {
+  return (
+    <div className={`overlay-stat-card ${className}`} style={{ ...statCardStyle, ...style }}>
+      <div style={{ color: labelColor ?? 'var(--color-text-muted)', fontSize: '0.75rem' }}>{label}</div>
+      <div style={{ color: 'var(--color-text)', fontFamily: 'var(--font-mono, monospace)' }}>{value}</div>
+    </div>
+  );
+}
+
+/* ============================================================================
+ * OverlayStatGrid - Grid of stat cards
+ * ========================================================================== */
+
+interface OverlayStatGridProps {
+  children: ReactNode;
+  /** Number of columns (default: auto based on children count) */
+  columns?: number;
+  /** Additional CSS classes */
+  className?: string;
+  /** Custom styles */
+  style?: CSSProperties;
+}
+
+export function OverlayStatGrid({
+  children,
+  columns,
+  className = '',
+  style,
+}: OverlayStatGridProps): React.ReactElement {
+  const gridStyle: CSSProperties = {
+    display: 'grid',
+    gridTemplateColumns: columns ? `repeat(${columns}, 1fr)` : 'repeat(auto-fit, minmax(120px, 1fr))',
+    gap: 'var(--overlay-section-gap)',
+    ...style,
+  };
+
+  return (
+    <div className={`overlay-stat-grid ${className}`} style={gridStyle}>
+      {children}
+    </div>
+  );
+}
+
+/* ============================================================================
+ * OverlayLoadingState - Consistent loading state wrapper
+ * ========================================================================== */
+
+interface OverlayLoadingStateProps {
+  /** Loading message for accessibility */
+  message?: string;
+  /** The skeleton component to render */
+  children: ReactNode;
+  /** Additional CSS classes */
+  className?: string;
+  /** Custom styles */
+  style?: CSSProperties;
+}
+
+export function OverlayLoadingState({
+  message = 'Loading...',
+  children,
+  className = '',
+  style,
+}: OverlayLoadingStateProps): React.ReactElement {
+  return (
+    <div
+      className={`overlay-loading-state ${className}`}
+      style={style}
+      role="status"
+      aria-label={message}
+      aria-busy="true"
+    >
+      {children}
+    </div>
+  );
+}
+
+/* ============================================================================
+ * OverlayEmptyState - Consistent empty state messaging
+ * ========================================================================== */
+
+interface OverlayEmptyStateProps {
+  /** Icon to display (optional) */
+  icon?: ReactNode;
+  /** Primary message */
+  message: string;
+  /** Secondary/helper text */
+  hint?: string;
+  /** Action button/link */
+  action?: ReactNode;
+  /** Additional CSS classes */
+  className?: string;
+  /** Custom styles */
+  style?: CSSProperties;
+}
+
+const emptyStateStyle: CSSProperties = {
+  textAlign: 'center',
+  padding: 'var(--space-8) var(--space-4)',
+  color: 'var(--color-text-muted)',
+};
+
+export function OverlayEmptyState({
+  icon,
+  message,
+  hint,
+  action,
+  className = '',
+  style,
+}: OverlayEmptyStateProps): React.ReactElement {
+  return (
+    <div className={`overlay-empty-state ${className}`} style={{ ...emptyStateStyle, ...style }}>
+      {icon && <div style={{ marginBottom: 'var(--chrome-gap)', fontSize: '2rem', opacity: 0.5 }}>{icon}</div>}
+      <div style={{ color: 'var(--color-text-dim)', marginBottom: hint ? 'var(--chrome-gap-compact)' : 0 }}>
+        {message}
+      </div>
+      {hint && <div style={{ fontSize: '0.85rem' }}>{hint}</div>}
+      {action && <div style={{ marginTop: 'var(--chrome-gap)' }}>{action}</div>}
+    </div>
+  );
+}
+
+/* ============================================================================
+ * OverlayErrorState - Consistent error state messaging
+ * ========================================================================== */
+
+interface OverlayErrorStateProps {
+  /** Error message */
+  message: string;
+  /** Error details (optional) */
+  details?: string;
+  /** Retry action */
+  onRetry?: () => void;
+  /** Additional CSS classes */
+  className?: string;
+  /** Custom styles */
+  style?: CSSProperties;
+}
+
+const errorStateStyle: CSSProperties = {
+  textAlign: 'center',
+  padding: 'var(--space-6) var(--space-4)',
+  backgroundColor: 'rgba(239, 68, 68, 0.1)',
+  borderRadius: 'var(--radius-md)',
+  border: '1px solid var(--color-error)',
+};
+
+export function OverlayErrorState({
+  message,
+  details,
+  onRetry,
+  className = '',
+  style,
+}: OverlayErrorStateProps): React.ReactElement {
+  return (
+    <div className={`overlay-error-state ${className}`} style={{ ...errorStateStyle, ...style }}>
+      <div style={{ color: 'var(--color-error)', fontWeight: 600, marginBottom: details ? 'var(--chrome-gap-compact)' : 0 }}>
+        {message}
+      </div>
+      {details && <div style={{ color: 'var(--color-text-muted)', fontSize: '0.85rem' }}>{details}</div>}
+      {onRetry && (
+        <button
+          onClick={onRetry}
+          style={{
+            marginTop: 'var(--chrome-gap)',
+            padding: 'var(--chrome-padding-compact-y) var(--chrome-padding-x)',
+            backgroundColor: 'var(--color-error)',
+            color: 'white',
+            border: 'none',
+            borderRadius: 'var(--radius-sm)',
+            cursor: 'pointer',
+            fontSize: '0.85rem',
+          }}
+        >
+          Retry
+        </button>
+      )}
+    </div>
+  );
+}
+
+/* ============================================================================
+ * OverlayLegend - Consistent legend row for charts
+ * ========================================================================== */
+
+interface OverlayLegendProps {
+  children: ReactNode;
+  /** Additional CSS classes */
+  className?: string;
+  /** Custom styles */
+  style?: CSSProperties;
+}
+
+const legendStyle: CSSProperties = {
+  display: 'flex',
+  justifyContent: 'center',
+  gap: 'var(--space-8)',
+  color: 'var(--color-text-muted)',
+  fontSize: '0.85rem',
+  flexWrap: 'wrap',
+};
+
+export function OverlayLegend({
+  children,
+  className = '',
+  style,
+}: OverlayLegendProps): React.ReactElement {
+  return (
+    <div className={`overlay-legend ${className}`} style={{ ...legendStyle, ...style }}>
+      {children}
+    </div>
+  );
+}
+
+/* ============================================================================
+ * OverlayLegendItem - Single legend entry
+ * ========================================================================== */
+
+interface OverlayLegendItemProps {
+  /** Color indicator (e.g., "━" for line, "●" for dot) */
+  indicator: ReactNode;
+  /** Color for the indicator */
+  color: string;
+  /** Label text */
+  label: string;
+  /** Additional action element (e.g., InfoButton) */
+  action?: ReactNode;
+  /** Additional CSS classes */
+  className?: string;
+}
+
+export function OverlayLegendItem({
+  indicator,
+  color,
+  label,
+  action,
+  className = '',
+}: OverlayLegendItemProps): React.ReactElement {
+  return (
+    <span className={`overlay-legend-item ${className}`} style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--chrome-gap-compact)' }}>
+      <span style={{ color }}>{indicator}</span>
+      <span>{label}</span>
+      {action}
+    </span>
+  );
+}
