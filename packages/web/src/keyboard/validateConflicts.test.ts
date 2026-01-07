@@ -255,7 +255,8 @@ describe('HelpOverlay integration', () => {
 
     for (const action of overlayActions) {
       expect(action.overlayId).toBeTruthy();
-      expect(['open', 'toggle']).toContain(action.overlayAction);
+      expect(action.overlayAction).toBeDefined();
+      expect(['open', 'toggle']).toContain(action.overlayAction!);
     }
   });
 });

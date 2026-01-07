@@ -240,6 +240,41 @@
   --sidebar-width: 16rem;
   --panel-max-width: 1200px;
   --content-max-width: 80ch;
+
+  /* === OVERLAY CHROME === */
+  /* Semantic tokens for consistent overlay styling */
+  --overlay-border-radius: var(--radius-lg);
+  --overlay-border-radius-mobile: 16px 16px 0 0; /* Bottom sheet corners */
+  --overlay-header-padding-x: var(--space-4);
+  --overlay-header-padding-y: var(--space-3);
+  --overlay-content-padding: var(--space-4);
+  --overlay-footer-padding-x: var(--space-4);
+  --overlay-footer-padding-y: var(--space-3);
+  --overlay-section-gap: var(--space-4);
+  --overlay-title-gap: var(--space-2);
+  --overlay-border: 2px solid var(--color-border-focus);
+  --overlay-shadow: var(--shadow-floating);
+
+  /* === COMPONENT CHROME === */
+  /* Consistent chrome for buttons, badges, tags */
+  --chrome-padding-x: var(--space-3);
+  --chrome-padding-y: var(--space-2);
+  --chrome-padding-compact-x: var(--space-2);
+  --chrome-padding-compact-y: var(--space-1);
+  --chrome-gap: var(--space-2);
+  --chrome-gap-lg: var(--space-4);
+
+  /* === BADGE TOKENS === */
+  --badge-padding-x: 0.4rem;
+  --badge-padding-y: 0.1rem;
+  --badge-radius: var(--radius-sm);
+  --badge-font-size: var(--text-xs, 0.75rem);
+
+  /* === HOTKEY DISPLAY === */
+  --hotkey-padding-x: 0.4rem;
+  --hotkey-padding-y: 0.1rem;
+  --hotkey-radius: var(--radius-sm);
+  --hotkey-font-size: 0.85rem;
 }
 
 /* Utility classes for spacing */

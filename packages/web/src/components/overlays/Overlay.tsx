@@ -289,9 +289,9 @@ export function Overlay({
     maxWidth: shouldUseBottomSheet ? '100%' : '95vw',
     maxHeight: shouldUseBottomSheet ? '85dvh' : SIZE_MAX_HEIGHTS[size],
     backgroundColor: 'var(--color-background)',
-    border: '2px solid var(--color-border-focus)',
+    border: 'var(--overlay-border)',
     borderRadius: overlayBorderRadius,
-    boxShadow: '0 0 20px var(--color-shadow), 0 0 60px var(--color-shadow)',
+    boxShadow: 'var(--overlay-shadow)',
     display: 'flex',
     flexDirection: 'column',
     overflow: 'hidden',
@@ -302,27 +302,27 @@ export function Overlay({
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: '0.75rem 1rem',
+    padding: 'var(--overlay-header-padding-y) var(--overlay-header-padding-x)',
     borderBottom: '1px solid var(--color-border-light)',
   };
 
   const titleStyle: CSSProperties = {
     display: 'flex',
     alignItems: 'center',
-    gap: '0.5rem',
+    gap: 'var(--overlay-title-gap)',
   };
 
   const contentStyle: CSSProperties = {
     flex: 1,
     overflow: 'auto',
-    padding: '1rem',
-    paddingBottom: shouldUseBottomSheet ? 'calc(1rem + env(safe-area-inset-bottom))' : '1rem',
+    padding: 'var(--overlay-content-padding)',
+    paddingBottom: shouldUseBottomSheet ? 'calc(var(--overlay-content-padding) + env(safe-area-inset-bottom))' : 'var(--overlay-content-padding)',
   };
 
   const footerStyle: CSSProperties = {
-    padding: '0.75rem 1rem',
+    padding: 'var(--overlay-footer-padding-y) var(--overlay-footer-padding-x)',
     borderTop: '1px solid var(--color-border-light)',
-    paddingBottom: shouldUseBottomSheet ? 'calc(0.75rem + env(safe-area-inset-bottom))' : '0.75rem',
+    paddingBottom: shouldUseBottomSheet ? 'calc(var(--overlay-footer-padding-y) + env(safe-area-inset-bottom))' : 'var(--overlay-footer-padding-y)',
   };
 
   // Mobile: use BottomSheet for native gesture physics
@@ -384,18 +384,18 @@ export function Overlay({
               <span
                 style={{
                   color: 'var(--color-accent)',
-                  fontSize: '0.85rem',
-                  padding: '0.1rem 0.4rem',
+                  fontSize: 'var(--hotkey-font-size)',
+                  padding: 'var(--hotkey-padding-y) var(--hotkey-padding-x)',
                   backgroundColor: 'var(--color-background-alt)',
-                  borderRadius: '4px',
+                  borderRadius: 'var(--hotkey-radius)',
                 }}
               >
                 [{hotkey}]
               </span>
             )}
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-            <span style={{ color: 'var(--color-text-muted)', fontSize: '0.85rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--chrome-gap-lg)' }}>
+            <span style={{ color: 'var(--color-text-muted)', fontSize: 'var(--hotkey-font-size)' }}>
               ESC{hotkey ? ` or ${hotkey}` : ''} to close
             </span>
             <button
@@ -411,7 +411,7 @@ export function Overlay({
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                borderRadius: '8px',
+                borderRadius: 'var(--radius-lg)',
                 transition: 'background var(--duration-fast) var(--ease-out), color var(--duration-fast) var(--ease-out)',
               }}
               onMouseEnter={(e) => {
