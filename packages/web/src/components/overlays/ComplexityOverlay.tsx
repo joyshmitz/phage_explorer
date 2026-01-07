@@ -13,7 +13,17 @@ import { ActionIds } from '../../keyboard';
 import { getOverlayContext, useBeginnerMode } from '../../education';
 import { Overlay } from './Overlay';
 import { useOverlay } from './OverlayProvider';
-import { AnalysisPanelSkeleton } from '../ui/Skeleton';
+import {
+  OverlayStack,
+  OverlayDescription,
+  OverlayStatGrid,
+  OverlayStatCard,
+  OverlayLoadingState,
+  OverlayEmptyState,
+  OverlayLegend,
+  OverlayLegendItem,
+} from './primitives';
+import { ChartOverlaySkeleton } from '../ui/Skeleton';
 import { InfoButton } from '../ui';
 import { getOrchestrator } from '../../workers/ComputeOrchestrator';
 import type { ComplexityResult } from '../../workers/types';
@@ -187,6 +197,10 @@ export function ComplexityOverlay({
     return null;
   }
 
+  const isLoading = sequenceLoading || analysisLoading;
+  const hasData = entropy.length >= 2;
+  const isEmpty = !isLoading && (sequence.length === 0 || entropy.length < 2);
+
   const avgEntropy = entropy.length > 0
     ? (entropy.reduce((a, b) => a + b, 0) / entropy.length).toFixed(3)
     : '0.000';
@@ -202,99 +216,94 @@ export function ComplexityOverlay({
       hotkey="x"
       size="lg"
     >
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+      <OverlayStack>
         {/* Loading State */}
-        {sequenceLoading && (
-          <AnalysisPanelSkeleton message="Loading sequence data..." rows={3} />
-        )}
-        {!sequenceLoading && analysisLoading && (
-          <AnalysisPanelSkeleton message="Computing complexity..." rows={3} />
+        {isLoading && (
+          <OverlayLoadingState message={sequenceLoading ? "Loading sequence data..." : "Computing complexity..."}>
+            <ChartOverlaySkeleton />
+          </OverlayLoadingState>
         )}
 
         {/* Description */}
-        {!sequenceLoading && !analysisLoading && (
-          <div style={{
-            padding: '0.75rem',
-            backgroundColor: colors.backgroundAlt,
-            borderRadius: '4px',
-            color: colors.textDim,
-            fontSize: '0.9rem',
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
-              <strong style={{ color: colors.primary }}>Sequence Complexity</strong>
-              {beginnerModeEnabled && (
-                <InfoButton
-                  size="sm"
-                  label="Learn about sequence complexity"
-                  tooltip={overlayHelp?.summary ?? 'Sequence complexity measures how repetitive or information-dense a window is.'}
-                  onClick={() => showContextFor(overlayHelp?.glossary?.[0] ?? 'sequence-complexity')}
-                />
-              )}
-            </div>
-            <div>
-              Measures information content. Low complexity regions (highlighted in red) may indicate repetitive
-              sequences, biased composition, or functional elements like promoters.
-            </div>
-          </div>
+        {!isLoading && (
+          <OverlayDescription
+            title="Sequence Complexity"
+            action={beginnerModeEnabled ? (
+              <InfoButton
+                size="sm"
+                label="Learn about sequence complexity"
+                tooltip={overlayHelp?.summary ?? 'Sequence complexity measures how repetitive or information-dense a window is.'}
+                onClick={() => showContextFor(overlayHelp?.glossary?.[0] ?? 'sequence-complexity')}
+              />
+            ) : undefined}
+          >
+            Measures information content. Low complexity regions (highlighted in red) may indicate repetitive
+            sequences, biased composition, or functional elements like promoters.
+          </OverlayDescription>
         )}
 
-        {/* Stats */}
-        {!sequenceLoading && !analysisLoading && entropy.length > 0 && (
-          <div style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(3, 1fr)',
-            gap: '1rem',
-          }}>
-            <div style={{ textAlign: 'center', padding: '0.5rem', backgroundColor: colors.backgroundAlt, borderRadius: '4px' }}>
-              <div style={{ color: colors.primary, fontSize: '0.75rem', display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}>
-                Avg Shannon Entropy
-                {beginnerModeEnabled && (
-                  <InfoButton
-                    size="sm"
-                    label="What is Shannon entropy?"
-                    tooltip="Shannon entropy measures how unpredictable the base composition is within a window (higher = more diverse)."
-                    onClick={() => showContextFor('shannon-entropy')}
-                  />
-                )}
-              </div>
-              <div style={{ color: colors.text, fontFamily: 'monospace', fontSize: '1.25rem' }}>{avgEntropy}</div>
-            </div>
-            <div style={{ textAlign: 'center', padding: '0.5rem', backgroundColor: colors.backgroundAlt, borderRadius: '4px' }}>
-              <div style={{ color: colors.accent, fontSize: '0.75rem', display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}>
-                Avg Linguistic Complexity
-                {beginnerModeEnabled && (
-                  <InfoButton
-                    size="sm"
-                    label="What is linguistic complexity?"
-                    tooltip="Here, linguistic complexity approximates how many unique k-mers appear in the window (higher = less repetitive)."
-                    onClick={() => showContextFor('k-mer')}
-                  />
-                )}
-              </div>
-              <div style={{ color: colors.text, fontFamily: 'monospace', fontSize: '1.25rem' }}>{avgLinguistic}</div>
-            </div>
-            <div style={{ textAlign: 'center', padding: '0.5rem', backgroundColor: colors.backgroundAlt, borderRadius: '4px' }}>
-              <div style={{ color: colors.error, fontSize: '0.75rem', display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}>
-                Low Complexity Regions
-                {beginnerModeEnabled && (
-                  <InfoButton
-                    size="sm"
-                    label="What does low complexity mean?"
-                    tooltip="Low-complexity windows are more repetitive or compositionally biased; they can coincide with repeats or regulatory motifs."
-                    onClick={() => showContextFor('sequence-complexity')}
-                  />
-                )}
-              </div>
-              <div style={{ color: colors.text, fontFamily: 'monospace', fontSize: '1.25rem' }}>{lowComplexityCount}</div>
-            </div>
-          </div>
+        {/* Stats - only show when we have valid analysis data */}
+        {!isLoading && hasData && (
+          <OverlayStatGrid columns={3}>
+            <OverlayStatCard
+              label={
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}>
+                  Avg Shannon Entropy
+                  {beginnerModeEnabled && (
+                    <InfoButton
+                      size="sm"
+                      label="What is Shannon entropy?"
+                      tooltip="Shannon entropy measures how unpredictable the base composition is within a window (higher = more diverse)."
+                      onClick={() => showContextFor('shannon-entropy')}
+                    />
+                  )}
+                </span>
+              }
+              value={avgEntropy}
+              labelColor="var(--color-primary)"
+            />
+            <OverlayStatCard
+              label={
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}>
+                  Avg Linguistic Complexity
+                  {beginnerModeEnabled && (
+                    <InfoButton
+                      size="sm"
+                      label="What is linguistic complexity?"
+                      tooltip="Linguistic complexity approximates how many unique k-mers appear in the window (higher = less repetitive)."
+                      onClick={() => showContextFor('k-mer')}
+                    />
+                  )}
+                </span>
+              }
+              value={avgLinguistic}
+              labelColor="var(--color-accent)"
+            />
+            <OverlayStatCard
+              label={
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}>
+                  Low Complexity Regions
+                  {beginnerModeEnabled && (
+                    <InfoButton
+                      size="sm"
+                      label="What does low complexity mean?"
+                      tooltip="Low-complexity windows are more repetitive or compositionally biased; they can coincide with repeats or regulatory motifs."
+                      onClick={() => showContextFor('sequence-complexity')}
+                    />
+                  )}
+                </span>
+              }
+              value={lowComplexityCount}
+              labelColor="var(--color-error)"
+            />
+          </OverlayStatGrid>
         )}
 
         {/* Canvas */}
-        {!sequenceLoading && !analysisLoading && entropy.length >= 2 && (
+        {!isLoading && hasData && (
           <div style={{
-            border: `1px solid ${colors.borderLight}`,
-            borderRadius: '4px',
+            border: '1px solid var(--color-border-light)',
+            borderRadius: 'var(--radius-sm)',
             overflow: 'hidden',
           }}>
             <canvas
@@ -305,26 +314,24 @@ export function ComplexityOverlay({
         )}
 
         {/* Legend */}
-        {!sequenceLoading && !analysisLoading && entropy.length >= 2 && (
-          <div style={{
-            display: 'flex',
-            justifyContent: 'center',
-            gap: '2rem',
-            color: colors.textMuted,
-            fontSize: '0.85rem',
-          }}>
-            <span><span style={{ color: colors.primary }}>━</span> Shannon Entropy</span>
-            <span><span style={{ color: colors.accent }}>┄</span> Linguistic Complexity</span>
-            <span style={{ color: colors.error }}>▌ Low Complexity</span>
-          </div>
+        {!isLoading && hasData && (
+          <OverlayLegend>
+            <OverlayLegendItem indicator="━" color={colors.primary} label="Shannon Entropy" />
+            <OverlayLegendItem indicator="┄" color={colors.accent} label="Linguistic Complexity" />
+            <OverlayLegendItem indicator="▌" color={colors.error} label="Low Complexity" />
+          </OverlayLegend>
         )}
 
-        {!sequenceLoading && !analysisLoading && sequence.length === 0 && (
-          <div style={{ textAlign: 'center', padding: '2rem', color: colors.textMuted }}>
-            No sequence data available. Select a phage to analyze.
-          </div>
+        {/* Empty State */}
+        {isEmpty && (
+          <OverlayEmptyState
+            message={sequence.length === 0
+              ? 'No sequence data available.'
+              : 'Sequence too short for complexity analysis.'}
+            hint={sequence.length === 0 ? 'Select a phage to analyze.' : undefined}
+          />
         )}
-      </div>
+      </OverlayStack>
     </Overlay>
   );
 }

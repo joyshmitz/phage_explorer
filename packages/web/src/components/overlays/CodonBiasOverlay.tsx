@@ -13,6 +13,17 @@ import { useHotkey } from '../../hooks';
 import { ActionIds } from '../../keyboard';
 import { Overlay } from './Overlay';
 import { useOverlay } from './OverlayProvider';
+import {
+  OverlayStack,
+  OverlayDescription,
+  OverlayToolbar,
+  OverlayStatGrid,
+  OverlayStatCard,
+  OverlayLoadingState,
+  OverlayEmptyState,
+  OverlayLegend,
+  OverlayLegendItem,
+} from './primitives';
 import { AnalysisPanelSkeleton } from '../ui/Skeleton';
 import {
   analyzeCodonBias,
@@ -230,6 +241,9 @@ export function CodonBiasOverlay({
 
   if (!isOpen('codonBias')) return null;
 
+  const hasData = !!analysis;
+  const isEmpty = !loading && !analysis;
+
   return (
     <Overlay
       id="codonBias"
@@ -237,129 +251,67 @@ export function CodonBiasOverlay({
       hotkey="Alt+U"
       size="lg"
     >
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+      <OverlayStack>
         {/* Description */}
-        <div
-          style={{
-            padding: '0.75rem',
-            backgroundColor: colors.backgroundAlt,
-            borderRadius: '4px',
-            color: colors.textDim,
-            fontSize: '0.85rem',
-          }}
-        >
-          <strong style={{ color: colors.accent }}>Codon Usage Bias</strong>:
+        <OverlayDescription title="Codon Usage Bias">
           Relative Synonymous Codon Usage (RSCU) reveals translational selection.
           RSCU &gt; 1.0 indicates preferred codons; RSCU &lt; 1.0 indicates avoided codons.
           Strong bias suggests adaptation to host tRNA pools.
-        </div>
+        </OverlayDescription>
 
-        {loading ? (
-          <AnalysisPanelSkeleton />
-        ) : !analysis ? (
-          <div style={{ padding: '2rem', textAlign: 'center', color: colors.textMuted }}>
-            {!sequence ? 'No sequence loaded' : 'Sequence too short for analysis'}
-          </div>
-        ) : (
+        {/* Loading State */}
+        {loading && (
+          <OverlayLoadingState message="Analyzing codon usage...">
+            <AnalysisPanelSkeleton />
+          </OverlayLoadingState>
+        )}
+
+        {/* Empty State */}
+        {isEmpty && (
+          <OverlayEmptyState
+            message={!sequence ? 'No sequence loaded' : 'Sequence too short for analysis'}
+            hint="Select a phage with coding sequences to analyze."
+          />
+        )}
+
+        {/* Main Content */}
+        {hasData && (
           <>
             {/* Summary metrics */}
-            <div
-              style={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))',
-                gap: '0.5rem',
-                fontSize: '0.8rem',
-              }}
-            >
-              <div
-                style={{
-                  padding: '0.5rem',
-                  backgroundColor: colors.backgroundAlt,
-                  borderRadius: '4px',
-                  textAlign: 'center',
-                }}
-              >
-                <div style={{ color: colors.textMuted }}>Total Codons</div>
-                <div style={{ fontSize: '1.1rem', fontWeight: 'bold', color: colors.text }}>
-                  {analysis.totalCodons.toLocaleString()}
-                </div>
-              </div>
-              <div
-                style={{
-                  padding: '0.5rem',
-                  backgroundColor: colors.backgroundAlt,
-                  borderRadius: '4px',
-                  textAlign: 'center',
-                }}
-              >
-                <div style={{ color: colors.textMuted }}>GC Content</div>
-                <div style={{ fontSize: '1.1rem', fontWeight: 'bold', color: colors.text }}>
-                  {(analysis.gcContent * 100).toFixed(1)}%
-                </div>
-              </div>
-              <div
-                style={{
-                  padding: '0.5rem',
-                  backgroundColor: colors.backgroundAlt,
-                  borderRadius: '4px',
-                  textAlign: 'center',
-                }}
-              >
-                <div style={{ color: colors.textMuted }}>GC3 Content</div>
-                <div style={{ fontSize: '1.1rem', fontWeight: 'bold', color: colors.text }}>
-                  {(analysis.gc3Content * 100).toFixed(1)}%
-                </div>
-              </div>
-              <div
-                style={{
-                  padding: '0.5rem',
-                  backgroundColor: colors.backgroundAlt,
-                  borderRadius: '4px',
-                  textAlign: 'center',
-                }}
-              >
-                <div style={{ color: colors.textMuted }}>Nc (Bias)</div>
-                <div
-                  style={{
-                    fontSize: '1.1rem',
-                    fontWeight: 'bold',
-                    color: analysis.effectiveNumberOfCodons < 40 ? '#22c55e' : colors.text,
-                  }}
-                >
-                  {analysis.effectiveNumberOfCodons.toFixed(1)}
-                </div>
-              </div>
-              <div
-                style={{
-                  padding: '0.5rem',
-                  backgroundColor: colors.backgroundAlt,
-                  borderRadius: '4px',
-                  textAlign: 'center',
-                }}
-              >
-                <div style={{ color: colors.textMuted }}>Bias Score</div>
-                <div
-                  style={{
-                    fontSize: '1.1rem',
-                    fontWeight: 'bold',
-                    color: analysis.biasScore > 0.5 ? '#22c55e' : colors.text,
-                  }}
-                >
-                  {(analysis.biasScore * 100).toFixed(0)}%
-                </div>
-              </div>
-            </div>
+            <OverlayStatGrid columns={5}>
+              <OverlayStatCard
+                label="Total Codons"
+                value={analysis.totalCodons.toLocaleString()}
+              />
+              <OverlayStatCard
+                label="GC Content"
+                value={`${(analysis.gcContent * 100).toFixed(1)}%`}
+              />
+              <OverlayStatCard
+                label="GC3 Content"
+                value={`${(analysis.gc3Content * 100).toFixed(1)}%`}
+              />
+              <OverlayStatCard
+                label="Nc (Bias)"
+                value={
+                  <span style={{ color: analysis.effectiveNumberOfCodons < 40 ? '#22c55e' : undefined }}>
+                    {analysis.effectiveNumberOfCodons.toFixed(1)}
+                  </span>
+                }
+              />
+              <OverlayStatCard
+                label="Bias Score"
+                value={
+                  <span style={{ color: analysis.biasScore > 0.5 ? '#22c55e' : undefined }}>
+                    {(analysis.biasScore * 100).toFixed(0)}%
+                  </span>
+                }
+              />
+            </OverlayStatGrid>
 
             {/* Controls */}
-            <div
-              style={{
-                display: 'flex',
-                gap: '1rem',
-                alignItems: 'center',
-                fontSize: '0.8rem',
-              }}
-            >
-              <label style={{ color: colors.textMuted }}>
+            <OverlayToolbar>
+              <label style={{ color: 'var(--color-text-muted)' }}>
                 View:
                 <select
                   value={viewMode}
@@ -367,10 +319,10 @@ export function CodonBiasOverlay({
                   style={{
                     marginLeft: '0.5rem',
                     padding: '0.25rem',
-                    backgroundColor: colors.backgroundAlt,
-                    color: colors.text,
-                    border: `1px solid ${colors.borderLight}`,
-                    borderRadius: '3px',
+                    backgroundColor: 'var(--color-background-alt)',
+                    color: 'var(--color-text)',
+                    border: '1px solid var(--color-border-light)',
+                    borderRadius: 'var(--radius-sm)',
                   }}
                 >
                   <option value="family">By Amino Acid</option>
@@ -379,7 +331,7 @@ export function CodonBiasOverlay({
               </label>
 
               {viewMode === 'family' && (
-                <label style={{ color: colors.textMuted }}>
+                <label style={{ color: 'var(--color-text-muted)' }}>
                   Filter:
                   <select
                     value={filterFamily || ''}
@@ -387,10 +339,10 @@ export function CodonBiasOverlay({
                     style={{
                       marginLeft: '0.5rem',
                       padding: '0.25rem',
-                      backgroundColor: colors.backgroundAlt,
-                      color: colors.text,
-                      border: `1px solid ${colors.borderLight}`,
-                      borderRadius: '3px',
+                      backgroundColor: 'var(--color-background-alt)',
+                      color: 'var(--color-text)',
+                      border: '1px solid var(--color-border-light)',
+                      borderRadius: 'var(--radius-sm)',
                     }}
                   >
                     <option value="">All Amino Acids</option>
@@ -405,11 +357,11 @@ export function CodonBiasOverlay({
                 </label>
               )}
 
-              <span style={{ color: colors.textMuted }}>
+              <span style={{ color: 'var(--color-text-muted)' }}>
                 Preferred: {analysis.preferredCodons.length} |
                 Avoided: {analysis.avoidedCodons.length}
               </span>
-            </div>
+            </OverlayToolbar>
 
             {/* RSCU visualization */}
             {viewMode === 'family' ? (
@@ -439,8 +391,8 @@ export function CodonBiasOverlay({
                   maxHeight: '400px',
                   overflowY: 'auto',
                   padding: '0.5rem',
-                  backgroundColor: colors.backgroundAlt,
-                  borderRadius: '4px',
+                  backgroundColor: 'var(--color-background-alt)',
+                  borderRadius: 'var(--radius-sm)',
                 }}
               >
                 <div
@@ -464,51 +416,38 @@ export function CodonBiasOverlay({
             )}
 
             {/* Legend */}
-            <div
-              style={{
-                display: 'flex',
-                gap: '1rem',
-                fontSize: '0.75rem',
-                color: colors.textMuted,
-                flexWrap: 'wrap',
-              }}
-            >
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                <span style={{ width: '12px', height: '12px', backgroundColor: '#22c55e', borderRadius: '2px' }} />
-                <span>Strong Preference (RSCU &gt; 1.5)</span>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                <span style={{ width: '12px', height: '12px', backgroundColor: '#86efac', borderRadius: '2px' }} />
-                <span>Slight Preference (1.0-1.5)</span>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                <span style={{ width: '12px', height: '12px', backgroundColor: '#fde047', borderRadius: '2px' }} />
-                <span>Slight Avoidance (0.5-1.0)</span>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                <span style={{ width: '12px', height: '12px', backgroundColor: '#ef4444', borderRadius: '2px' }} />
-                <span>Strong Avoidance (&lt; 0.5)</span>
-              </div>
-            </div>
+            <OverlayLegend>
+              <OverlayLegendItem
+                indicator={<span style={{ width: '12px', height: '12px', display: 'inline-block', backgroundColor: '#22c55e', borderRadius: '2px' }} />}
+                color="#22c55e"
+                label="Strong Preference (RSCU > 1.5)"
+              />
+              <OverlayLegendItem
+                indicator={<span style={{ width: '12px', height: '12px', display: 'inline-block', backgroundColor: '#86efac', borderRadius: '2px' }} />}
+                color="#86efac"
+                label="Slight Preference (1.0-1.5)"
+              />
+              <OverlayLegendItem
+                indicator={<span style={{ width: '12px', height: '12px', display: 'inline-block', backgroundColor: '#fde047', borderRadius: '2px' }} />}
+                color="#fde047"
+                label="Slight Avoidance (0.5-1.0)"
+              />
+              <OverlayLegendItem
+                indicator={<span style={{ width: '12px', height: '12px', display: 'inline-block', backgroundColor: '#ef4444', borderRadius: '2px' }} />}
+                color="#ef4444"
+                label="Strong Avoidance (< 0.5)"
+              />
+            </OverlayLegend>
 
             {/* Interpretation */}
-            <div
-              style={{
-                padding: '0.5rem',
-                backgroundColor: colors.backgroundAlt,
-                borderRadius: '4px',
-                fontSize: '0.75rem',
-                color: colors.textDim,
-              }}
-            >
-              <strong>Interpretation:</strong> Nc (Effective Number of Codons) ranges from 20
-              (extreme bias) to 61 (uniform). Values &lt; 40 suggest selection for translational
-              efficiency. GC3 ≠ GC suggests selection overrides mutational pressure. Preferred
-              codons often match abundant host tRNAs.
-            </div>
+            <OverlayDescription title="Interpretation:" style={{ fontSize: '0.75rem' }}>
+              Nc (Effective Number of Codons) ranges from 20 (extreme bias) to 61 (uniform).
+              Values &lt; 40 suggest selection for translational efficiency. GC3 ≠ GC suggests
+              selection overrides mutational pressure. Preferred codons often match abundant host tRNAs.
+            </OverlayDescription>
           </>
         )}
-      </div>
+      </OverlayStack>
     </Overlay>
   );
 }

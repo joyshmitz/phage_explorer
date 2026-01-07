@@ -19,6 +19,14 @@ import { useHotkey } from '../../hooks';
 import { ActionIds } from '../../keyboard';
 import { Overlay } from './Overlay';
 import { useOverlay } from './OverlayProvider';
+import {
+  OverlayStack,
+  OverlayDescription,
+  OverlayStatGrid,
+  OverlayStatCard,
+  OverlayLoadingState,
+  OverlayEmptyState,
+} from './primitives';
 import { AnalysisPanelSkeleton } from '../ui/Skeleton';
 
 interface PromoterOverlayProps {
@@ -204,6 +212,9 @@ export function PromoterOverlay({
     return null;
   }
 
+  const hasData = sequence.length > 0;
+  const isEmpty = !loading && sequence.length === 0;
+
   return (
     <Overlay
       id="promoter"
@@ -211,54 +222,48 @@ export function PromoterOverlay({
       hotkey="p"
       size="lg"
     >
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+      <OverlayStack>
         {/* Loading State */}
         {loading && (
-          <AnalysisPanelSkeleton message="Loading sequence data..." rows={3} />
+          <OverlayLoadingState message="Loading sequence data...">
+            <AnalysisPanelSkeleton rows={3} />
+          </OverlayLoadingState>
         )}
 
         {/* Description */}
         {!loading && (
-          <div style={{
-            padding: '0.75rem',
-            backgroundColor: colors.backgroundAlt,
-            borderRadius: '4px',
-            color: colors.textDim,
-            fontSize: '0.9rem',
-          }}>
-            <strong style={{ color: colors.primary }}>Regulatory Signal Detection</strong> identifies promoters
-            (σ70, σ32, σ54 motifs), ribosome binding sites (Shine-Dalgarno sequences), and intrinsic terminators
-            (rho-independent hairpin + poly-U).
-          </div>
+          <OverlayDescription title="Regulatory Signal Detection">
+            Identifies promoters (σ70, σ32, σ54 motifs), ribosome binding sites (Shine-Dalgarno sequences),
+            and intrinsic terminators (rho-independent hairpin + poly-U).
+          </OverlayDescription>
         )}
 
         {/* Stats */}
-        {!loading && sequence.length > 0 && (
-          <div style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(3, 1fr)',
-            gap: '1rem',
-          }}>
-            <div style={{ textAlign: 'center', padding: '0.75rem', backgroundColor: colors.backgroundAlt, borderRadius: '4px' }}>
-              <div style={{ color: colors.success, fontSize: '0.75rem' }}>Promoters (σ70/σ32/σ54)</div>
-              <div style={{ color: colors.text, fontFamily: 'monospace', fontSize: '1.5rem' }}>{promoters.length}</div>
-            </div>
-            <div style={{ textAlign: 'center', padding: '0.75rem', backgroundColor: colors.backgroundAlt, borderRadius: '4px' }}>
-              <div style={{ color: colors.info, fontSize: '0.75rem' }}>RBS Sites</div>
-              <div style={{ color: colors.text, fontFamily: 'monospace', fontSize: '1.5rem' }}>{rbsSites.length}</div>
-            </div>
-            <div style={{ textAlign: 'center', padding: '0.75rem', backgroundColor: colors.backgroundAlt, borderRadius: '4px' }}>
-              <div style={{ color: colors.warning, fontSize: '0.75rem' }}>Terminators</div>
-              <div style={{ color: colors.text, fontFamily: 'monospace', fontSize: '1.5rem' }}>{terminators.length}</div>
-            </div>
-          </div>
+        {!loading && hasData && (
+          <OverlayStatGrid columns={3}>
+            <OverlayStatCard
+              label="Promoters (σ70/σ32/σ54)"
+              value={promoters.length}
+              labelColor="var(--color-success)"
+            />
+            <OverlayStatCard
+              label="RBS Sites"
+              value={rbsSites.length}
+              labelColor="var(--color-info)"
+            />
+            <OverlayStatCard
+              label="Terminators"
+              value={terminators.length}
+              labelColor="var(--color-warning)"
+            />
+          </OverlayStatGrid>
         )}
 
         {/* Constellation Visualization */}
-        {!loading && sequence.length > 0 && edges.length > 0 && (
+        {!loading && hasData && edges.length > 0 && (
           <div style={{
-            border: `1px solid ${colors.borderLight}`,
-            borderRadius: '4px',
+            border: '1px solid var(--color-border-light)',
+            borderRadius: 'var(--radius-sm)',
             overflow: 'hidden',
           }}>
             <div style={{
@@ -266,10 +271,10 @@ export function PromoterOverlay({
               justifyContent: 'space-between',
               alignItems: 'center',
               padding: '0.5rem 0.75rem',
-              backgroundColor: colors.backgroundAlt,
-              borderBottom: `1px solid ${colors.borderLight}`,
+              backgroundColor: 'var(--color-background-alt)',
+              borderBottom: '1px solid var(--color-border-light)',
             }}>
-              <div style={{ color: colors.primary, fontSize: '0.85rem', fontWeight: 600 }}>
+              <div style={{ color: 'var(--color-primary)', fontSize: '0.85rem', fontWeight: 600 }}>
                 Regulatory Constellation ({edges.length} operon edges)
               </div>
               <button
@@ -278,9 +283,9 @@ export function PromoterOverlay({
                   padding: '0.25rem 0.5rem',
                   fontSize: '0.75rem',
                   backgroundColor: 'transparent',
-                  border: `1px solid ${colors.borderLight}`,
-                  borderRadius: '4px',
-                  color: colors.textDim,
+                  border: '1px solid var(--color-border-light)',
+                  borderRadius: 'var(--radius-sm)',
+                  color: 'var(--color-text-dim)',
                   cursor: 'pointer',
                 }}
               >
@@ -301,7 +306,7 @@ export function PromoterOverlay({
         )}
 
         {/* Sites table */}
-        {!loading && sequence.length > 0 && (() => {
+        {!loading && hasData && (() => {
           // Combine all sites into unified display structure
           type DisplaySite = {
             kind: 'promoter' | 'rbs' | 'terminator';
@@ -363,17 +368,17 @@ export function PromoterOverlay({
             <div style={{
               maxHeight: '300px',
               overflowY: 'auto',
-              border: `1px solid ${colors.borderLight}`,
-              borderRadius: '4px',
+              border: '1px solid var(--color-border-light)',
+              borderRadius: 'var(--radius-sm)',
             }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.9rem' }}>
                 <thead>
-                  <tr style={{ backgroundColor: colors.backgroundAlt, position: 'sticky', top: 0 }}>
-                    <th style={{ padding: '0.5rem', textAlign: 'left', color: colors.textDim }}>Type</th>
-                    <th style={{ padding: '0.5rem', textAlign: 'left', color: colors.textDim }}>Position</th>
-                    <th style={{ padding: '0.5rem', textAlign: 'center', color: colors.textDim }}>Strand</th>
-                    <th style={{ padding: '0.5rem', textAlign: 'left', color: colors.textDim }}>Motif</th>
-                    <th style={{ padding: '0.5rem', textAlign: 'right', color: colors.textDim }}>Score</th>
+                  <tr style={{ backgroundColor: 'var(--color-background-alt)', position: 'sticky', top: 0 }}>
+                    <th style={{ padding: '0.5rem', textAlign: 'left', color: 'var(--color-text-dim)' }}>Type</th>
+                    <th style={{ padding: '0.5rem', textAlign: 'left', color: 'var(--color-text-dim)' }}>Position</th>
+                    <th style={{ padding: '0.5rem', textAlign: 'center', color: 'var(--color-text-dim)' }}>Strand</th>
+                    <th style={{ padding: '0.5rem', textAlign: 'left', color: 'var(--color-text-dim)' }}>Motif</th>
+                    <th style={{ padding: '0.5rem', textAlign: 'right', color: 'var(--color-text-dim)' }}>Score</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -381,8 +386,8 @@ export function PromoterOverlay({
                     <tr
                       key={idx}
                       style={{
-                        borderTop: `1px solid ${colors.borderLight}`,
-                        backgroundColor: idx % 2 === 0 ? 'transparent' : colors.backgroundAlt,
+                        borderTop: '1px solid var(--color-border-light)',
+                        backgroundColor: idx % 2 === 0 ? 'transparent' : 'var(--color-background-alt)',
                       }}
                     >
                       <td style={{ padding: '0.5rem' }}>
@@ -390,21 +395,21 @@ export function PromoterOverlay({
                           {getIcon(site.kind)} {getLabel(site.kind)}
                         </span>
                       </td>
-                      <td style={{ padding: '0.5rem', fontFamily: 'monospace', color: colors.text }}>
+                      <td style={{ padding: '0.5rem', fontFamily: 'monospace', color: 'var(--color-text)' }}>
                         {site.pos.toLocaleString()}
                       </td>
-                      <td style={{ padding: '0.5rem', textAlign: 'center', fontFamily: 'monospace', color: colors.accent }}>
+                      <td style={{ padding: '0.5rem', textAlign: 'center', fontFamily: 'monospace', color: 'var(--color-accent)' }}>
                         {site.strand}
                       </td>
-                      <td style={{ padding: '0.5rem', color: colors.textDim }}>
+                      <td style={{ padding: '0.5rem', color: 'var(--color-text-dim)' }}>
                         {site.motif}
                       </td>
                       <td style={{ padding: '0.5rem', textAlign: 'right' }}>
                         <span style={{
                           padding: '0.2rem 0.5rem',
-                          borderRadius: '4px',
+                          borderRadius: 'var(--radius-sm)',
                           backgroundColor: `rgba(${site.score > 0.7 ? '92, 184, 92' : '240, 173, 78'}, 0.2)`,
-                          color: site.score > 0.7 ? colors.success : colors.warning,
+                          color: site.score > 0.7 ? 'var(--color-success)' : 'var(--color-warning)',
                           fontSize: '0.8rem',
                         }}>
                           {(site.score * 100).toFixed(0)}%
@@ -414,7 +419,7 @@ export function PromoterOverlay({
                   ))}
                   {allSites.length === 0 && (
                     <tr>
-                      <td colSpan={5} style={{ padding: '2rem', textAlign: 'center', color: colors.textMuted }}>
+                      <td colSpan={5} style={{ padding: '2rem', textAlign: 'center', color: 'var(--color-text-muted)' }}>
                         No regulatory sites found
                       </td>
                     </tr>
@@ -425,12 +430,14 @@ export function PromoterOverlay({
           );
         })()}
 
-        {!loading && sequence.length === 0 && (
-          <div style={{ textAlign: 'center', padding: '2rem', color: colors.textMuted }}>
-            No sequence data available. Select a phage to analyze.
-          </div>
+        {/* Empty State */}
+        {isEmpty && (
+          <OverlayEmptyState
+            message="No sequence data available."
+            hint="Select a phage to analyze."
+          />
         )}
-      </div>
+      </OverlayStack>
     </Overlay>
   );
 }

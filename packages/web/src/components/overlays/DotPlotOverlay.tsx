@@ -20,6 +20,15 @@ import { ActionIds } from '../../keyboard';
 import { getOverlayContext, useBeginnerMode } from '../../education';
 import { Overlay } from './Overlay';
 import { useOverlay } from './OverlayProvider';
+import {
+  OverlayStack,
+  OverlayDescription,
+  OverlayToolbar,
+  OverlayLoadingState,
+  OverlayEmptyState,
+  OverlayLegend,
+  OverlayLegendItem,
+} from './primitives';
 import { AnalysisPanelSkeleton } from '../ui/Skeleton';
 import { InfoButton } from '../ui';
 import { HeatmapCanvas } from '../primitives/HeatmapCanvas';
@@ -250,49 +259,33 @@ export function DotPlotOverlay({
 
   if (!isOpen('dotPlot')) return null;
 
+  const hasData = displayValues && bins > 0;
+  const isEmpty = !loading && !error && (!displayValues || bins === 0);
+
   return (
     <Overlay id="dotPlot" title="DOT PLOT ANALYSIS" hotkey="Alt+O" size="lg">
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+      <OverlayStack>
         {/* Description */}
-        <div
-          style={{
-            padding: '0.75rem',
-            backgroundColor: colors.backgroundAlt,
-            borderRadius: '4px',
-            color: colors.textDim,
-            fontSize: '0.85rem',
-          }}
+        <OverlayDescription
+          title="Dot Plot"
+          action={beginnerModeEnabled ? (
+            <InfoButton
+              size="sm"
+              label="Learn about dot plots"
+              tooltip={overlayHelp?.summary ?? 'Dot plots are self-comparison matrices that reveal repeats and rearrangements.'}
+              onClick={() => showContextFor(overlayHelp?.glossary?.[0] ?? 'dot-plot')}
+            />
+          ) : undefined}
         >
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
-            <strong style={{ color: colors.accent }}>Dot Plot</strong>
-            {beginnerModeEnabled && (
-              <InfoButton
-                size="sm"
-                label="Learn about dot plots"
-                tooltip={overlayHelp?.summary ?? 'Dot plots are self-comparison matrices that reveal repeats and rearrangements.'}
-                onClick={() => showContextFor(overlayHelp?.glossary?.[0] ?? 'dot-plot')}
-              />
-            )}
-          </div>
-          <div>
-            Self-similarity matrix showing direct repeats (diagonal patterns) and inverted repeats
-            (off-diagonal). The main diagonal represents self-identity. Parallel diagonals indicate
-            tandem repeats, while perpendicular patterns suggest palindromes or inversions.
-          </div>
-        </div>
+          Self-similarity matrix showing direct repeats (diagonal patterns) and inverted repeats
+          (off-diagonal). The main diagonal represents self-identity. Parallel diagonals indicate
+          tandem repeats, while perpendicular patterns suggest palindromes or inversions.
+        </OverlayDescription>
 
         {/* Controls */}
-        <div
-          style={{
-            display: 'flex',
-            gap: '1rem',
-            alignItems: 'center',
-            flexWrap: 'wrap',
-            fontSize: '0.85rem',
-          }}
-        >
+        <OverlayToolbar>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <label htmlFor={viewSelectId} style={{ color: colors.textMuted }}>
+            <label htmlFor={viewSelectId} style={{ color: 'var(--color-text-muted)' }}>
               View:
             </label>
             {beginnerModeEnabled && (
@@ -309,10 +302,10 @@ export function DotPlotOverlay({
               onChange={(e) => setViewMode(e.target.value as ViewMode)}
               style={{
                 padding: '0.25rem',
-                backgroundColor: colors.backgroundAlt,
-                color: colors.text,
-                border: `1px solid ${colors.borderLight}`,
-                borderRadius: '3px',
+                backgroundColor: 'var(--color-background-alt)',
+                color: 'var(--color-text)',
+                border: '1px solid var(--color-border-light)',
+                borderRadius: 'var(--radius-sm)',
               }}
             >
               <option value="combined">Combined</option>
@@ -322,7 +315,7 @@ export function DotPlotOverlay({
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <label htmlFor={resolutionSelectId} style={{ color: colors.textMuted }}>
+            <label htmlFor={resolutionSelectId} style={{ color: 'var(--color-text-muted)' }}>
               Resolution:
             </label>
             {beginnerModeEnabled && (
@@ -339,10 +332,10 @@ export function DotPlotOverlay({
               onChange={(e) => setResolution(Number(e.target.value))}
               style={{
                 padding: '0.25rem',
-                backgroundColor: colors.backgroundAlt,
-                color: colors.text,
-                border: `1px solid ${colors.borderLight}`,
-                borderRadius: '3px',
+                backgroundColor: 'var(--color-background-alt)',
+                color: 'var(--color-text)',
+                border: '1px solid var(--color-border-light)',
+                borderRadius: 'var(--radius-sm)',
               }}
             >
               <option value={40}>Low (40x40)</option>
@@ -353,30 +346,37 @@ export function DotPlotOverlay({
           </div>
 
           {currentPhage && (
-            <span style={{ color: colors.textDim }}>
+            <span style={{ color: 'var(--color-text-dim)' }}>
               {currentPhage.name} ({sequence.length.toLocaleString()} bp)
             </span>
           )}
-        </div>
+        </OverlayToolbar>
 
-        {loading ? (
-          <AnalysisPanelSkeleton />
-        ) : error ? (
-          <div
-            style={{
-              padding: '1rem',
-              color: '#ef4444',
-              backgroundColor: colors.backgroundAlt,
-              borderRadius: '4px',
-            }}
-          >
-            {error}
-          </div>
-        ) : !displayValues || bins === 0 ? (
-          <div style={{ padding: '2rem', textAlign: 'center', color: colors.textMuted }}>
-            {!sequence ? 'No sequence loaded' : 'Sequence too short for analysis'}
-          </div>
-        ) : (
+        {/* Loading State */}
+        {loading && (
+          <OverlayLoadingState message="Computing dot plot...">
+            <AnalysisPanelSkeleton />
+          </OverlayLoadingState>
+        )}
+
+        {/* Error State */}
+        {error && !loading && (
+          <OverlayEmptyState
+            message={error}
+            hint="Try selecting a different phage or refreshing."
+          />
+        )}
+
+        {/* Empty State */}
+        {isEmpty && (
+          <OverlayEmptyState
+            message={!sequence ? 'No sequence loaded' : 'Sequence too short for analysis'}
+            hint="Select a phage with sufficient sequence data."
+          />
+        )}
+
+        {/* Main Content */}
+        {hasData && !loading && !error && (
           <>
             {/* Dot Plot Matrix */}
             <div>
@@ -391,7 +391,7 @@ export function DotPlotOverlay({
                   <div
                     style={{
                       fontSize: '0.75rem',
-                      color: colors.textMuted,
+                      color: 'var(--color-text-muted)',
                       marginBottom: '0.25rem',
                     }}
                   >
@@ -418,7 +418,7 @@ export function DotPlotOverlay({
                   />
                 </div>
 
-                {/* Legend */}
+                {/* Color Legend (vertical swatch) */}
                 <div
                   style={{
                     display: 'flex',
@@ -428,57 +428,45 @@ export function DotPlotOverlay({
                     marginTop: '1.5rem',
                   }}
                 >
-                  <div style={{ color: colors.textMuted, marginBottom: '0.25rem' }}>Identity</div>
+                  <div style={{ color: 'var(--color-text-muted)', marginBottom: '0.25rem' }}>Identity</div>
                   {viewMode === 'inverted' ? (
                     <>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                        <span
-                          style={{ width: '12px', height: '12px', backgroundColor: '#ef4444' }}
-                        />
-                        <span style={{ color: colors.textMuted }}>&gt;95%</span>
+                        <span style={{ width: '12px', height: '12px', backgroundColor: '#ef4444' }} />
+                        <span style={{ color: 'var(--color-text-muted)' }}>&gt;95%</span>
                       </div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                        <span
-                          style={{ width: '12px', height: '12px', backgroundColor: '#f59e0b' }}
-                        />
-                        <span style={{ color: colors.textMuted }}>80-95%</span>
+                        <span style={{ width: '12px', height: '12px', backgroundColor: '#f59e0b' }} />
+                        <span style={{ color: 'var(--color-text-muted)' }}>80-95%</span>
                       </div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                        <span
-                          style={{ width: '12px', height: '12px', backgroundColor: '#eab308' }}
-                        />
-                        <span style={{ color: colors.textMuted }}>60-80%</span>
+                        <span style={{ width: '12px', height: '12px', backgroundColor: '#eab308' }} />
+                        <span style={{ color: 'var(--color-text-muted)' }}>60-80%</span>
                       </div>
                     </>
                   ) : (
                     <>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                        <span
-                          style={{ width: '12px', height: '12px', backgroundColor: '#22c55e' }}
-                        />
-                        <span style={{ color: colors.textMuted }}>&gt;95%</span>
+                        <span style={{ width: '12px', height: '12px', backgroundColor: '#22c55e' }} />
+                        <span style={{ color: 'var(--color-text-muted)' }}>&gt;95%</span>
                       </div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                        <span
-                          style={{ width: '12px', height: '12px', backgroundColor: '#3b82f6' }}
-                        />
-                        <span style={{ color: colors.textMuted }}>80-95%</span>
+                        <span style={{ width: '12px', height: '12px', backgroundColor: '#3b82f6' }} />
+                        <span style={{ color: 'var(--color-text-muted)' }}>80-95%</span>
                       </div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                        <span
-                          style={{ width: '12px', height: '12px', backgroundColor: '#6366f1' }}
-                        />
-                        <span style={{ color: colors.textMuted }}>60-80%</span>
+                        <span style={{ width: '12px', height: '12px', backgroundColor: '#6366f1' }} />
+                        <span style={{ color: 'var(--color-text-muted)' }}>60-80%</span>
                       </div>
                     </>
                   )}
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
                     <span style={{ width: '12px', height: '12px', backgroundColor: '#4b5563' }} />
-                    <span style={{ color: colors.textMuted }}>20-40%</span>
+                    <span style={{ color: 'var(--color-text-muted)' }}>20-40%</span>
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
                     <span style={{ width: '12px', height: '12px', backgroundColor: '#1e293b' }} />
-                    <span style={{ color: colors.textMuted }}>&lt;20%</span>
+                    <span style={{ color: 'var(--color-text-muted)' }}>&lt;20%</span>
                   </div>
                 </div>
               </div>
@@ -489,12 +477,12 @@ export function DotPlotOverlay({
                   style={{
                     marginTop: '0.5rem',
                     padding: '0.5rem',
-                    backgroundColor: colors.backgroundAlt,
-                    borderRadius: '4px',
+                    backgroundColor: 'var(--color-background-alt)',
+                    borderRadius: 'var(--radius-sm)',
                     fontSize: '0.75rem',
                   }}
                 >
-                  <span style={{ color: colors.textMuted }}>
+                  <span style={{ color: 'var(--color-text-muted)' }}>
                     Position X: {binToPosition(hoverInfo.col).toLocaleString()} bp | Position Y:{' '}
                     {binToPosition(hoverInfo.row).toLocaleString()} bp
                   </span>
@@ -506,45 +494,28 @@ export function DotPlotOverlay({
             </div>
 
             {/* Interpretation guide */}
-            <div
-              style={{
-                padding: '0.5rem',
-                backgroundColor: colors.backgroundAlt,
-                borderRadius: '4px',
-                fontSize: '0.75rem',
-                color: colors.textDim,
-              }}
+            <OverlayDescription
+              title="Reading the plot:"
+              action={beginnerModeEnabled ? (
+                <InfoButton
+                  size="sm"
+                  label="Dot plot interpretation tips"
+                  tooltip="Use the diagonal as a reference; parallel lines indicate repeats and off-diagonals can indicate inversions."
+                  onClick={() => showContextFor('dot-plot')}
+                />
+              ) : undefined}
+              style={{ fontSize: '0.75rem' }}
             >
-              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}>
-                <strong>Reading the plot:</strong>
-                {beginnerModeEnabled && (
-                  <InfoButton
-                    size="sm"
-                    label="Dot plot interpretation tips"
-                    tooltip="Use the diagonal as a reference; parallel lines indicate repeats and off-diagonals can indicate inversions."
-                    onClick={() => showContextFor('dot-plot')}
-                  />
-                )}
-              </span>
               <ul style={{ margin: '0.5rem 0 0 1rem', padding: 0 }}>
-                <li>
-                  <strong>Main diagonal</strong>: Self-identity (always bright)
-                </li>
-                <li>
-                  <strong>Parallel diagonals</strong>: Direct repeats (tandem duplications)
-                </li>
-                <li>
-                  <strong>Perpendicular lines</strong>: Inverted repeats (palindromes)
-                </li>
-                <li>
-                  <strong>Terminal patterns</strong>: May indicate terminal repeats for
-                  packaging
-                </li>
+                <li><strong>Main diagonal</strong>: Self-identity (always bright)</li>
+                <li><strong>Parallel diagonals</strong>: Direct repeats (tandem duplications)</li>
+                <li><strong>Perpendicular lines</strong>: Inverted repeats (palindromes)</li>
+                <li><strong>Terminal patterns</strong>: May indicate terminal repeats for packaging</li>
               </ul>
-            </div>
+            </OverlayDescription>
           </>
         )}
-      </div>
+      </OverlayStack>
     </Overlay>
   );
 }

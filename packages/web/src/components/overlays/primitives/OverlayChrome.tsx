@@ -445,8 +445,8 @@ export function OverlayDescription({
  * ========================================================================== */
 
 interface OverlayStatCardProps {
-  /** Label shown above the value */
-  label: string;
+  /** Label shown above the value (can include interactive elements like InfoButton) */
+  label: ReactNode;
   /** The stat value */
   value: ReactNode;
   /** Label color override (for semantic colors like error/success) */

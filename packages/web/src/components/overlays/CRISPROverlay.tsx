@@ -8,6 +8,15 @@ import { useHotkey } from '../../hooks';
 import { ActionIds } from '../../keyboard';
 import { GenomeTrack } from './primitives/GenomeTrack';
 import type { GenomeTrackInteraction, GenomeTrackSegment } from './primitives/types';
+import {
+  OverlayStack,
+  OverlayDescription,
+  OverlayStatGrid,
+  OverlayStatCard,
+  OverlayLoadingState,
+  OverlayEmptyState,
+  OverlayErrorState,
+} from './primitives';
 import { ComplexAnalysisSkeleton } from '../ui/Skeleton';
 
 interface CRISPROverlayProps {
@@ -200,6 +209,9 @@ export function CRISPROverlay({ repository, phage }: CRISPROverlayProps): React.
 
   if (!isOpen('crispr')) return null;
 
+  const hasData = !!analysis;
+  const isEmpty = !loading && !error && !analysis;
+
   return (
     <Overlay
       id="crispr"
@@ -207,64 +219,54 @@ export function CRISPROverlay({ repository, phage }: CRISPROverlayProps): React.
       hotkey="Alt+C"
       size="xl"
     >
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-        <div
-          style={{
-            padding: '0.75rem',
-            backgroundColor: colors.backgroundAlt,
-            borderRadius: '4px',
-            color: colors.textDim,
-            fontSize: '0.9rem',
-          }}
-        >
-          <strong style={{ color: colors.accent }}>CRISPR Pressure & Anti-CRISPR</strong>{' '}
-          highlights spacer targeting across the genome and surfaces candidate anti-CRISPR genes.
-        </div>
+      <OverlayStack>
+        {/* Description */}
+        <OverlayDescription title="CRISPR Pressure & Anti-CRISPR">
+          Highlights spacer targeting across the genome and surfaces candidate anti-CRISPR genes.
+        </OverlayDescription>
 
-        {error && (
-          <div style={{ color: colors.error, padding: '0.5rem', border: `1px solid ${colors.error}`, borderRadius: '4px' }}>
-            {error}
-          </div>
+        {/* Error State */}
+        {error && !loading && (
+          <OverlayErrorState message={error} />
         )}
 
-        {loading ? (
-          <ComplexAnalysisSkeleton showTrack showHeatmap={false} showScatter={false} showTable />
-        ) : !analysis ? (
-          <div style={{ padding: '2rem', textAlign: 'center', color: colors.textMuted }}>
-            {sequence ? 'Analysis pending…' : 'Load a phage to run CRISPR analysis.'}
-          </div>
-        ) : (
+        {/* Loading State */}
+        {loading && (
+          <OverlayLoadingState message="Analyzing CRISPR patterns...">
+            <ComplexAnalysisSkeleton showTrack showHeatmap={false} showScatter={false} showTable />
+          </OverlayLoadingState>
+        )}
+
+        {/* Empty State */}
+        {isEmpty && (
+          <OverlayEmptyState
+            message={sequence ? 'Analysis pending…' : 'No phage loaded.'}
+            hint="Load a phage to run CRISPR analysis."
+          />
+        )}
+
+        {/* Main Content */}
+        {hasData && !loading && (
           <>
-            <div
-              style={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(3, 1fr)',
-                gap: '0.75rem',
-              }}
-            >
-              <div style={{ padding: '0.75rem', backgroundColor: colors.backgroundAlt, borderRadius: '4px', textAlign: 'center' }}>
-                <div style={{ color: colors.textMuted, fontSize: '0.8rem' }}>Spacer hits</div>
-                <div style={{ color: colors.text, fontFamily: 'monospace', fontSize: '1.4rem' }}>
-                  {analysis.spacerHits.length.toLocaleString()}
-                </div>
-              </div>
-              <div style={{ padding: '0.75rem', backgroundColor: colors.backgroundAlt, borderRadius: '4px', textAlign: 'center' }}>
-                <div style={{ color: colors.textMuted, fontSize: '0.8rem' }}>Max pressure</div>
-                <div style={{ color: colors.error, fontFamily: 'monospace', fontSize: '1.4rem' }}>
-                  {analysis.maxPressure.toFixed(1)}
-                </div>
-              </div>
-              <div style={{ padding: '0.75rem', backgroundColor: colors.backgroundAlt, borderRadius: '4px', textAlign: 'center' }}>
-                <div style={{ color: colors.textMuted, fontSize: '0.8rem' }}>Acr candidates</div>
-                <div style={{ color: colors.success, fontFamily: 'monospace', fontSize: '1.4rem' }}>
-                  {analysis.acrCandidates.length.toLocaleString()}
-                </div>
-              </div>
-            </div>
+            {/* Stats */}
+            <OverlayStatGrid columns={3}>
+              <OverlayStatCard
+                label="Spacer hits"
+                value={analysis.spacerHits.length.toLocaleString()}
+              />
+              <OverlayStatCard
+                label="Max pressure"
+                value={<span style={{ color: 'var(--color-error)' }}>{analysis.maxPressure.toFixed(1)}</span>}
+              />
+              <OverlayStatCard
+                label="Acr candidates"
+                value={<span style={{ color: 'var(--color-success)' }}>{analysis.acrCandidates.length.toLocaleString()}</span>}
+              />
+            </OverlayStatGrid>
 
             {/* Pressure track */}
             <div>
-              <div style={{ fontSize: '0.8rem', color: colors.textMuted, marginBottom: '0.25rem' }}>
+              <div style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', marginBottom: '0.25rem' }}>
                 Spacer pressure (darker = higher pressure)
               </div>
               <GenomeTrack
@@ -409,21 +411,14 @@ export function CRISPROverlay({ repository, phage }: CRISPROverlayProps): React.
               </div>
             </div>
 
-            <div
-              style={{
-                padding: '0.6rem',
-                backgroundColor: colors.backgroundAlt,
-                borderRadius: '4px',
-                color: colors.textDim,
-                fontSize: '0.8rem',
-              }}
-            >
+            {/* Interpretation */}
+            <OverlayDescription title="Interpretation:" style={{ fontSize: '0.8rem' }}>
               High-pressure regions suggest strong spacer targeting and possible escape mutations. Combine spacer density with
               gene context and Acr predictions to evaluate host range and resistance.
-            </div>
+            </OverlayDescription>
           </>
         )}
-      </div>
+      </OverlayStack>
     </Overlay>
   );
 }
