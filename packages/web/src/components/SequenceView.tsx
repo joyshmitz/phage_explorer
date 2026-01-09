@@ -413,10 +413,9 @@ function SequenceViewBase({
     if (typeof storeScrollPosition !== 'number' || !Number.isFinite(storeScrollPosition)) return;
     // Skip if this is our own update from normal scrolling
     if (lastScrollWeSetRef.current === storeScrollPosition) return;
-    // This is an external update - scroll to it (without centering for consistency)
-    // Note: For gene map clicks that WANT centering, they should call scrollToPosition directly
-    // via a ref, not through the store. For now, we use center=false for store sync.
-    scrollToPosition(storeScrollPosition);
+    // This is an external update - scroll to it WITHOUT centering for consistency.
+    // Gene map clicks that WANT centering should call scrollToPosition directly via ref.
+    scrollToPosition(storeScrollPosition, false);
   }, [storeScrollPosition, scrollToPosition]);
 
   // Sync zoom from external sources (collaboration, presets) to renderer.
