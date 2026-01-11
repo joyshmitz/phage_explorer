@@ -733,12 +733,14 @@ export default function App(): React.ReactElement {
     return () => window.cancelAnimationFrame(raf);
   }, [isGlossaryOpen]);
 
+  // User-friendly status: only show when there's meaningful info
+  // Debug/dev info moved to Settings > About
   const headerSubtitle = useMemo(() => {
-    if (error) return 'db: error';
-    if (isLoading) return 'db: loading';
-    if (repository) return isCached ? 'db: cached' : 'db: ready';
-    return 'db: idle';
-  }, [error, isCached, isLoading, repository]);
+    if (error) return undefined; // Error already shown via DataLoadingOverlay
+    if (isLoading) return 'Loading...';
+    // When ready, no need to show status (clean UI)
+    return undefined;
+  }, [error, isLoading]);
 
   const showBeginnerToast = useCallback(
     (nextEnabled: boolean) => {
