@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { setupTestHarness } from './e2e-harness';
 
 test('mobile: welcome sheet visible and Lenis disabled', async ({ page }, testInfo) => {
   test.skip(
@@ -6,12 +7,7 @@ test('mobile: welcome sheet visible and Lenis disabled', async ({ page }, testIn
     'Mobile-only assertions (touch + coarse pointer)'
   );
 
-  const pageErrors: string[] = [];
-  page.on('pageerror', (err) => pageErrors.push(err.message));
-  const consoleErrors: string[] = [];
-  page.on('console', (msg) => {
-    if (msg.type() === 'error') consoleErrors.push(msg.text());
-  });
+  const { pageErrors, consoleErrors, finalize } = setupTestHarness(page, testInfo);
 
   await page.goto('/', { waitUntil: 'domcontentloaded' });
   await page.waitForSelector('#root > div', { timeout: 30000 });
@@ -85,11 +81,53 @@ test('mobile: welcome sheet visible and Lenis disabled', async ({ page }, testIn
   }
   await expect(settingsOverlay).toBeHidden({ timeout: 5000 });
 
+  // Ensure a phage is selected so ActionDrawer analysis actions are enabled.
+  const quickStats = page.locator('.quick-stats');
+  await expect(quickStats).toBeVisible({ timeout: 30000 });
+
+  // 3D should be disabled by default on coarse-pointer devices (battery/perf).
+  const mobile3DToggle = page.getByRole('button', { name: /^3D model:/ });
+  await expect(mobile3DToggle).toBeVisible();
+  await expect(mobile3DToggle).toHaveAttribute('aria-label', '3D model: off');
+
+  // ActionDrawer opens and launches a representative analysis overlay.
+  const fab = page.getByRole('button', { name: 'Open control menu' });
+  await expect(fab).toBeVisible();
+  await fab.click();
+
+  const drawer = page.locator('#action-drawer');
+  await expect(drawer).toBeVisible();
+
+  // BottomSheet uses transform-based animations; ensure the sheet is actually in the viewport
+  // before interacting (Playwright's toBeVisible doesn't guarantee in-viewport).
+  const sheetHandle = page.locator('.bottom-sheet__handle');
+  await expect(sheetHandle).toBeVisible();
+  await expect(sheetHandle).toBeInViewport();
+
+  const packagingPressure = drawer.locator('[data-action-id="overlay.packagingPressure"]');
+  await expect(packagingPressure).toBeVisible();
+  await expect(packagingPressure).toBeEnabled();
+  await packagingPressure.scrollIntoViewIfNeeded();
+  await expect(packagingPressure).toBeInViewport();
+  await packagingPressure.click();
+
+  const pressureOverlay = page.locator('.overlay-pressure');
+  await expect(pressureOverlay).toBeVisible();
+
+  const pressureClose = page.locator('.bottom-sheet__close').first();
+  if (await pressureClose.isVisible().catch(() => false)) {
+    await pressureClose.click();
+  } else {
+    await page.keyboard.press('Escape');
+  }
+  await expect(pressureOverlay).toBeHidden({ timeout: 5000 });
+
   // No uncaught JS errors.
   expect(pageErrors).toEqual([]);
   expect(consoleErrors).toEqual([]);
 
   await page.screenshot({ path: testInfo.outputPath('repro-mobile-welcome.png') });
+  await finalize();
 });
 
 test('desktop: key overlays open and no console errors', async ({ page }, testInfo) => {
@@ -98,13 +136,9 @@ test('desktop: key overlays open and no console errors', async ({ page }, testIn
     'Desktop-only assertions'
   );
 
-  const pageErrors: string[] = [];
-  page.on('pageerror', (err) => pageErrors.push(err.message));
-  const consoleErrors: string[] = [];
-  page.on('console', (msg) => {
-    if (msg.type() === 'error') consoleErrors.push(msg.text());
-  });
+  const { pageErrors, consoleErrors, finalize } = setupTestHarness(page, testInfo);
 
+  await page.setViewportSize({ width: 1600, height: 900 });
   await page.goto('/', { waitUntil: 'domcontentloaded' });
   await page.waitForSelector('#root > div', { timeout: 30000 });
   await page.waitForTimeout(500);
@@ -118,12 +152,28 @@ test('desktop: key overlays open and no console errors', async ({ page }, testIn
     await expect(welcomeOverlay).toBeHidden({ timeout: 5000 });
   }
 
+  // Header shortcut hints should reflect actual ActionRegistry bindings (trust surface).
+  const commandPaletteButton = page.getByRole('button', { name: 'Open command palette' });
+  await expect(commandPaletteButton).toBeVisible();
+  await expect(commandPaletteButton).toHaveAttribute('title', /Command Palette/);
+  await expect(commandPaletteButton).toHaveAttribute('title', /:/);
+  await expect(commandPaletteButton).not.toHaveAttribute('title', /Cmd\+K/i);
+
+  const headerSettingsButton = page.getByRole('button', { name: 'Open settings' });
+  await expect(headerSettingsButton).toBeVisible();
+  await expect(headerSettingsButton).toHaveAttribute('title', /Settings/);
+  await expect(headerSettingsButton).toHaveAttribute('title', /Ctrl\+,/);
+
   // Settings overlay opens and closes.
-  const settingsButton = page.getByRole('button', { name: 'Open settings' });
-  await expect(settingsButton).toBeVisible();
-  await settingsButton.click();
+  await headerSettingsButton.click();
 
   const settingsOverlay = page.locator('.overlay-settings');
+  await expect(settingsOverlay).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(settingsOverlay).toBeHidden({ timeout: 5000 });
+
+  // Settings hotkey should match the displayed hint.
+  await page.keyboard.press('Control+,');
   await expect(settingsOverlay).toBeVisible();
   await page.keyboard.press('Escape');
   await expect(settingsOverlay).toBeHidden({ timeout: 5000 });
@@ -135,7 +185,78 @@ test('desktop: key overlays open and no console errors', async ({ page }, testIn
   await page.keyboard.press('Escape');
   await expect(palette).toBeHidden({ timeout: 5000 });
 
+  // AnalysisSidebar shortcut badges should match actual hotkeys (trust surface).
+  const analysisSidebar = page.locator('.analysis-sidebar');
+  await expect(analysisSidebar).toBeVisible();
+
+  // Simulation tools are in a collapsed category by default; expand it for assertions.
+  const simulationsCategory = analysisSidebar.locator('.category-header', { hasText: 'Simulations' }).first();
+  await expect(simulationsCategory).toBeVisible();
+  await simulationsCategory.click();
+
+  const simulationHubTool = analysisSidebar.locator('.tool-btn', { hasText: 'Simulation hub' }).first();
+  await expect(simulationHubTool).toBeVisible();
+  const simulationHubShortcut = simulationHubTool.locator('.tool-shortcut');
+  await expect(simulationHubShortcut).toHaveText('Shift+S');
+
+  await page.keyboard.press('Shift+S');
+  const simulationHubOverlay = page.locator('.overlay-simulationHub');
+  await expect(simulationHubOverlay).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(simulationHubOverlay).toBeHidden({ timeout: 5000 });
+
+  // 3D default/copy/persistence: desktop defaults ON; disabling persists and the copy never lies.
+  const quickStats = page.locator('.quick-stats');
+  await expect(quickStats).toBeVisible({ timeout: 30000 });
+
+  const toolbar = page.locator('.action-toolbar');
+  await expect(toolbar).toBeVisible();
+
+  const desktop3DToggle = toolbar.getByRole('button', { name: '3D' }).first();
+  await expect(desktop3DToggle).toBeVisible();
+  await expect(desktop3DToggle).toHaveAttribute('aria-pressed', 'true');
+
+  await desktop3DToggle.click();
+  await expect(desktop3DToggle).toHaveAttribute('aria-pressed', 'false');
+
+  const viewerPlaceholderDescription = page.locator('.viewer-placeholder__description');
+  await expect(viewerPlaceholderDescription).toBeVisible();
+  await expect(viewerPlaceholderDescription).not.toContainText(/disabled by default/i);
+
+  // Persisted main prefs write is debounced.
+  await page.waitForTimeout(700);
+  const persistedShow3D = await page.evaluate(() => {
+    const raw = localStorage.getItem('phage-explorer-main-prefs');
+    if (!raw) return null;
+    try {
+      const parsed = JSON.parse(raw) as { show3DModel?: unknown };
+      return typeof parsed.show3DModel === 'boolean' ? parsed.show3DModel : null;
+    } catch {
+      return 'parse-error';
+    }
+  });
+  expect(persistedShow3D).toBe(false);
+
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await page.waitForSelector('#root > div', { timeout: 30000 });
+  await page.waitForTimeout(500);
+
+  // Dismiss welcome modal if present (should not be after initial skip, but keep test resilient).
+  const welcomeOverlayReloaded = page.locator('.overlay-welcome');
+  const skipReloaded = page.locator('.welcome-footer__skip');
+  if (await welcomeOverlayReloaded.isVisible()) {
+    await expect(skipReloaded).toBeVisible();
+    await skipReloaded.click();
+    await expect(welcomeOverlayReloaded).toBeHidden({ timeout: 5000 });
+  }
+
+  const toolbarReloaded = page.locator('.action-toolbar');
+  await expect(toolbarReloaded).toBeVisible();
+  const desktop3DToggleReloaded = toolbarReloaded.getByRole('button', { name: '3D' }).first();
+  await expect(desktop3DToggleReloaded).toHaveAttribute('aria-pressed', 'false');
+
   // No uncaught JS errors.
   expect(pageErrors).toEqual([]);
   expect(consoleErrors).toEqual([]);
+  await finalize();
 });

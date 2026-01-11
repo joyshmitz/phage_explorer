@@ -7,7 +7,8 @@
  * Run with: PLAYWRIGHT_LIVE=1 bunx playwright test production-health.e2e.ts
  */
 
-import { test, expect, type Page, type ConsoleMessage } from '@playwright/test';
+import { test, expect, type Page, type ConsoleMessage, type TestInfo } from '@playwright/test';
+import { setupTestHarness, type TestHarnessState } from './e2e-harness';
 
 const SITE_URL = process.env.PLAYWRIGHT_BASE_URL || 'https://phage-explorer.org';
 const LIVE_ENABLED = process.env.PLAYWRIGHT_LIVE === '1';
@@ -88,11 +89,23 @@ class ErrorCollector {
   }
 }
 
-async function setupErrorCollector(page: Page): Promise<ErrorCollector> {
+interface SetupResult {
+  collector: ErrorCollector;
+  finalize: () => Promise<void>;
+}
+
+async function setupErrorCollector(page: Page, testInfo: TestInfo): Promise<SetupResult> {
   const collector = new ErrorCollector();
   page.on('console', (msg) => collector.handleConsole(msg));
   page.on('pageerror', (error) => collector.handlePageError(error));
-  return collector;
+
+  // Also set up test harness for structured artifact capture
+  const harness = setupTestHarness(page, testInfo);
+
+  return {
+    collector,
+    finalize: harness.finalize,
+  };
 }
 
 async function gotoAndWait(page: Page): Promise<void> {
@@ -105,8 +118,8 @@ async function gotoAndWait(page: Page): Promise<void> {
 test.describe('Production Health Checks', () => {
   test.skip(!LIVE_ENABLED, 'Set PLAYWRIGHT_LIVE=1 to run production health checks');
 
-  test('critical-path: homepage loads without JavaScript errors', async ({ page }) => {
-    const errorCollector = await setupErrorCollector(page);
+  test('critical-path: homepage loads without JavaScript errors', async ({ page }, testInfo) => {
+    const { collector: errorCollector, finalize } = await setupErrorCollector(page, testInfo);
 
     await gotoAndWait(page);
 
@@ -130,10 +143,11 @@ test.describe('Production Health Checks', () => {
 
     // Assert no critical errors
     expect(criticalErrors, 'Found critical JavaScript errors on page load').toHaveLength(0);
+    await finalize();
   });
 
-  test('critical-path: canvas renders with non-zero dimensions', async ({ page }) => {
-    const errorCollector = await setupErrorCollector(page);
+  test('critical-path: canvas renders with non-zero dimensions', async ({ page }, testInfo) => {
+    const { collector: errorCollector, finalize } = await setupErrorCollector(page, testInfo);
 
     await gotoAndWait(page);
     await page.keyboard.press('Escape');
@@ -170,10 +184,11 @@ test.describe('Production Health Checks', () => {
       !e.text.includes('ResizeObserver')
     );
     expect(criticalErrors, 'Found critical JavaScript errors while rendering canvas').toHaveLength(0);
+    await finalize();
   });
 
-  test('critical-path: database loads successfully', async ({ page }) => {
-    const errorCollector = await setupErrorCollector(page);
+  test('critical-path: database loads successfully', async ({ page }, testInfo) => {
+    const { collector: errorCollector, finalize } = await setupErrorCollector(page, testInfo);
 
     await gotoAndWait(page);
 
@@ -198,13 +213,14 @@ test.describe('Production Health Checks', () => {
 
     console.log('Database-related errors:', dbErrors.length > 0 ? JSON.stringify(dbErrors, null, 2) : 'None');
     expect(dbErrors, 'Found database-related errors').toHaveLength(0);
+    await finalize();
   });
 
-  test('mobile: touch scroll works on iPhone viewport', async ({ page }) => {
+  test('mobile: touch scroll works on iPhone viewport', async ({ page }, testInfo) => {
     // Set iPhone 14 Pro viewport
     await page.setViewportSize({ width: 393, height: 852 });
 
-    const errorCollector = await setupErrorCollector(page);
+    const { collector: errorCollector, finalize } = await setupErrorCollector(page, testInfo);
     await gotoAndWait(page);
     await page.keyboard.press('Escape');
     await page.waitForTimeout(500);
@@ -241,13 +257,14 @@ test.describe('Production Health Checks', () => {
       !e.text.includes('error: undefined')
     );
     expect(criticalErrors, 'Found critical JavaScript errors on mobile').toHaveLength(0);
+    await finalize();
   });
 
-  test('mobile: canvas renders in landscape orientation', async ({ page }) => {
+  test('mobile: canvas renders in landscape orientation', async ({ page }, testInfo) => {
     // Set landscape viewport
     await page.setViewportSize({ width: 852, height: 393 });
 
-    const errorCollector = await setupErrorCollector(page);
+    const { collector: errorCollector, finalize } = await setupErrorCollector(page, testInfo);
     await gotoAndWait(page);
     await page.keyboard.press('Escape');
     await page.waitForTimeout(500);
@@ -272,9 +289,11 @@ test.describe('Production Health Checks', () => {
       !e.text.includes('error: undefined')
     );
     expect(criticalErrors, 'Found critical JavaScript errors in landscape').toHaveLength(0);
+    await finalize();
   });
 
-  test('performance: page loads within acceptable time', async ({ page }) => {
+  test('performance: page loads within acceptable time', async ({ page }, testInfo) => {
+    const { finalize } = await setupErrorCollector(page, testInfo);
     const startTime = Date.now();
 
     await gotoAndWait(page);
@@ -305,9 +324,11 @@ test.describe('Production Health Checks', () => {
     if (lcp > 0) {
       expect(lcp, 'LCP should be under 4 seconds').toBeLessThan(4000);
     }
+    await finalize();
   });
 
-  test('accessibility: key elements are accessible', async ({ page }) => {
+  test('accessibility: key elements are accessible', async ({ page }, testInfo) => {
+    const { finalize } = await setupErrorCollector(page, testInfo);
     await gotoAndWait(page);
     await page.keyboard.press('Escape');
     await page.waitForTimeout(500);
@@ -319,10 +340,11 @@ test.describe('Production Health Checks', () => {
     // Check for main landmarks
     const mainContent = page.locator('main, [role="main"], #root');
     await expect(mainContent.first()).toBeVisible();
+    await finalize();
   });
 
-  test('wasm: WASM loads and initializes', async ({ page }) => {
-    const errorCollector = await setupErrorCollector(page);
+  test('wasm: WASM loads and initializes', async ({ page }, testInfo) => {
+    const { collector: errorCollector, finalize } = await setupErrorCollector(page, testInfo);
 
     await gotoAndWait(page);
 
@@ -338,9 +360,11 @@ test.describe('Production Health Checks', () => {
     if (wasmErrors.length > 0) {
       console.log('Warning: WASM errors detected, fallback may be active');
     }
+    await finalize();
   });
 
-  test('headers: security headers are present', async ({ page }) => {
+  test('headers: security headers are present', async ({ page }, testInfo) => {
+    const { finalize } = await setupErrorCollector(page, testInfo);
     const response = await page.goto(SITE_URL);
 
     expect(response).not.toBeNull();
@@ -355,5 +379,6 @@ test.describe('Production Health Checks', () => {
       console.log('- COOP:', headers['cross-origin-opener-policy']);
       console.log('- COEP:', headers['cross-origin-embedder-policy']);
     }
+    await finalize();
   });
 });

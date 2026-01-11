@@ -1,13 +1,8 @@
 import { test, expect } from '@playwright/test';
+import { setupTestHarness } from './e2e-harness';
 
-test('database loads successfully', async ({ page }) => {
-  // Capture console errors from the start (before navigation)
-  const errors: string[] = [];
-  page.on('console', (msg) => {
-    if (msg.type() === 'error') {
-      errors.push(msg.text());
-    }
-  });
+test('database loads successfully', async ({ page }, testInfo) => {
+  const { consoleErrors, finalize } = setupTestHarness(page, testInfo);
 
   // Clear IndexedDB before test
   await page.goto('http://localhost:5173');
@@ -40,16 +35,19 @@ test('database loads successfully', async ({ page }) => {
   await page.waitForTimeout(3000);
 
   // Filter for database-related errors
-  const dbErrors = errors.filter(e =>
+  const dbErrors = consoleErrors.filter(e =>
     e.includes('file is not a database') ||
     e.includes('Database') ||
     e.includes('SQLite')
   );
 
   expect(dbErrors).toHaveLength(0);
+  await finalize();
 });
 
-test('phage list renders after database loads', async ({ page }) => {
+test('phage list renders after database loads', async ({ page }, testInfo) => {
+  const { finalize } = setupTestHarness(page, testInfo);
+
   await page.goto('http://localhost:5173');
 
   // Wait for loading to complete - look for any content that indicates success
@@ -61,10 +59,12 @@ test('phage list renders after database loads', async ({ page }) => {
   }, { timeout: 30000 });
 
   // Take a screenshot for debugging
-  await page.screenshot({ path: 'test-results/database-load.png' });
+  await page.screenshot({ path: testInfo.outputPath('database-load.png') });
 
   // Verify no error state
   const bodyText = await page.locator('body').innerText();
   expect(bodyText).not.toContain('file is not a database');
   expect(bodyText).not.toContain('Database Load Failed');
+
+  await finalize();
 });

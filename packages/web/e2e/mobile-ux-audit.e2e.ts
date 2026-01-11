@@ -11,7 +11,8 @@
  * - Form inputs and interactions
  */
 
-import { test, expect, type Page, type Locator } from '@playwright/test';
+import { test, expect, type Page, type Locator, type TestInfo } from '@playwright/test';
+import { setupTestHarness } from './e2e-harness';
 
 // Helper to check if running on mobile viewport
 const isMobileViewport = (page: Page): boolean => {
@@ -762,23 +763,29 @@ test.describe('Visual Regressions', () => {
     await gotoApp(page);
   });
 
-  test('capture homepage screenshot', async ({ page }) => {
+  test('capture homepage screenshot', async ({ page }, testInfo) => {
+    const { finalize } = setupTestHarness(page, testInfo);
+    const viewport = page.viewportSize();
     await page.screenshot({
-      path: `test-results/screenshots/homepage-${page.viewportSize()?.width}x${page.viewportSize()?.height}.png`,
+      path: testInfo.outputPath(`homepage-${viewport?.width}x${viewport?.height}.png`),
       fullPage: true,
     });
+    await finalize();
   });
 
-  test('capture command palette screenshot', async ({ page }) => {
+  test('capture command palette screenshot', async ({ page }, testInfo) => {
+    const { finalize } = setupTestHarness(page, testInfo);
     await page.keyboard.press(':');
     await page.waitForSelector('.overlay-commandPalette', { state: 'visible' });
     await page.waitForTimeout(300); // Wait for animation
 
+    const viewport = page.viewportSize();
     await page.screenshot({
-      path: `test-results/screenshots/command-palette-${page.viewportSize()?.width}x${page.viewportSize()?.height}.png`,
+      path: testInfo.outputPath(`command-palette-${viewport?.width}x${viewport?.height}.png`),
     });
 
     await page.keyboard.press('Escape');
+    await finalize();
   });
 });
 
@@ -787,7 +794,8 @@ test.describe('Specific Bug Checks', () => {
     await gotoApp(page);
   });
 
-  test('badges do not overflow container', async ({ page }) => {
+  test('badges do not overflow container', async ({ page }, testInfo) => {
+    const { finalize } = setupTestHarness(page, testInfo);
     const badges = page.locator('.badge');
     const count = await badges.count();
 
@@ -805,9 +813,11 @@ test.describe('Specific Bug Checks', () => {
         }
       }
     }
+    await finalize();
   });
 
-  test('3D viewer has minimum dimensions on mobile', async ({ page }) => {
+  test('3D viewer has minimum dimensions on mobile', async ({ page }, testInfo) => {
+    const { finalize } = setupTestHarness(page, testInfo);
     const threeContainer = page.locator('.three-container');
     if (await threeContainer.count() > 0 && await threeContainer.isVisible()) {
       const { width, height } = await getElementDimensions(threeContainer);
@@ -817,9 +827,11 @@ test.describe('Specific Bug Checks', () => {
         expect(width).toBeGreaterThanOrEqual(200);
       }
     }
+    await finalize();
   });
 
-  test('sequence view toolbar buttons accessible', async ({ page }) => {
+  test('sequence view toolbar buttons accessible', async ({ page }, testInfo) => {
+    const { finalize } = setupTestHarness(page, testInfo);
     const toolbar = page.locator('.sequence-view .toolbar');
     if (await toolbar.count() > 0 && await toolbar.isVisible()) {
       const buttons = toolbar.locator('button');
@@ -837,9 +849,11 @@ test.describe('Specific Bug Checks', () => {
         }
       }
     }
+    await finalize();
   });
 
-  test('metrics grid readable on mobile', async ({ page }) => {
+  test('metrics grid readable on mobile', async ({ page }, testInfo) => {
+    const { finalize } = setupTestHarness(page, testInfo);
     if (!isMobileViewport(page)) {
       test.skip();
       return;
@@ -855,9 +869,11 @@ test.describe('Specific Bug Checks', () => {
       const colCount = gridCols.split(' ').length;
       expect(colCount).toBeLessThanOrEqual(2);
     }
+    await finalize();
   });
 
-  test('settings overlay stacks properly on mobile', async ({ page }) => {
+  test('settings overlay stacks properly on mobile', async ({ page }, testInfo) => {
+    const { finalize } = setupTestHarness(page, testInfo);
     if (!isMobileViewport(page)) {
       test.skip();
       return;
@@ -889,5 +905,6 @@ test.describe('Specific Bug Checks', () => {
     }
 
     await page.keyboard.press('Escape');
+    await finalize();
   });
 });
