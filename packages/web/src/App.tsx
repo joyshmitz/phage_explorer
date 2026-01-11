@@ -110,6 +110,8 @@ export default function App(): React.ReactElement {
   const lastRepositoryReadyRef = useRef(false);
   const lastLoadingPhageRef = useRef(false);
   const lastErrorRef = useRef<string | null>(null);
+  // Request token to guard against stale async results when rapidly switching phages
+  const loadRequestIdRef = useRef(0);
   const announceSr = useCallback((kind: 'status' | 'alert', message: string) => {
     if (typeof window === 'undefined') return;
     if (kind === 'alert') {
@@ -422,25 +424,49 @@ export default function App(): React.ReactElement {
 
   const loadPhage = useCallback(
     async (repo: PhageRepository, index: number) => {
+      // Increment request ID to invalidate any in-flight requests
+      const requestId = ++loadRequestIdRef.current;
+
       setLoadingPhage(true);
+      setCurrentPhageIndex(index);
+      setFullSequence('');
+
       try {
-        setCurrentPhageIndex(index);
-        setFullSequence('');
         const phage = await repo.getPhageByIndex(index);
-        if (!phage) return;
+
+        // Guard: if a newer request started, discard these results
+        if (requestId !== loadRequestIdRef.current) return;
+
+        if (!phage) {
+          setLoadingPhage(false);
+          return;
+        }
+
         setCurrentPhage(phage);
+
         const genomeLength = phage.genomeLength ?? 0;
         if (genomeLength > 0) {
           const seq = await repo.getSequenceWindow(phage.id, 0, genomeLength);
+
+          // Guard again after second async operation
+          if (requestId !== loadRequestIdRef.current) return;
+
           setFullSequence(seq);
         }
+
         // Prefetch adjacent phages for instant navigation feel
         void repo.prefetchAround(index, 2);
       } catch (err) {
+        // Only set error if this is still the current request
+        if (requestId !== loadRequestIdRef.current) return;
+
         const message = err instanceof Error ? err.message : 'Failed to load phage';
         setError(message);
       } finally {
-        setLoadingPhage(false);
+        // Only clear loading if this is still the current request
+        if (requestId === loadRequestIdRef.current) {
+          setLoadingPhage(false);
+        }
       }
     },
     [setCurrentPhage, setCurrentPhageIndex, setError, setLoadingPhage]
