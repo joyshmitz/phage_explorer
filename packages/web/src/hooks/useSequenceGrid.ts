@@ -81,8 +81,8 @@ export interface UseSequenceGridResult {
   isMobile: boolean;
   /** Current scroll position (index in sequence) */
   scrollPosition: number;
-  /** Scroll to a specific position */
-  scrollToPosition: (position: number) => void;
+  /** Scroll to a specific position, optionally centering it in view */
+  scrollToPosition: (position: number, center?: boolean) => void;
   /** Scroll to start */
   scrollToStart: () => void;
   /** Scroll to end */
@@ -627,9 +627,18 @@ export function useSequenceGrid(options: UseSequenceGridOptions): UseSequenceGri
 
     // Restore scroll position after render cycle completes
     // Use requestAnimationFrame to ensure the theme render has finished
-    requestAnimationFrame(() => {
+    let cancelled = false;
+    const raf = requestAnimationFrame(() => {
+      if (cancelled) return;
+      // Avoid calling into a disposed/replaced renderer.
+      if (rendererRef.current !== renderer) return;
       renderer.scrollToPosition(currentPosition, false);
     });
+
+    return () => {
+      cancelled = true;
+      cancelAnimationFrame(raf);
+    };
   }, [theme]);
 
   // Update snapping preference without reconstructing renderer
@@ -707,8 +716,8 @@ export function useSequenceGrid(options: UseSequenceGridOptions): UseSequenceGri
   }, [postProcess]);
 
   // Scroll methods
-  const scrollToPosition = useCallback((position: number) => {
-    rendererRef.current?.scrollToPosition(position);
+  const scrollToPosition = useCallback((position: number, center: boolean = true) => {
+    rendererRef.current?.scrollToPosition(position, center);
   }, []);
 
   const scrollToStart = useCallback(() => {
