@@ -133,6 +133,17 @@
     display: none;
   }
 
+  /* Ultra-compact header buttons on phones */
+  .header-right {
+    gap: var(--space-1);
+  }
+
+  .header-right .btn {
+    padding: var(--space-1) var(--space-2);
+    min-height: 36px;
+    min-width: 36px;
+  }
+
   /* Footer - Hidden on phones (replaced by tab bar) */
   .app-footer {
     display: none;

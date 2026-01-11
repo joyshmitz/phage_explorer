@@ -25,7 +25,22 @@
     box-shadow var(--duration-fast) var(--ease-out);
   -webkit-tap-highlight-color: transparent;
   max-width: 200px;
+  min-width: 0; /* Allow shrinking on narrow screens */
   will-change: transform;
+}
+
+/* Compact on small phones */
+@media (max-width: 380px) {
+  .phage-picker-trigger {
+    max-width: 140px;
+    padding: 0.25rem 0.5rem;
+    gap: 0.25rem;
+    font-size: var(--text-xs);
+  }
+
+  .phage-picker-trigger__badge {
+    display: none; /* Hide position badge on very small screens */
+  }
 }
 
 .phage-picker-trigger:hover {

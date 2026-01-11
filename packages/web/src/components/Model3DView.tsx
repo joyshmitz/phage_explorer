@@ -4,7 +4,7 @@ import type { PhageFull } from '@phage-explorer/core';
 import { Model3DSkeleton } from './ui/Skeleton';
 import { Badge, SubtleBadge } from './ui/Badge';
 import { Tooltip } from './ui/Tooltip';
-import { IconAlertTriangle, IconCamera, IconCube, IconDna, IconFlask, IconRepeat } from './ui';
+import { IconAlertTriangle, IconCamera, IconChevronDown, IconCube, IconDna, IconFlask, IconRepeat } from './ui';
 import {
   ACESFilmicToneMapping,
   AmbientLight,
@@ -262,6 +262,127 @@ function Model3DViewBase({ phage }: Model3DViewProps): React.ReactElement {
   // Manual quality override: null means auto, otherwise locked to a specific level
   const [manualQuality, setManualQuality] = useState<QualityLevel | null>(null);
   const quality = manualQuality ?? autoQuality;
+  type QualityPickerValue = 'auto' | QualityLevel;
+
+  const qualityPickerValue: QualityPickerValue = manualQuality ?? 'auto';
+  const qualityOptions = useMemo(() => {
+    return [
+      { value: 'auto' as const, label: `auto (${autoQuality})` },
+      { value: 'low' as const, label: 'low' },
+      { value: 'medium' as const, label: 'medium' },
+      { value: 'high' as const, label: 'high' },
+      { value: 'ultra' as const, label: 'ultra' },
+    ];
+  }, [autoQuality]);
+
+  const [qualityMenuOpen, setQualityMenuOpen] = useState(false);
+  const [qualityMenuActiveIndex, setQualityMenuActiveIndex] = useState(0);
+  const qualityMenuContainerRef = useRef<HTMLDivElement>(null);
+  const qualityMenuButtonRef = useRef<HTMLButtonElement>(null);
+  const qualityMenuListRef = useRef<HTMLDivElement>(null);
+
+  const closeQualityMenu = useCallback((opts?: { restoreFocus?: boolean }) => {
+    setQualityMenuOpen(false);
+    if (!opts?.restoreFocus) return;
+    if (typeof window === 'undefined') return;
+    window.requestAnimationFrame(() => qualityMenuButtonRef.current?.focus());
+  }, []);
+
+  const openQualityMenu = useCallback(() => {
+    const selectedIndex = qualityOptions.findIndex((opt) => opt.value === qualityPickerValue);
+    setQualityMenuActiveIndex(selectedIndex >= 0 ? selectedIndex : 0);
+    setQualityMenuOpen(true);
+  }, [qualityOptions, qualityPickerValue]);
+
+  const applyQualityOption = useCallback((value: QualityPickerValue, opts?: { restoreFocus?: boolean }) => {
+    setManualQuality(value === 'auto' ? null : value);
+    closeQualityMenu(opts);
+  }, [closeQualityMenu]);
+
+  useEffect(() => {
+    if (!qualityMenuOpen) return;
+    if (typeof window === 'undefined') return;
+    const raf = window.requestAnimationFrame(() => qualityMenuListRef.current?.focus());
+    return () => window.cancelAnimationFrame(raf);
+  }, [qualityMenuOpen]);
+
+  useEffect(() => {
+    if (!qualityMenuOpen) return;
+
+    const handlePointerDown = (event: PointerEvent) => {
+      const container = qualityMenuContainerRef.current;
+      if (!container) return;
+      if (event.target instanceof Node && container.contains(event.target)) return;
+      closeQualityMenu();
+    };
+
+    document.addEventListener('pointerdown', handlePointerDown);
+    return () => document.removeEventListener('pointerdown', handlePointerDown);
+  }, [closeQualityMenu, qualityMenuOpen]);
+
+  const handleQualityTriggerKeyDown = useCallback((event: React.KeyboardEvent<HTMLButtonElement>) => {
+    if (event.key === 'ArrowDown' || event.key === 'ArrowUp' || event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      event.stopPropagation();
+      if (!qualityMenuOpen) {
+        openQualityMenu();
+      } else {
+        closeQualityMenu({ restoreFocus: true });
+      }
+    }
+  }, [closeQualityMenu, openQualityMenu, qualityMenuOpen]);
+
+  const handleQualityMenuKeyDown = useCallback((event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      event.stopPropagation();
+      closeQualityMenu({ restoreFocus: true });
+      return;
+    }
+
+    if (event.key === 'Tab') {
+      // Allow natural focus navigation, but close the menu.
+      setQualityMenuOpen(false);
+      qualityMenuButtonRef.current?.focus();
+      return;
+    }
+
+    if (event.key === 'ArrowDown') {
+      event.preventDefault();
+      event.stopPropagation();
+      setQualityMenuActiveIndex((prev) => (prev + 1) % qualityOptions.length);
+      return;
+    }
+
+    if (event.key === 'ArrowUp') {
+      event.preventDefault();
+      event.stopPropagation();
+      setQualityMenuActiveIndex((prev) => (prev - 1 + qualityOptions.length) % qualityOptions.length);
+      return;
+    }
+
+    if (event.key === 'Home') {
+      event.preventDefault();
+      event.stopPropagation();
+      setQualityMenuActiveIndex(0);
+      return;
+    }
+
+    if (event.key === 'End') {
+      event.preventDefault();
+      event.stopPropagation();
+      setQualityMenuActiveIndex(Math.max(0, qualityOptions.length - 1));
+      return;
+    }
+
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      event.stopPropagation();
+      const option = qualityOptions[qualityMenuActiveIndex];
+      if (!option) return;
+      applyQualityOption(option.value, { restoreFocus: true });
+    }
+  }, [applyQualityOption, closeQualityMenu, qualityMenuActiveIndex, qualityOptions]);
 
   // Track whether to show keyboard hints in fullscreen
   const [showKeyHints, setShowKeyHints] = useState(true);
@@ -298,7 +419,7 @@ function Model3DViewBase({ phage }: Model3DViewProps): React.ReactElement {
 
   const requestRender = useMemo(() => {
     return () => {
-      if (animationRef.current != null) return;
+      if (animationRef.current !== null) return;
       animationRef.current = requestAnimationFrame((now) => tickRef.current(now));
     };
   }, []);
@@ -320,7 +441,7 @@ function Model3DViewBase({ phage }: Model3DViewProps): React.ReactElement {
           return;
         }
 
-        if (animationRef.current != null) {
+        if (animationRef.current !== null) {
           cancelAnimationFrame(animationRef.current);
           animationRef.current = null;
         }
@@ -337,7 +458,7 @@ function Model3DViewBase({ phage }: Model3DViewProps): React.ReactElement {
   useEffect(() => {
     const onVisibilityChange = () => {
       if (document.hidden) {
-        if (animationRef.current != null) {
+        if (animationRef.current !== null) {
           cancelAnimationFrame(animationRef.current);
           animationRef.current = null;
         }
@@ -629,7 +750,7 @@ function Model3DViewBase({ phage }: Model3DViewProps): React.ReactElement {
       const raycaster = raycasterRef.current;
       raycaster.setFromCamera(ndc, camera);
       const hits = raycaster.intersectObject(group, true);
-      const hit = hits.find((h) => (h as any).instanceId != null && (h.object as any)?.userData?.pickKind === 'atom');
+      const hit = hits.find((h) => typeof (h as any).instanceId === 'number' && (h.object as any)?.userData?.pickKind === 'atom');
       if (!hit) return;
 
       const instanceId = (hit as any).instanceId as number;
@@ -746,7 +867,7 @@ function Model3DViewBase({ phage }: Model3DViewProps): React.ReactElement {
       }
 
       const lastTick = lastTickTimeRef.current;
-      const deltaMs = lastTick != null ? now - lastTick : 16.6667;
+      const deltaMs = lastTick !== null ? now - lastTick : 16.6667;
       lastTickTimeRef.current = now;
       const deltaSeconds = deltaMs / 1000;
 
@@ -844,7 +965,7 @@ function Model3DViewBase({ phage }: Model3DViewProps): React.ReactElement {
   // Ensure pending RAF is cleaned up on unmount.
   useEffect(() => {
     return () => {
-      if (animationRef.current != null) cancelAnimationFrame(animationRef.current);
+      if (animationRef.current !== null) cancelAnimationFrame(animationRef.current);
     };
   }, []);
 
@@ -906,7 +1027,7 @@ function Model3DViewBase({ phage }: Model3DViewProps): React.ReactElement {
       if (!scene || !camera || !controls) return;
 
       const hasExistingStructureForPdb =
-        structureDataRef.current != null && initialModeForPdbRef.current === pdbId;
+        structureDataRef.current !== null && initialModeForPdbRef.current === pdbId;
       structureDataRef.current = structureData;
       const hasBackboneTraces = structureData.backboneTraces.some(trace => trace.length >= 2);
 
@@ -989,12 +1110,12 @@ function Model3DViewBase({ phage }: Model3DViewProps): React.ReactElement {
     document.addEventListener('keydown', handleKeyEsc);
 
     if (fullscreen && !document.fullscreenElement) {
+      // Try native fullscreen, but fall back to CSS fullscreen on iOS/unsupported browsers
       void container.requestFullscreen().catch((err) => {
         if (import.meta.env.DEV) {
-          console.warn('Fullscreen request failed', err);
+          console.warn('Fullscreen request failed (using CSS fallback)', err);
         }
-        // Revert state if browser rejected fullscreen
-        toggleFullscreen();
+        // Don't revert - CSS fullscreen class will handle the visual fullscreen
       });
     } else if (!fullscreen && document.fullscreenElement === container) {
       void document.exitFullscreen();
@@ -1266,33 +1387,91 @@ function Model3DViewBase({ phage }: Model3DViewProps): React.ReactElement {
         {/* Quality selector */}
         <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '6px' }}>
           <span className="text-dim" style={{ fontSize: '11px' }}>Quality:</span>
-          <select
-            className="select-compact"
-            value={manualQuality ?? 'auto'}
-            onChange={(e) => {
-              const val = e.target.value;
-              setManualQuality(val === 'auto' ? null : val as QualityLevel);
-            }}
-            style={{
-              fontSize: '11px',
-              padding: '4px 8px',
-              background: 'var(--color-background-alt)',
-              border: '1px solid var(--border)',
-              borderRadius: '4px',
-              color: 'var(--color-text)',
-            }}
-          >
-            <option value="auto">auto ({autoQuality})</option>
-            <option value="low">low</option>
-            <option value="medium">medium</option>
-            <option value="high">high</option>
-            <option value="ultra">ultra</option>
-          </select>
+          <div ref={qualityMenuContainerRef} style={{ position: 'relative' }}>
+            <button
+              ref={qualityMenuButtonRef}
+              type="button"
+              className="btn compact"
+              aria-haspopup="listbox"
+              aria-expanded={qualityMenuOpen}
+              onClick={() => {
+                if (qualityMenuOpen) {
+                  setQualityMenuOpen(false);
+                  return;
+                }
+                openQualityMenu();
+              }}
+              onKeyDown={handleQualityTriggerKeyDown}
+              style={{ minHeight: '28px', padding: '4px 8px', fontSize: '11px', gap: '6px' }}
+              data-testid="model3d-quality-trigger"
+            >
+              <span style={{ color: 'var(--color-text)' }}>
+                {qualityPickerValue === 'auto' ? `auto (${autoQuality})` : qualityPickerValue}
+              </span>
+              <span aria-hidden="true" style={{ display: 'inline-flex', alignItems: 'center', opacity: 0.8 }}>
+                <IconChevronDown size={14} />
+              </span>
+            </button>
+            {qualityMenuOpen && (
+              <div
+                ref={qualityMenuListRef}
+                role="listbox"
+                aria-label="Quality"
+                tabIndex={-1}
+                onKeyDown={handleQualityMenuKeyDown}
+                style={{
+                  position: 'absolute',
+                  right: 0,
+                  top: 'calc(100% + 6px)',
+                  minWidth: '160px',
+                  padding: '6px',
+                  background: 'var(--color-background-elevated)',
+                  border: '1px solid var(--color-border-subtle)',
+                  borderRadius: '12px',
+                  boxShadow: 'var(--shadow-lg, 0 12px 36px rgba(0,0,0,0.35))',
+                  zIndex: 50,
+                }}
+                data-testid="model3d-quality-menu"
+              >
+                {qualityOptions.map((opt, idx) => {
+                  const selected = opt.value === qualityPickerValue;
+                  const active = idx === qualityMenuActiveIndex;
+                  return (
+                    <button
+                      key={opt.value}
+                      type="button"
+                      role="option"
+                      aria-selected={selected}
+                      className="btn btn-ghost btn-sm"
+                      onClick={() => applyQualityOption(opt.value, { restoreFocus: true })}
+                      onMouseEnter={() => setQualityMenuActiveIndex(idx)}
+                      style={{
+                        width: '100%',
+                        justifyContent: 'space-between',
+                        fontSize: '11px',
+                        padding: '6px 8px',
+                        borderRadius: '10px',
+                        background: active ? 'var(--color-background-hover)' : 'transparent',
+                      }}
+                      data-testid={`model3d-quality-option-${opt.value}`}
+                    >
+                      <span style={{ color: 'var(--color-text)' }}>{opt.label}</span>
+                      {selected && (
+                        <span aria-hidden="true" style={{ color: 'var(--color-primary)', fontWeight: 700 }}>
+                          ✓
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
       <div
-        className="three-container"
+        className={`three-container${fullscreen ? ' three-container--fullscreen' : ''}`}
         ref={containerRef}
         role="presentation"
         style={

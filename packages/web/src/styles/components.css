@@ -1529,6 +1529,11 @@ textarea:focus-visible,
   font-size: var(--text-xs);
 }
 
+/* Canvas background prevents black flash during scroll */
+.sequence-grid-canvas {
+  background-color: var(--color-background);
+}
+
 /* =============================================================================
    SEQUENCE VIEW MODE TOGGLE
    Premium segmented control for DNA / Dual / Amino Acid views

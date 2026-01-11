@@ -373,6 +373,22 @@ body {
   }
 }
 
+/* CSS-based fullscreen fallback for iOS/browsers without Fullscreen API support */
+.three-container--fullscreen:not(:fullscreen) {
+  position: fixed !important;
+  inset: 0 !important;
+  z-index: 9999 !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  height: 100dvh !important;
+  max-width: none !important;
+  max-height: none !important;
+  min-height: unset !important;
+  border-radius: 0 !important;
+  border: none !important;
+  background: var(--color-background) !important;
+}
+
 /* Disable heavy visual FX on small screens */
 @media (max-width: 1024px) {
   .fx-layer {
