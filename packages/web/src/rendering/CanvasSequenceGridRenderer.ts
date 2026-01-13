@@ -321,12 +321,14 @@ export class CanvasSequenceGridRenderer {
     });
 
     // Create virtual scroller (will be configured when sequence is set)
+    // Use generous overscan (10 rows) to pre-render content beyond viewport for smooth scrolling
     this.scroller = new VirtualScroller({
       totalItems: 0,
       itemWidth: this.cellWidth,
       itemHeight: this.rowHeight,
       viewportWidth: options.viewportWidth ?? this.getViewportSize().width,
       viewportHeight: options.viewportHeight ?? this.getViewportSize().height,
+      overscan: 10, // Pre-render 10 rows above/below viewport for smooth scroll reveal
     });
     this.updateCodonSnap();
 
@@ -415,6 +417,17 @@ export class CanvasSequenceGridRenderer {
 
     // Create/resize back buffer
     this.createBackBuffer(width, height);
+
+    // IMPORTANT: Canvases with `{ alpha: false }` clear to opaque black on resize.
+    // Mobile Safari can trigger frequent resizes during scroll (URL bar show/hide),
+    // which otherwise produces a visible black flash before the next render completes.
+    const bg = this.theme.colors.background;
+    this.ctx.fillStyle = bg;
+    this.ctx.fillRect(0, 0, safeWidth, safeHeight);
+    if (this.backCtx) {
+      this.backCtx.fillStyle = bg;
+      this.backCtx.fillRect(0, 0, safeWidth, safeHeight);
+    }
 
     // Update scroller viewport and cell sizes
     this.scroller.updateOptions({
@@ -1371,18 +1384,19 @@ export class CanvasSequenceGridRenderer {
     // Copy back buffer to main canvas (reset transform to avoid double-scaling).
     // IMPORTANT: If we have a WebGL post-process pipeline, apply it *after* the back buffer render
     // (or directly from backBuffer -> canvas), otherwise the back buffer copy would overwrite it.
-    const shouldPostProcess = !!this.postProcess && !this.reducedMotion && !this.isScrolling;
+    const postProcess =
+      this.postProcess && !this.reducedMotion && !this.isScrolling ? this.postProcess : null;
     if (this.backBuffer && this.backCtx) {
       this.ctx.setTransform(1, 0, 0, 1, 0, 0);
-      const postProcessed = shouldPostProcess ? this.postProcess!.process(this.backBuffer, this.canvas) : false;
+      const postProcessed = postProcess?.process(this.backBuffer, this.canvas) ?? false;
       if (!postProcessed) {
         this.ctx.drawImage(this.backBuffer, 0, 0);
       }
       this.ctx.setTransform(this.canvasScaleX, 0, 0, this.canvasScaleY, 0, 0); // Restore render scaling
-    } else if (shouldPostProcess) {
+    } else if (postProcess) {
       // Ensure identity transform for the 2D context copy inside PostProcessPipeline.
       this.ctx.setTransform(1, 0, 0, 1, 0, 0);
-      this.postProcess!.process(this.canvas, this.canvas);
+      postProcess.process(this.canvas, this.canvas);
       this.ctx.setTransform(this.canvasScaleX, 0, 0, this.canvasScaleY, 0, 0); // Restore render scaling
     }
 

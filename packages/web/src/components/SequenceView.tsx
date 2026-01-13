@@ -323,13 +323,12 @@ function SequenceViewBase({
   const {
     canvasRef,
     visibleRange,
-    handleWheelDelta,
-    orientation,
-    isMobile,
-    scrollPosition,
-    scrollToStart,
-    scrollToEnd,
-    jumpToDiff,
+	    handleWheelDelta,
+	    orientation,
+	    isMobile,
+	    scrollToStart,
+	    scrollToEnd,
+	    jumpToDiff,
     getIndexAtPoint,
     scrollToPosition,
     zoomScale,
@@ -796,6 +795,7 @@ function SequenceViewBase({
             height: resolvedHeight,
             display: 'block',
             touchAction: sequence ? 'none' : 'auto', // Allow page scroll while loading; enable custom gestures once ready
+            backgroundColor: colors.background, // Prevent black flash during scroll
           }}
         />
         {/* Loading skeleton state */}
