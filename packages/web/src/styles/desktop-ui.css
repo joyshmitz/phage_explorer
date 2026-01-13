@@ -669,36 +669,47 @@
 
 .quick-stats {
   display: flex;
-  align-items: center;
-  gap: var(--space-4);
-  padding: var(--space-3) var(--space-4);
+  align-items: stretch;
+  gap: var(--space-5);
+  padding: var(--space-3) var(--space-5);
   background: var(--color-background-alt);
   border: 1px solid var(--color-border-subtle);
   border-radius: var(--radius-lg);
-  overflow-x: auto;
-  /* Hide scrollbar but keep scrollable */
-  scrollbar-width: none;
-  -ms-overflow-style: none;
-}
-
-.quick-stats::-webkit-scrollbar {
-  display: none;
+  flex-wrap: wrap;
 }
 
 /* Extra compact variant for mobile inline use */
 .quick-stats--mobile {
   border-radius: var(--radius-md);
   margin-bottom: var(--space-2);
+  overflow-x: auto;
+  overflow-y: hidden;
+  flex-wrap: nowrap;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  -webkit-overflow-scrolling: touch;
+}
+
+.quick-stats--mobile::-webkit-scrollbar {
+  display: none;
 }
 
 /* Base quick-stat styles - MUST come before media queries */
 .quick-stat {
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  min-width: 80px;
+  gap: 4px;
+  min-width: max-content;
   position: relative;
-  padding-right: var(--space-4);
+  padding-right: var(--space-5);
+  flex-shrink: 0;
+}
+
+/* Wide variant for long content like host names */
+.quick-stat--wide {
+  min-width: 0;
+  flex-shrink: 1;
+  max-width: 200px;
 }
 
 /* Subtle separator between stats */
@@ -706,62 +717,104 @@
   content: '';
   position: absolute;
   right: 0;
-  top: 2px;
-  bottom: 2px;
+  top: 4px;
+  bottom: 4px;
   width: 1px;
   background: var(--color-border-subtle);
-  opacity: 0.5;
+  opacity: 0.4;
 }
 
 .quick-stat__label {
-  font-size: var(--text-2xs);
+  font-size: var(--text-xs);
   font-weight: var(--font-medium);
   color: var(--color-text-muted);
   text-transform: uppercase;
   letter-spacing: 0.05em;
+  white-space: nowrap;
 }
 
 .quick-stat__value {
-  font-size: var(--text-sm);
+  font-size: var(--text-base);
   font-weight: var(--font-semibold);
   color: var(--color-text);
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 .quick-stat__value--highlight {
   color: var(--color-primary);
-  /* Subtle glow for highlighted values */
   text-shadow: 0 0 8px rgba(34, 211, 238, 0.3);
 }
 
-/* Mobile: compact horizontal scrolling with visible scroll hint */
-@media (max-width: 640px) {
+/* Host names can truncate if very long */
+.quick-stat__value--host {
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Monospace for accession numbers */
+.quick-stat__value--mono {
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  letter-spacing: -0.01em;
+}
+
+/* Detail text (gene strand breakdown) */
+.quick-stat__detail {
+  opacity: 0.6;
+  font-size: 0.85em;
+  font-weight: var(--font-normal);
+}
+
+/* Tablet: slightly more compact */
+@media (max-width: 900px) {
   .quick-stats {
-    gap: var(--space-3);
-    padding: var(--space-2) var(--space-3);
-    /* Subtle scroll fade indicators at edges */
-    background:
-      linear-gradient(90deg, var(--color-background-alt) 0%, transparent 5%),
-      linear-gradient(270deg, var(--color-background-alt) 0%, transparent 5%),
-      var(--color-background-alt);
-    background-attachment: local, local, scroll;
+    gap: var(--space-4);
+    padding: var(--space-3) var(--space-4);
   }
 
   .quick-stat {
-    min-width: 70px;
-    flex-shrink: 0;
-    padding-right: var(--space-3);
-  }
-
-  .quick-stat__label {
-    font-size: 10px;
+    padding-right: var(--space-4);
   }
 
   .quick-stat__value {
-    font-size: var(--text-xs);
+    font-size: var(--text-sm);
+  }
+}
+
+/* Phone: horizontal scroll with proper sizing */
+@media (max-width: 640px) {
+  .quick-stats {
+    gap: var(--space-4);
+    padding: var(--space-3) var(--space-4);
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
   }
 
-  /* Hide separator on last visible item to prevent cut-off appearance */
+  .quick-stats::-webkit-scrollbar {
+    display: none;
+  }
+
+  .quick-stat {
+    padding-right: var(--space-4);
+  }
+
+  .quick-stat__label {
+    font-size: 11px;
+  }
+
+  .quick-stat__value {
+    font-size: var(--text-sm);
+  }
+
+  .quick-stat__value--host {
+    max-width: 140px;
+  }
+
   .quick-stat:not(:last-child)::after {
     opacity: 0.3;
   }
@@ -770,7 +823,6 @@
 @media (hover: none) and (pointer: coarse) {
   .quick-stats {
     background: var(--color-background-alt);
-    background-attachment: scroll;
   }
 }
 

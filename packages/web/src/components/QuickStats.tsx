@@ -62,7 +62,7 @@ export function QuickStats({ className = '' }: QuickStatsProps): React.ReactElem
       <div className="quick-stat">
         <span className="quick-stat__label">Genes</span>
         <span className="quick-stat__value">
-          {stats.geneCount} <span style={{ opacity: 0.6, fontSize: '0.85em' }}>({stats.forwardGenes}+ / {stats.reverseGenes}-)</span>
+          {stats.geneCount} <span className="quick-stat__detail">({stats.forwardGenes}+ / {stats.reverseGenes}-)</span>
         </span>
       </div>
 
@@ -74,11 +74,9 @@ export function QuickStats({ className = '' }: QuickStatsProps): React.ReactElem
       )}
 
       {stats.host && (
-        <div className="quick-stat">
+        <div className="quick-stat quick-stat--wide">
           <span className="quick-stat__label">Host</span>
-          <span className="quick-stat__value" style={{ maxWidth: '120px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-            {stats.host}
-          </span>
+          <span className="quick-stat__value quick-stat__value--host">{stats.host}</span>
         </div>
       )}
 
@@ -91,9 +89,7 @@ export function QuickStats({ className = '' }: QuickStatsProps): React.ReactElem
 
       <div className="quick-stat">
         <span className="quick-stat__label">Accession</span>
-        <span className="quick-stat__value" style={{ fontFamily: 'var(--font-mono)', fontSize: '0.85em' }}>
-          {stats.accession}
-        </span>
+        <span className="quick-stat__value quick-stat__value--mono">{stats.accession}</span>
       </div>
     </div>
   );
