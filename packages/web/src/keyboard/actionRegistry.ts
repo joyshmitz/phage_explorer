@@ -20,6 +20,8 @@ export const ActionIds = {
   ViewScrollEnd: 'view.scrollEnd',
   ViewZoomIn: 'view.zoomIn',
   ViewZoomOut: 'view.zoomOut',
+  ViewToggle3DModel: 'view.toggleThreeDModel',
+  DiffToggle: 'diff.toggle',
   DiffNext: 'diff.next',
   DiffPrev: 'diff.prev',
   OverlayHelp: 'overlay.help',
@@ -29,6 +31,7 @@ export const ActionIds = {
   OverlayCloseAll: 'overlay.closeAll',
   OverlayAnalysisMenu: 'overlay.analysisMenu',
   OverlaySimulationHub: 'overlay.simulationHub',
+  OverlayComparison: 'overlay.comparison',
   OverlayAAKey: 'overlay.aaKey',
   OverlayAALegend: 'overlay.aaLegend',
   OverlayPackagingPressure: 'overlay.packagingPressure',
@@ -75,6 +78,10 @@ export const ActionIds = {
   AnalysisGenomicSignatureRecenter: 'analysis.genomicSignature.recenter',
   HelpToggleDetail: 'help.toggleDetail',
   EducationToggleBeginnerMode: 'education.toggleBeginnerMode',
+  NavGoto: 'nav.goto',
+  ExportFasta: 'export.fasta',
+  ExportCopy: 'export.copy',
+  ExportJson: 'export.json',
 } as const;
 
 export type ActionId = (typeof ActionIds)[keyof typeof ActionIds];
@@ -176,6 +183,24 @@ export const ActionRegistry: Record<ActionId, ActionDefinition> = {
     scope: 'global',
     surfaces: ['web'],
   },
+  [ActionIds.ViewToggle3DModel]: {
+    id: ActionIds.ViewToggle3DModel,
+    title: 'Toggle 3D model',
+    category: 'View',
+    description: 'Show or hide the 3D structure viewer',
+    defaultShortcut: { key: 'm' },
+    scope: 'global',
+    surfaces: ['web'],
+  },
+  [ActionIds.DiffToggle]: {
+    id: ActionIds.DiffToggle,
+    title: 'Toggle diff mode',
+    category: 'Comparison',
+    description: 'Toggle diff highlighting against reference',
+    defaultShortcut: { key: 'd' },
+    scope: 'global',
+    surfaces: ['web'],
+  },
   [ActionIds.DiffNext]: {
     id: ActionIds.DiffNext,
     title: 'Next diff',
@@ -268,6 +293,17 @@ export const ActionRegistry: Record<ActionId, ActionDefinition> = {
     surfaces: ['web'],
     overlayId: 'simulationHub',
     overlayAction: 'toggle',
+  },
+  [ActionIds.OverlayComparison]: {
+    id: ActionIds.OverlayComparison,
+    title: 'Compare genomes',
+    category: 'Comparison',
+    description: 'Open genome comparison overlay',
+    defaultShortcut: { key: 'c' },
+    scope: 'global',
+    surfaces: ['web'],
+    overlayId: 'comparison',
+    overlayAction: 'open',
   },
   [ActionIds.OverlayAAKey]: {
     id: ActionIds.OverlayAAKey,
@@ -797,6 +833,47 @@ export const ActionRegistry: Record<ActionId, ActionDefinition> = {
     defaultShortcut: { key: 'b', modifiers: { ctrl: true } },
     scope: 'global',
     surfaces: ['web'],
+  },
+  [ActionIds.NavGoto]: {
+    id: ActionIds.NavGoto,
+    title: 'Go to position...',
+    category: 'Navigation',
+    description: 'Jump to a specific genome coordinate',
+    defaultShortcut: { key: 'g', modifiers: { ctrl: true } },
+    scope: 'global',
+    surfaces: ['web'],
+    overlayId: 'goto',
+    overlayAction: 'open',
+  },
+  [ActionIds.ExportFasta]: {
+    id: ActionIds.ExportFasta,
+    title: 'Export as FASTA',
+    category: 'Export',
+    description: 'Download current sequence as FASTA',
+    defaultShortcut: [], // No default shortcut
+    scope: 'contextual',
+    surfaces: ['web'],
+    minLevel: 'intermediate',
+  },
+  [ActionIds.ExportCopy]: {
+    id: ActionIds.ExportCopy,
+    title: 'Copy sequence',
+    category: 'Export',
+    description: 'Copy sequence to clipboard (rich text)',
+    defaultShortcut: [], // No default shortcut
+    scope: 'contextual',
+    surfaces: ['web'],
+    minLevel: 'novice',
+  },
+  [ActionIds.ExportJson]: {
+    id: ActionIds.ExportJson,
+    title: 'Export analysis JSON',
+    category: 'Export',
+    description: 'Download full analysis state',
+    defaultShortcut: [], // No default shortcut
+    scope: 'contextual',
+    surfaces: ['web'],
+    minLevel: 'power',
   },
 };
 

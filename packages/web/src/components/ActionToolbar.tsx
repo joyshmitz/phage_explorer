@@ -15,6 +15,8 @@
 import React from 'react';
 import { usePhageStore } from '@phage-explorer/state';
 import type { ViewMode } from '@phage-explorer/core';
+import { ActionIds } from '../keyboard';
+import { detectShortcutPlatform, formatActionShortcutForSurface } from '../keyboard/actionSurfaces';
 import {
   IconDna,
   IconFlask,
@@ -44,10 +46,10 @@ interface ActionToolbarProps {
   className?: string;
 }
 
-const VIEW_MODES: { id: ViewMode; label: string; icon: React.ReactNode; shortcut: string }[] = [
-  { id: 'dna', label: 'DNA', icon: <IconDna size={16} />, shortcut: 'v' },
-  { id: 'dual', label: 'Dual', icon: <IconLayers size={16} />, shortcut: 'v' },
-  { id: 'aa', label: 'Amino Acids', icon: <IconFlask size={16} />, shortcut: 'v' },
+const VIEW_MODES: { id: ViewMode; label: string; icon: React.ReactNode }[] = [
+  { id: 'dna', label: 'DNA', icon: <IconDna size={16} /> },
+  { id: 'dual', label: 'Dual', icon: <IconLayers size={16} /> },
+  { id: 'aa', label: 'Amino Acids', icon: <IconFlask size={16} /> },
 ];
 
 const READING_FRAMES = [
@@ -83,6 +85,21 @@ export function ActionToolbar({
   const currentPhage = usePhageStore((s) => s.currentPhage);
 
   const hasPhage = currentPhage !== null;
+  const shortcutPlatform = detectShortcutPlatform();
+
+  // Derive all shortcuts from ActionRegistry
+  const viewModeShortcut = formatActionShortcutForSurface(ActionIds.ViewCycleMode, shortcutPlatform);
+  const readingFrameShortcut = formatActionShortcutForSurface(ActionIds.ViewCycleReadingFrame, shortcutPlatform);
+  const zoomInShortcut = formatActionShortcutForSurface(ActionIds.ViewZoomIn, shortcutPlatform);
+  const zoomOutShortcut = formatActionShortcutForSurface(ActionIds.ViewZoomOut, shortcutPlatform);
+  const diffShortcut = formatActionShortcutForSurface(ActionIds.DiffToggle, shortcutPlatform);
+  const toggle3DShortcut = formatActionShortcutForSurface(ActionIds.ViewToggle3DModel, shortcutPlatform);
+  const analysisShortcut = formatActionShortcutForSurface(ActionIds.OverlayAnalysisMenu, shortcutPlatform);
+  const comparisonShortcut = formatActionShortcutForSurface(ActionIds.OverlayComparison, shortcutPlatform);
+  const searchShortcut = formatActionShortcutForSurface(ActionIds.OverlaySearch, shortcutPlatform);
+  const commandPaletteShortcut = formatActionShortcutForSurface(ActionIds.OverlayCommandPalette, shortcutPlatform);
+  const helpShortcut = formatActionShortcutForSurface(ActionIds.OverlayHelp, shortcutPlatform);
+  const settingsShortcut = formatActionShortcutForSurface(ActionIds.OverlaySettings, shortcutPlatform);
 
   return (
     <div className={`action-toolbar ${className}`} role="toolbar" aria-label="Main actions">
@@ -99,7 +116,7 @@ export function ActionToolbar({
               disabled={!hasPhage}
               role="radio"
               aria-checked={viewMode === mode.id}
-              title={`${mode.label} view (${mode.shortcut})`}
+              title={viewModeShortcut ? `${mode.label} view (${viewModeShortcut})` : `${mode.label} view`}
             >
               {mode.icon}
               <span className="toolbar-btn-label">{mode.label}</span>
@@ -118,7 +135,7 @@ export function ActionToolbar({
             onChange={(e) => setReadingFrame(Number(e.target.value) as 0 | 1 | 2 | -1 | -2 | -3)}
             disabled={!hasPhage}
             aria-label="Reading frame"
-            title="Reading frame (f)"
+            title={readingFrameShortcut ? `Reading frame (${readingFrameShortcut})` : 'Reading frame'}
           >
             {READING_FRAMES.map((frame) => (
               <option key={frame.value} value={frame.value}>
@@ -139,7 +156,7 @@ export function ActionToolbar({
               className="toolbar-btn"
               onClick={onZoomOut}
               disabled={!hasPhage}
-              title="Zoom out (-)"
+              title={zoomOutShortcut ? `Zoom out (${zoomOutShortcut})` : 'Zoom out'}
               aria-label="Zoom out"
             >
               <IconZoomOut size={16} />
@@ -149,7 +166,7 @@ export function ActionToolbar({
               className="toolbar-btn"
               onClick={onZoomIn}
               disabled={!hasPhage}
-              title="Zoom in (+)"
+              title={zoomInShortcut ? `Zoom in (${zoomInShortcut})` : 'Zoom in'}
               aria-label="Zoom in"
             >
               <IconZoomIn size={16} />
@@ -170,7 +187,7 @@ export function ActionToolbar({
             className={`toolbar-btn ${diffEnabled ? 'active' : ''}`}
             onClick={toggleDiff}
             disabled={!hasPhage}
-            title="Toggle diff highlighting (d)"
+            title={diffShortcut ? `Toggle diff highlighting (${diffShortcut})` : 'Toggle diff highlighting'}
             aria-pressed={diffEnabled}
           >
             <IconGitCompare size={16} />
@@ -181,7 +198,7 @@ export function ActionToolbar({
             className={`toolbar-btn ${show3DModel ? 'active' : ''}`}
             onClick={toggle3DModel}
             disabled={!hasPhage}
-            title="Toggle 3D model (m)"
+            title={toggle3DShortcut ? `Toggle 3D model (${toggle3DShortcut})` : 'Toggle 3D model'}
             aria-pressed={show3DModel}
           >
             <IconCube size={16} />
@@ -213,7 +230,7 @@ export function ActionToolbar({
             className="toolbar-btn toolbar-btn--primary"
             onClick={onOpenAnalysis}
             disabled={!hasPhage}
-            title="Analysis tools (a)"
+            title={analysisShortcut ? `Analysis tools (${analysisShortcut})` : 'Analysis tools'}
           >
             <IconChartBar size={16} />
             <span className="toolbar-btn-label">Analyze</span>
@@ -223,7 +240,7 @@ export function ActionToolbar({
             className="toolbar-btn"
             onClick={onOpenComparison}
             disabled={!hasPhage}
-            title="Compare genomes (c)"
+            title={comparisonShortcut ? `Compare genomes (${comparisonShortcut})` : 'Compare genomes'}
           >
             <IconGitCompare size={16} />
             <span className="toolbar-btn-label">Compare</span>
@@ -240,7 +257,7 @@ export function ActionToolbar({
           type="button"
           className="toolbar-btn toolbar-btn--icon"
           onClick={onOpenSearch}
-          title="Search (s or /)"
+          title={searchShortcut ? `Search (${searchShortcut})` : 'Search'}
           aria-label="Search"
         >
           <IconSearch size={18} />
@@ -249,7 +266,7 @@ export function ActionToolbar({
           type="button"
           className="toolbar-btn toolbar-btn--icon"
           onClick={onOpenCommandPalette}
-          title="Command palette (:)"
+          title={commandPaletteShortcut ? `Command palette (${commandPaletteShortcut})` : 'Command palette'}
           aria-label="Command palette"
         >
           <IconCommand size={18} />
@@ -258,7 +275,7 @@ export function ActionToolbar({
           type="button"
           className="toolbar-btn toolbar-btn--icon"
           onClick={onOpenHelp}
-          title="Help & shortcuts (?)"
+          title={helpShortcut ? `Help & shortcuts (${helpShortcut})` : 'Help & shortcuts'}
           aria-label="Help"
         >
           <IconHelp size={18} />
@@ -267,7 +284,7 @@ export function ActionToolbar({
           type="button"
           className="toolbar-btn toolbar-btn--icon"
           onClick={onOpenSettings}
-          title="Settings (Ctrl+,)"
+          title={settingsShortcut ? `Settings (${settingsShortcut})` : 'Settings'}
           aria-label="Settings"
         >
           <IconSettings size={18} />
