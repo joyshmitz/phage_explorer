@@ -11,7 +11,8 @@
  * Shortcuts are rendered from ActionRegistry - never hardcoded.
  */
 
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useCallback } from 'react';
+import { useExperienceLevel, usePhageStore } from '@phage-explorer/state';
 import { useHotkey } from '../../hooks';
 import { Overlay } from './Overlay';
 import { useOverlay } from './OverlayProvider';
@@ -25,7 +26,14 @@ import {
   OverlayKeyValue,
   OverlayBadge,
 } from './primitives';
-import { ActionIds, ActionRegistryList, formatKeyCombo, type KeyCombo, type ActionScope } from '../../keyboard';
+import {
+  ActionIds,
+  ActionRegistryList,
+  formatKeyCombo,
+  type KeyCombo,
+  type ActionScope,
+  type ExperienceLevel,
+} from '../../keyboard';
 
 type DepthLayer = 0 | 1 | 2 | 3 | 4;
 
@@ -35,6 +43,7 @@ interface HotkeyInfo {
   category: string;
   layer: DepthLayer;
   scope: ActionScope;
+  minLevel?: ExperienceLevel;
 }
 
 const LAYER_LABELS: Record<DepthLayer, { name: string; description: string }> = {
@@ -83,6 +92,22 @@ function formatShortcut(shortcut: KeyCombo | KeyCombo[]): string {
   return combos.map(formatKeyCombo).join(' / ');
 }
 
+const EXPERIENCE_LEVEL_ORDER: ExperienceLevel[] = ['novice', 'intermediate', 'power'];
+
+/**
+ * Check if a shortcut should be visible for the given experience level.
+ * A shortcut is visible if the user's level is >= the shortcut's minLevel.
+ */
+function isVisibleForLevel(
+  userLevel: ExperienceLevel,
+  minLevel: ExperienceLevel | undefined
+): boolean {
+  if (!minLevel) return true; // No minLevel = visible to all
+  const userIdx = EXPERIENCE_LEVEL_ORDER.indexOf(userLevel);
+  const minIdx = EXPERIENCE_LEVEL_ORDER.indexOf(minLevel);
+  return userIdx >= minIdx;
+}
+
 // Group hotkeys by depth layer
 function groupByLayer(hotkeys: HotkeyInfo[]): Record<DepthLayer, HotkeyInfo[]> {
   const result: Record<DepthLayer, HotkeyInfo[]> = { 0: [], 1: [], 2: [], 3: [], 4: [] };
@@ -100,9 +125,28 @@ function groupByLayer(hotkeys: HotkeyInfo[]): Record<DepthLayer, HotkeyInfo[]> {
 
 export function HelpOverlay(): React.ReactElement | null {
   const { isOpen, toggle } = useOverlay();
-  const [detailLevel, setDetailLevel] = useState<'essential' | 'detailed'>('essential');
+  const experienceLevel = useExperienceLevel();
+  const promoteExperienceLevel = usePhageStore((s) => s.promoteExperienceLevel);
+
+  // Default detail level is based on experience level:
+  // - novice: start with essential (Layer 0 only)
+  // - intermediate/power: can handle more detail by default
+  const defaultDetail = experienceLevel === 'novice' ? 'essential' : 'detailed';
+  const [detailLevel, setDetailLevel] = useState<'essential' | 'detailed'>(defaultDetail);
 
   const overlayOpen = isOpen('help');
+
+  // Cycle through detail levels and promote experience if user explores advanced shortcuts
+  const cycleDetailLevel = useCallback(() => {
+    setDetailLevel(prev => {
+      const next = prev === 'essential' ? 'detailed' : 'essential';
+      // If user toggles to detailed, they're ready for at least intermediate
+      if (next === 'detailed' && experienceLevel === 'novice') {
+        promoteExperienceLevel('intermediate');
+      }
+      return next;
+    });
+  }, [experienceLevel, promoteExperienceLevel]);
 
   useHotkey(
     ActionIds.OverlayHelp,
@@ -112,21 +156,24 @@ export function HelpOverlay(): React.ReactElement | null {
 
   useHotkey(
     ActionIds.HelpToggleDetail,
-    () => setDetailLevel(prev => prev === 'essential' ? 'detailed' : 'essential'),
+    cycleDetailLevel,
     { modes: ['NORMAL'], enabled: overlayOpen }
   );
 
   const hotkeys = useMemo(() => {
     return ActionRegistryList
       .filter((action) => !action.surfaces || action.surfaces.includes('web'))
+      // Filter by experience level - only show shortcuts the user's level can access
+      .filter((action) => isVisibleForLevel(experienceLevel, action.minLevel))
       .map((action): HotkeyInfo => ({
         key: formatShortcut(action.defaultShortcut),
         description: action.title,
         category: action.category,
         layer: getDepthLayer(action.category, action.defaultShortcut, action.id),
         scope: action.scope,
+        minLevel: action.minLevel,
       }));
-  }, []);
+  }, [experienceLevel]);
 
   if (!overlayOpen) {
     return null;
@@ -146,13 +193,16 @@ export function HelpOverlay(): React.ReactElement | null {
       size="lg"
     >
       <OverlayStack>
-        {/* Detail level toggle */}
+        {/* Detail level toggle with experience level info */}
         <OverlayToolbar>
           <span style={{ color: 'var(--color-text-dim)' }}>
-            Showing: {detailLevel === 'essential' ? 'Essential' : 'All'} shortcuts
+            {detailLevel === 'essential' ? 'Essential' : 'All'} shortcuts
+            {experienceLevel !== 'novice' && (
+              <> • {experienceLevel.charAt(0).toUpperCase() + experienceLevel.slice(1)} user</>
+            )}
           </span>
           <button
-            onClick={() => setDetailLevel(prev => prev === 'essential' ? 'detailed' : 'essential')}
+            onClick={cycleDetailLevel}
             style={{
               background: 'var(--color-accent)',
               color: 'var(--color-background)',
@@ -163,7 +213,7 @@ export function HelpOverlay(): React.ReactElement | null {
               fontSize: '0.85rem',
             }}
           >
-            Press D to toggle
+            {detailLevel === 'essential' ? 'Show all (D)' : 'Show essential (D)'}
           </button>
         </OverlayToolbar>
 
@@ -189,6 +239,12 @@ export function HelpOverlay(): React.ReactElement | null {
                   {layerHotkeys.map((hotkey, index) => (
                     <OverlayRow key={`${hotkey.key}-${index}`} alternate={index % 2 !== 0}>
                       <OverlayKeyValue label={hotkey.key} value={hotkey.description} />
+                      {hotkey.minLevel === 'power' && (
+                        <OverlayBadge variant="accent">power</OverlayBadge>
+                      )}
+                      {hotkey.minLevel === 'intermediate' && (
+                        <OverlayBadge variant="subtle">int</OverlayBadge>
+                      )}
                       {hotkey.scope === 'contextual' && (
                         <OverlayBadge variant="muted">contextual</OverlayBadge>
                       )}
