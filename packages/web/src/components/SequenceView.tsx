@@ -11,7 +11,13 @@ import { translateCodon, type ViewMode } from '@phage-explorer/core';
 import { useTheme } from '../hooks/useTheme';
 import { useSequenceGrid, useReducedMotion, useHotkeys } from '../hooks';
 import { ActionIds } from '../keyboard';
-import { useWebPreferences } from '../store/createWebStore';
+import {
+  allowHeavyFx,
+  detectCoarsePointerDevice,
+  getEffectiveGlow,
+  getEffectiveScanlines,
+  useWebPreferences,
+} from '../store/createWebStore';
 import { PostProcessPipeline } from '../rendering';
 import { AminoAcidHUD } from './AminoAcidHUD';
 import { SequenceViewSkeleton } from './ui/Skeleton';
@@ -252,45 +258,54 @@ function SequenceViewBase({
   const scanlineIntensity = useWebPreferences((s) => s.scanlineIntensity);
   const glow = useWebPreferences((s) => s.glow);
 
+  const coarsePointer = useMemo(() => detectCoarsePointerDevice(), []);
+  const crtConstraints = useMemo(
+    () => ({ reducedMotion, coarsePointer }),
+    [coarsePointer, reducedMotion]
+  );
+  const allowCrtFx = allowHeavyFx(crtConstraints);
+  const effectiveScanlines = getEffectiveScanlines(scanlines, crtConstraints);
+  const effectiveGlow = getEffectiveGlow(glow, crtConstraints);
+
   // Create PostProcessPipeline for WebGL2 CRT effects
   const postProcess = useMemo(() => {
-    if (reducedMotion || (!scanlines && !glow)) return undefined;
+    if (!allowCrtFx || (!effectiveScanlines && !effectiveGlow)) return undefined;
     return new PostProcessPipeline({
       reducedMotion,
-      enableScanlines: scanlines,
-      enableBloom: glow,
-      enableChromaticAberration: scanlines,
+      enableScanlines: effectiveScanlines,
+      enableBloom: effectiveGlow,
+      enableChromaticAberration: effectiveScanlines,
       scanlineIntensity: scanlineIntensity,
-      bloomIntensity: glow ? 0.4 : 0,
-      aberrationOffset: scanlines ? 1.5 : 0,
+      bloomIntensity: effectiveGlow ? 0.4 : 0,
+      aberrationOffset: effectiveScanlines ? 1.5 : 0,
     });
-  }, [reducedMotion, scanlines, scanlineIntensity, glow]);
+  }, [allowCrtFx, effectiveGlow, effectiveScanlines, reducedMotion, scanlineIntensity]);
 
   const postProcessOptions = useMemo(
     () => ({
       reducedMotion,
-      enableScanlines: scanlines,
-      enableBloom: glow,
-      enableChromaticAberration: scanlines,
+      enableScanlines: effectiveScanlines,
+      enableBloom: effectiveGlow,
+      enableChromaticAberration: effectiveScanlines,
       scanlineIntensity,
-      bloomIntensity: glow ? 0.4 : 0,
-      aberrationOffset: scanlines ? 1.5 : 0,
+      bloomIntensity: effectiveGlow ? 0.4 : 0,
+      aberrationOffset: effectiveScanlines ? 1.5 : 0,
     }),
-    [reducedMotion, scanlines, scanlineIntensity, glow]
+    [effectiveGlow, effectiveScanlines, reducedMotion, scanlineIntensity]
   );
 
   // Update pipeline options when preferences change
   useEffect(() => {
     if (postProcess) {
       postProcess.updateOptions({
-        enableScanlines: scanlines,
-        enableBloom: glow,
-        enableChromaticAberration: scanlines,
+        enableScanlines: effectiveScanlines,
+        enableBloom: effectiveGlow,
+        enableChromaticAberration: effectiveScanlines,
         scanlineIntensity: scanlineIntensity,
-        bloomIntensity: glow ? 0.4 : 0,
+        bloomIntensity: effectiveGlow ? 0.4 : 0,
       });
     }
-  }, [postProcess, scanlines, scanlineIntensity, glow]);
+  }, [effectiveGlow, effectiveScanlines, postProcess, scanlineIntensity]);
 
   // Track the last scroll position WE set (from user scrolling).
   // This distinguishes our updates from truly external changes (gene map clicks).
@@ -345,8 +360,8 @@ function SequenceViewBase({
     diffEnabled,
     diffMask,
     diffPositions,
-    scanlines,
-    glow,
+    scanlines: effectiveScanlines,
+    glow: effectiveGlow,
     postProcess,
     postProcessOptions,
     reducedMotion,
@@ -968,8 +983,9 @@ function SequenceViewBase({
         <div
           style={{
             position: 'fixed',
-            right: 'calc(12px + env(safe-area-inset-right))',
-            bottom: 'calc(86px + env(safe-area-inset-bottom))',
+            right: 'calc(12px + env(safe-area-inset-right, 0px))',
+            bottom:
+              'calc(var(--mobile-tab-bar-height, 56px) + env(safe-area-inset-bottom, 0px) + 12px)',
             zIndex: 20,
             background: colors.backgroundAlt,
             border: `1px solid ${colors.border}`,

@@ -2,13 +2,13 @@
  * CRTToggleButton - Floating button to toggle CRT effects
  *
  * A cute mini curved screen button in the corner that toggles
- * the WebGL2 CRT post-processing effects (scanlines, bloom, aberration).
+ * scanlines (and related CRT post-processing).
  */
 
-import React from 'react';
+import React, { useMemo } from 'react';
 import { IconCRT } from './icons';
 import { Tooltip } from './Tooltip';
-import { useWebPreferences } from '../../store/createWebStore';
+import { allowHeavyFx, detectCoarsePointerDevice, useWebPreferences } from '../../store/createWebStore';
 import { useReducedMotion } from '../../hooks/useReducedMotion';
 
 export interface CRTToggleButtonProps {
@@ -21,19 +21,17 @@ export interface CRTToggleButtonProps {
 export function CRTToggleButton({
   position = 'bottom-right',
   size = 'md',
-}: CRTToggleButtonProps): React.ReactElement {
+}: CRTToggleButtonProps): React.ReactElement | null {
   const scanlines = useWebPreferences((s) => s.scanlines);
   const setScanlines = useWebPreferences((s) => s.setScanlines);
   const reducedMotion = useReducedMotion();
+  const coarsePointer = useMemo(() => detectCoarsePointerDevice(), []);
 
   const handleToggle = () => {
     setScanlines(!scanlines);
   };
 
-  // Don't show if reduced motion is preferred
-  if (reducedMotion) {
-    return <></>;
-  }
+  if (!allowHeavyFx({ reducedMotion, coarsePointer })) return null;
 
   const sizeMap = {
     sm: { button: 32, icon: 16 },
@@ -52,12 +50,12 @@ export function CRTToggleButton({
   const positionStyle = positionMap[position];
 
   return (
-    <Tooltip content={scanlines ? 'CRT Effect: ON' : 'CRT Effect: OFF'} position="left">
+    <Tooltip content={scanlines ? 'CRT Scanlines: ON' : 'CRT Scanlines: OFF'} position="left">
       <button
         type="button"
         onClick={handleToggle}
         aria-pressed={scanlines}
-        aria-label={scanlines ? 'Disable CRT effect' : 'Enable CRT effect'}
+        aria-label={scanlines ? 'Disable CRT scanlines' : 'Enable CRT scanlines'}
         style={{
           position: 'fixed',
           ...positionStyle,

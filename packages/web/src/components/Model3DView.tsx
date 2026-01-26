@@ -447,7 +447,10 @@ function Model3DViewBase({ phage }: Model3DViewProps): React.ReactElement {
         }
         lastTickTimeRef.current = null;
       },
-      { threshold: 0.05 }
+      // Resume rendering as soon as *any* pixel is visible. WebKit can otherwise
+      // keep the loop paused during fast scroll / fullscreen transitions, leaving
+      // the canvas in a blank/black state.
+      { threshold: 0 }
     );
 
     observer.observe(container);
@@ -1088,6 +1091,44 @@ function Model3DViewBase({ phage }: Model3DViewProps): React.ReactElement {
     }
   }, [renderMode, loadState, quality, showFunctionalGroups, functionalGroupStyle]);
 
+  // iOS CSS fullscreen fallback: disable shell transforms that can interfere with `position: fixed`.
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    const root = document.documentElement;
+    if (!fullscreen) {
+      root.classList.remove('pe-three-fullscreen');
+      return;
+    }
+
+    root.classList.add('pe-three-fullscreen');
+    return () => root.classList.remove('pe-three-fullscreen');
+  }, [fullscreen]);
+
+  // When entering fullscreen, ensure rendering resumes and the renderer syncs to final dimensions.
+  // This is defensive against WebKit quirks where IntersectionObserver/ResizeObserver may lag.
+  useEffect(() => {
+    if (!fullscreen) return;
+    if (!show3DModel) return;
+    if (typeof window === 'undefined') return;
+    isInViewportRef.current = true;
+
+    const raf = window.requestAnimationFrame(() => {
+      const container = containerRef.current;
+      const renderer = rendererRef.current;
+      const camera = cameraRef.current;
+      if (container && renderer && camera) {
+        const width = container.clientWidth || 320;
+        const height = container.clientHeight || 260;
+        camera.aspect = width / height;
+        camera.updateProjectionMatrix();
+        renderer.setSize(width, height);
+      }
+      requestRender();
+    });
+
+    return () => window.cancelAnimationFrame(raf);
+  }, [fullscreen, requestRender, show3DModel]);
+
   // Fullscreen management: sync store state with DOM fullscreen API
   useEffect(() => {
     const container = containerRef.current;
@@ -1588,13 +1629,14 @@ function Model3DViewBase({ phage }: Model3DViewProps): React.ReactElement {
         )}
 
         {/* Residue selection */}
-        {loadState === 'ready' && pickedResidue && (
+        {loadState === 'ready' && show3DModel && pickedResidue && (
           <div
-            className="three-overlay"
+            className="three-hud"
             style={{
               left: '1rem',
               top: '1rem',
               right: 'auto',
+              bottom: 'auto',
               width: 'auto',
               background: 'rgba(15, 21, 41, 0.85)',
               backdropFilter: 'blur(4px)',
@@ -1629,13 +1671,14 @@ function Model3DViewBase({ phage }: Model3DViewProps): React.ReactElement {
         )}
 
         {/* Fullscreen HUD - Stats overlay top right */}
-        {fullscreen && (
+        {fullscreen && show3DModel && (
           <div
-            className="three-overlay"
+            className="three-hud"
             style={{
               right: '1rem',
               top: '1rem',
               left: 'auto',
+              bottom: 'auto',
               width: 'auto',
               background: 'rgba(15, 21, 41, 0.85)',
               backdropFilter: 'blur(4px)',
@@ -1665,9 +1708,9 @@ function Model3DViewBase({ phage }: Model3DViewProps): React.ReactElement {
         )}
 
         {/* Fullscreen HUD - Keyboard hints bottom left */}
-        {fullscreen && showKeyHints && (
+        {fullscreen && show3DModel && showKeyHints && (
           <div
-            className="three-overlay"
+            className="three-hud"
             style={{
               left: '1rem',
               bottom: '1rem',
