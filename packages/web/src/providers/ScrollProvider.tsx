@@ -182,7 +182,8 @@ export function ScrollProvider({
   // ALSO disable on desktop because .app-shell uses overflow:hidden with .app-body
   // as the scroll container. Lenis targets window scroll which doesn't work here.
   // This was blocking mousewheel scroll on the main page.
-  const shouldEnable = false; // Disabled: enabled && !reducedMotion && !isTouchDevice;
+  const SHOULD_ENABLE_LENIS = false; // Disabled: see note above.
+  const shouldEnable = SHOULD_ENABLE_LENIS && enabled && !reducedMotion && !isTouchDevice;
 
   // Initialize Lenis
   useEffect(() => {

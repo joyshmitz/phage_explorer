@@ -200,19 +200,15 @@ async function loadWasmModule(): Promise<WasmLoadResult> {
           ? ((await import('@phage/wasm-compute/simd')) as unknown as WasmComputeModule)
           : await import('@phage/wasm-compute');
 
-      // Initialize the module if it has an init function
-      // Some wasm-bindgen outputs require explicit init, others auto-init
-      try {
-        // Try to call init if it exists (wasm-bindgen --target web style)
-        const maybeInit = (wasm as unknown as { default?: () => Promise<void> }).default;
-        if (typeof maybeInit === 'function') {
-          await maybeInit();
-          log('WASM init() called successfully', { variant });
-        }
-      } catch {
-        // Init may not be needed or may have already been called
-        // This is not a fatal error - the module may still work
-        log('WASM init() not needed or already initialized', { variant });
+      // Initialize the module if it has an init function.
+      //
+      // Our inlined wasm-pack wrapper exports an idempotent default `init()` that must succeed for
+      // wasm exports to be usable. If init throws, treat this variant as failed so callers fall
+      // back to the baseline build or JS implementations instead of using a half-initialized module.
+      const maybeInit = (wasm as unknown as { default?: unknown }).default;
+      if (typeof maybeInit === 'function') {
+        await (maybeInit as () => Promise<void>)();
+        log('WASM init() called successfully', { variant });
       }
 
       // Initialize panic hook for better error messages (if available)

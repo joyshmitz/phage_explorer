@@ -7,9 +7,10 @@ import App from './App';
 import './styles.css';
 import './styles/scroll.css';
 import { queryClient } from './queryClient';
+import { initializeStorePersistence } from './store';
 
-function installViewportVariables(): void {
-  if (typeof window === 'undefined') return;
+function installViewportVariables(): () => void {
+  if (typeof window === 'undefined') return () => undefined;
   const root = document.documentElement;
   let rafId: number | null = null;
   let lastHeight: number | null = null;
@@ -17,8 +18,18 @@ function installViewportVariables(): void {
 
   const update = () => {
     const vv = window.visualViewport;
-    const height = vv?.height ?? window.innerHeight;
-    const width = vv?.width ?? window.innerWidth;
+    const heightCandidate = vv?.height;
+    const widthCandidate = vv?.width;
+    // iOS Safari can report `visualViewport.height === 0` transiently during page load / rotation.
+    // Never allow that to collapse layout (e.g. sequence canvas height becomes 0).
+    const height =
+      typeof heightCandidate === 'number' && Number.isFinite(heightCandidate) && heightCandidate > 0
+        ? heightCandidate
+        : window.innerHeight;
+    const width =
+      typeof widthCandidate === 'number' && Number.isFinite(widthCandidate) && widthCandidate > 0
+        ? widthCandidate
+        : window.innerWidth;
 
     // Avoid style recalculation churn during scroll: on iOS, `visualViewport.scroll`
     // can fire continuously even when the viewport size is unchanged.
@@ -53,9 +64,46 @@ function installViewportVariables(): void {
   if (vv) {
     vv.addEventListener('resize', schedule);
   }
+
+  return () => {
+    if (rafId !== null) {
+      window.cancelAnimationFrame(rafId);
+      rafId = null;
+    }
+    window.removeEventListener('resize', schedule);
+    window.removeEventListener('orientationchange', schedule);
+    if (vv) {
+      vv.removeEventListener('resize', schedule);
+    }
+  };
 }
 
-installViewportVariables();
+const cleanupViewportVariables = installViewportVariables();
+
+// Hydrate/persist main-store preferences (including device-aware defaults) before first render.
+// This avoids flashing expensive UI (e.g., 3D viewer) on first-run for coarse-pointer devices.
+const cleanupStorePersistence = initializeStorePersistence();
+
+let didCleanup = false;
+const cleanupAll = () => {
+  if (didCleanup) return;
+  didCleanup = true;
+  cleanupStorePersistence();
+  cleanupViewportVariables();
+};
+
+if (import.meta.hot) {
+  import.meta.hot.dispose(() => {
+    if (typeof window !== 'undefined') {
+      window.removeEventListener('unload', cleanupAll);
+    }
+    cleanupAll();
+  });
+}
+
+if (typeof window !== 'undefined') {
+  window.addEventListener('unload', cleanupAll, { once: true });
+}
 
 const container = document.getElementById('root');
 
