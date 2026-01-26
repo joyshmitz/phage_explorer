@@ -1,10 +1,18 @@
 import React, { useMemo } from 'react';
-import { useTheme } from '../../hooks/useTheme';
 import { useHotkey } from '../../hooks';
 import { ActionIds } from '../../keyboard';
 import { Overlay } from './Overlay';
 import { useOverlay } from './OverlayProvider';
 import { usePhageStore } from '../../store';
+import {
+  OverlayDescription,
+  OverlayEmptyState,
+  OverlaySection,
+  OverlaySectionHeader,
+  OverlayStack,
+  OverlayStatCard,
+  OverlayStatGrid,
+} from './primitives';
 
 function clamp01(value: number): number {
   return Math.max(0, Math.min(1, value));
@@ -17,10 +25,10 @@ function progressBar(fraction: number, color: string): React.ReactElement {
       style={{
         width: '100%',
         height: '10px',
-        backgroundColor: 'rgba(255,255,255,0.08)',
-        borderRadius: '4px',
+        backgroundColor: 'var(--color-background-alt)',
+        borderRadius: 'var(--radius-sm)',
         overflow: 'hidden',
-        border: '1px solid rgba(255,255,255,0.1)',
+        border: 'var(--overlay-border)',
       }}
     >
       <div
@@ -28,7 +36,7 @@ function progressBar(fraction: number, color: string): React.ReactElement {
           width: `${(safeFraction * 100).toFixed(1)}%`,
           height: '100%',
           background: color,
-          transition: 'width 120ms ease-out',
+          transition: 'width var(--duration-fast) var(--ease-out)',
         }}
       />
     </div>
@@ -36,8 +44,6 @@ function progressBar(fraction: number, color: string): React.ReactElement {
 }
 
 export function PackagingPressureOverlay(): React.ReactElement | null {
-  const { theme } = useTheme();
-  const colors = theme.colors;
   const { isOpen, toggle } = useOverlay();
   const phage = usePhageStore((s) => s.currentPhage);
   const scrollPosition = usePhageStore((s) => s.scrollPosition);
@@ -82,6 +88,7 @@ export function PackagingPressureOverlay(): React.ReactElement | null {
     return null;
   }
 
+  const genomeLength = phage?.genomeLength ?? 0;
   const fillPercent = (metrics.fillFraction * 100).toFixed(1);
   const pressureFraction = metrics.pressureAtm / 60;
 
@@ -92,89 +99,83 @@ export function PackagingPressureOverlay(): React.ReactElement | null {
       hotkey="Shift+V"
       size="md"
     >
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-        <div
-          style={{
-            padding: '0.75rem',
-            backgroundColor: colors.backgroundAlt,
-            borderRadius: '6px',
-            color: colors.textDim,
-            fontSize: '0.9rem',
-            lineHeight: 1.4,
-          }}
-        >
-          <strong style={{ color: colors.primary }}>Capsid filling model:</strong>{' '}
-          force = 5 + 50·φ³ pN, pressure capped at 60 atm, ATP ≈ 1 per 2 bp.
-        </div>
+      <OverlayStack>
+        <OverlayDescription title="Capsid filling model">
+          Force = 5 + 50·φ³ pN, pressure capped at 60 atm, ATP ≈ 1 per 2 bp.
+        </OverlayDescription>
 
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
-            gap: '1rem',
-          }}
-        >
-          <div style={{ padding: '0.75rem', backgroundColor: colors.backgroundAlt, borderRadius: '6px' }}>
-            <div style={{ color: colors.textMuted, fontSize: '0.8rem' }}>Position</div>
-            <div style={{ fontFamily: 'monospace', color: colors.text, fontSize: '1.1rem' }}>
-              {metrics.positionBp.toLocaleString()} / {(phage?.genomeLength ?? 0).toLocaleString()} bp
-            </div>
-          </div>
-          <div style={{ padding: '0.75rem', backgroundColor: colors.backgroundAlt, borderRadius: '6px' }}>
-            <div style={{ color: colors.textMuted, fontSize: '0.8rem' }}>Fill</div>
-            <div style={{ fontFamily: 'monospace', color: colors.text, fontSize: '1.1rem' }}>
-              {fillPercent}%
-            </div>
-          </div>
-          <div style={{ padding: '0.75rem', backgroundColor: colors.backgroundAlt, borderRadius: '6px' }}>
-            <div style={{ color: colors.textMuted, fontSize: '0.8rem' }}>Force</div>
-            <div style={{ fontFamily: 'monospace', color: colors.text, fontSize: '1.1rem' }}>
-              {metrics.forcePn.toFixed(1)} pN
-            </div>
-          </div>
-          <div style={{ padding: '0.75rem', backgroundColor: colors.backgroundAlt, borderRadius: '6px' }}>
-            <div style={{ color: colors.textMuted, fontSize: '0.8rem' }}>Pressure</div>
-            <div style={{ fontFamily: 'monospace', color: pressureFraction > 0.8 ? colors.error : colors.text, fontSize: '1.1rem' }}>
-              {metrics.pressureAtm.toFixed(1)} atm
-            </div>
-          </div>
-          <div style={{ padding: '0.75rem', backgroundColor: colors.backgroundAlt, borderRadius: '6px' }}>
-            <div style={{ color: colors.textMuted, fontSize: '0.8rem' }}>ATP consumed</div>
-            <div style={{ fontFamily: 'monospace', color: colors.text, fontSize: '1.1rem' }}>
-              {metrics.atpCount.toLocaleString()}
-            </div>
-          </div>
-        </div>
+        {genomeLength > 0 ? (
+          <>
+            <OverlayStatGrid>
+              <OverlayStatCard
+                label="Position"
+                value={`${metrics.positionBp.toLocaleString()} / ${genomeLength.toLocaleString()} bp`}
+              />
+              <OverlayStatCard label="Fill" value={`${fillPercent}%`} />
+              <OverlayStatCard label="Force" value={`${metrics.forcePn.toFixed(1)} pN`} />
+              <OverlayStatCard
+                label="Pressure"
+                value={
+                  <span
+                    style={{
+                      color: pressureFraction > 0.8 ? 'var(--color-error)' : 'var(--color-text)',
+                    }}
+                  >
+                    {metrics.pressureAtm.toFixed(1)} atm
+                  </span>
+                }
+              />
+              <OverlayStatCard label="ATP consumed" value={metrics.atpCount.toLocaleString()} />
+            </OverlayStatGrid>
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-          <div>
-            <div style={{ color: colors.textMuted, marginBottom: '0.25rem', fontSize: '0.85rem' }}>
-              Fill fraction
-            </div>
-            {progressBar(metrics.fillFraction, colors.success)}
-          </div>
-          <div>
-            <div style={{ color: colors.textMuted, marginBottom: '0.25rem', fontSize: '0.85rem' }}>
-              Pressure (warn above 50 atm)
-            </div>
-            {progressBar(pressureFraction, pressureFraction > 0.83 ? colors.error : colors.accent)}
-          </div>
-        </div>
-
-        {!phage && (
-          <div
-            style={{
-              textAlign: 'center',
-              padding: '1rem',
-              color: colors.textMuted,
-              border: `1px dashed ${colors.borderLight}`,
-              borderRadius: '6px',
-            }}
-          >
-            Load a phage genome to visualize packaging pressure along the sequence.
-          </div>
+            <OverlaySection
+              header={<OverlaySectionHeader title="Trajectory" description={`${fillPercent}% full`} />}
+            >
+              <div
+                style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 'var(--chrome-gap)',
+                  padding: 'var(--chrome-padding-y) var(--chrome-padding-x)',
+                }}
+              >
+                <div>
+                  <div
+                    style={{
+                      color: 'var(--color-text-muted)',
+                      marginBottom: 'var(--chrome-gap-compact)',
+                      fontSize: 'var(--text-xs)',
+                    }}
+                  >
+                    Fill fraction
+                  </div>
+                  {progressBar(metrics.fillFraction, 'var(--color-success)')}
+                </div>
+                <div>
+                  <div
+                    style={{
+                      color: 'var(--color-text-muted)',
+                      marginBottom: 'var(--chrome-gap-compact)',
+                      fontSize: 'var(--text-xs)',
+                    }}
+                  >
+                    Pressure (warn above 50 atm)
+                  </div>
+                  {progressBar(
+                    pressureFraction,
+                    pressureFraction > 0.83 ? 'var(--color-error)' : 'var(--color-accent)'
+                  )}
+                </div>
+              </div>
+            </OverlaySection>
+          </>
+        ) : (
+          <OverlayEmptyState
+            message="No phage loaded."
+            hint="Load a phage genome to visualize packaging pressure along the sequence."
+          />
         )}
-      </div>
+      </OverlayStack>
     </Overlay>
   );
 }

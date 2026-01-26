@@ -23,6 +23,11 @@ import { Overlay } from './Overlay';
 import { useOverlay } from './OverlayProvider';
 import { AnalysisPanelSkeleton } from '../ui/Skeleton';
 import { HeatmapCanvas } from '../primitives/HeatmapCanvas';
+import {
+  OverlayLoadingState,
+  OverlayEmptyState,
+  OverlayErrorState,
+} from './primitives';
 import type { ColorScale, HeatmapHover } from '../primitives/types';
 
 type Lifecycle = 'lytic' | 'temperate' | 'unknown';
@@ -557,7 +562,7 @@ export function CocktailCompatibilityOverlay({
 
   if (!isOpen('cocktailCompatibility')) return null;
 
-  const overlayStyle: React.CSSProperties = { padding: '1rem', display: 'flex', flexDirection: 'column', gap: '1rem', color: colors.text, fontFamily: "'JetBrains Mono', monospace", fontSize: '0.85rem' };
+  const overlayStyle: React.CSSProperties = { padding: '1rem', display: 'flex', flexDirection: 'column', gap: '1rem', color: colors.text, fontSize: '0.85rem' };
   const panelStyle: React.CSSProperties = { padding: '0.75rem', backgroundColor: colors.backgroundAlt, border: '1px solid ' + colors.borderLight, borderRadius: '6px' };
   const selectStyle: React.CSSProperties = { padding: '0.25rem', backgroundColor: colors.backgroundAlt, color: colors.text, border: '1px solid ' + colors.borderLight, borderRadius: '4px' };
   const btnStyle: React.CSSProperties = { padding: '0.25rem 0.5rem', borderRadius: '4px', border: '1px solid ' + colors.borderLight, backgroundColor: colors.background, color: colors.text, cursor: 'pointer', fontSize: '0.75rem' };
@@ -571,11 +576,19 @@ export function CocktailCompatibilityOverlay({
         </div>
 
         {loading ? (
-          <AnalysisPanelSkeleton message="Loading phages + domain annotations..." rows={3} />
+          <OverlayLoadingState message="Loading phages and domain annotations...">
+            <AnalysisPanelSkeleton rows={3} />
+          </OverlayLoadingState>
         ) : error ? (
-          <div style={{ ...panelStyle, color: '#ef4444' }}>{error}</div>
+          <OverlayErrorState
+            message="Failed to load cocktail data"
+            details={error}
+          />
         ) : !matrix || phages.length === 0 ? (
-          <div style={{ padding: '2rem', textAlign: 'center', color: colors.textMuted }}>No phages loaded.</div>
+          <OverlayEmptyState
+            message="No phages loaded"
+            hint="Cocktail compatibility requires multiple phages with protein domain annotations."
+          />
         ) : (
           <>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.75rem', alignItems: 'center' }}>
@@ -634,15 +647,15 @@ export function CocktailCompatibilityOverlay({
                 <div style={{ fontSize: '0.75rem', color: colors.textMuted, marginBottom: '0.25rem' }}>Pairwise compatibility (click a cell)</div>
                 <HeatmapCanvas width={Math.min(520, Math.max(320, matrix.n * 38))} height={Math.min(520, Math.max(320, matrix.n * 38))} matrix={{ rows: matrix.n, cols: matrix.n, values: matrix.values, min: -1, max: 1 }} colorScale={compatibilityColorScale} onHover={setHover} onClick={(info) => setSelectedPair({ row: info.row, col: info.col })} ariaLabel="Cocktail compatibility matrix" />
                 <div style={{ marginTop: '0.5rem', fontSize: '0.75rem', color: colors.textMuted }}>
-                  {activePair && activeDetails ? (
-                    <>
-                      <span style={{ color: colors.text }}>{phages[activePair.row]?.name ?? '—'}</span>{' \u2194 '}
-                      <span style={{ color: colors.text }}>{phages[activePair.col]?.name ?? '—'}</span>{' \u2022 score '}
-                      <span style={{ color: colors.text }}>{formatSigned(activeDetails.score)}</span>{' \u2022 domain sim '}
-                      <span style={{ color: colors.text }}>{activeDetails.domainSimilarity.toFixed(2)}</span>
-                    </>
-                  ) : 'Hover a cell to see a pair summary'}
-                </div>
+	                  {activePair && activeDetails ? (
+	                    <>
+	                      <span style={{ color: colors.text }}>{phages[activePair.row]?.name ?? '—'}</span>{' \u2194 '}
+	                      <span style={{ color: colors.text }}>{phages[activePair.col]?.name ?? '—'}</span>{' \u2022 score '}
+	                      <span className="font-data" style={{ color: colors.text }}>{formatSigned(activeDetails.score)}</span>{' \u2022 domain sim '}
+	                      <span className="font-data" style={{ color: colors.text }}>{activeDetails.domainSimilarity.toFixed(2)}</span>
+	                    </>
+	                  ) : 'Hover a cell to see a pair summary'}
+	                </div>
               </div>
               <div style={{ ...panelStyle, flex: '1 1 340px', minWidth: 320, maxWidth: 520 }}>
                 <div style={{ color: colors.primary, marginBottom: '0.5rem' }}>Pair explanation</div>
@@ -652,31 +665,45 @@ export function CocktailCompatibilityOverlay({
                       {phages[activePair.row]?.name ?? '—'} × {phages[activePair.col]?.name ?? '—'}{' '}
                       <span style={{ color: activeDetails.compatible ? '#22c55e' : '#ef4444' }}>{activeDetails.compatible ? 'COMPATIBLE' : 'INCOMPATIBLE'}</span>
                     </div>
-                    <div style={{ color: colors.textMuted, fontSize: '0.75rem', marginBottom: '0.75rem' }}>
-                      score {formatSigned(activeDetails.score)} • threshold {formatSigned(threshold)} • shared {activeDetails.sharedDistinctDomains} domains
-                    </div>
+	                    <div style={{ color: colors.textMuted, fontSize: '0.75rem', marginBottom: '0.75rem' }}>
+	                      score{' '}
+	                      <span className="font-data" style={{ color: colors.text }}>
+	                        {formatSigned(activeDetails.score)}
+	                      </span>{' '}
+	                      • threshold{' '}
+	                      <span className="font-data" style={{ color: colors.text }}>
+	                        {formatSigned(threshold)}
+	                      </span>{' '}
+	                      • shared{' '}
+	                      <span className="font-data" style={{ color: colors.text }}>
+	                        {activeDetails.sharedDistinctDomains}
+	                      </span>{' '}
+	                      domains
+	                    </div>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
-                      {activeDetails.factors.map((f) => (
-                        <div key={f.name} style={{ display: 'flex', justifyContent: 'space-between', gap: '0.75rem' }}>
-                          <div style={{ color: colors.text }}>{f.name}<div style={{ color: colors.textMuted, fontSize: '0.75rem' }}>{f.reason}</div></div>
-                          <div style={{ color: f.contribution >= 0 ? '#22c55e' : '#ef4444', fontFamily: 'monospace' }}>{formatSigned(f.contribution)}</div>
-                        </div>
-                      ))}
-                    </div>
-                  </>
+	                      {activeDetails.factors.map((f) => (
+	                        <div key={f.name} style={{ display: 'flex', justifyContent: 'space-between', gap: '0.75rem' }}>
+	                          <div style={{ color: colors.text }}>{f.name}<div style={{ color: colors.textMuted, fontSize: '0.75rem' }}>{f.reason}</div></div>
+	                          <div className="font-data" style={{ color: f.contribution >= 0 ? '#22c55e' : '#ef4444' }}>{formatSigned(f.contribution)}</div>
+	                        </div>
+	                      ))}
+	                    </div>
+	                  </>
                 )}
               </div>
             </div>
 
             <div style={panelStyle}>
               <div style={{ color: colors.primary, marginBottom: '0.5rem' }}>Greedy cocktail optimizer</div>
-              {!optimizer ? (<div style={{ color: colors.textMuted }}>No solution (check inputs).</div>) : (
+              {!optimizer ? (
+                <div style={{ color: colors.textMuted }}>No solution (check inputs).</div>
+              ) : (
                 <>
-                  <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', marginBottom: '0.5rem' }}>
-                    <div style={{ color: colors.textMuted }}>Coverage: <span style={{ color: colors.text }}>{optimizer.coverage.length}/{optimizer.targetCount} ({Math.round(optimizer.coveragePercent)}%)</span></div>
-                    <div style={{ color: colors.textMuted }}>Avg pair compat: <span style={{ color: colors.text }}>{formatSigned(optimizer.avgCompat)}</span></div>
-                    <div style={{ color: colors.textMuted }}>Selected: <span style={{ color: colors.text }}>{optimizer.chosen.length}/{maxSize}</span></div>
-                  </div>
+	                  <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', marginBottom: '0.5rem' }}>
+	                    <div style={{ color: colors.textMuted }}>Coverage: <span className="font-data" style={{ color: colors.text }}>{optimizer.coverage.length}/{optimizer.targetCount} ({Math.round(optimizer.coveragePercent)}%)</span></div>
+	                    <div style={{ color: colors.textMuted }}>Avg pair compat: <span className="font-data" style={{ color: colors.text }}>{formatSigned(optimizer.avgCompat)}</span></div>
+	                    <div style={{ color: colors.textMuted }}>Selected: <span className="font-data" style={{ color: colors.text }}>{optimizer.chosen.length}/{maxSize}</span></div>
+	                  </div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
                     {optimizer.chosen.length === 0 ? (<div style={{ color: colors.textMuted }}>No compatible phage adds new coverage under current constraints.</div>) : (
                       optimizer.chosen.map((idx) => {

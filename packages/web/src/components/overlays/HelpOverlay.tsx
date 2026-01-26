@@ -15,7 +15,7 @@ import React, { useMemo, useState, useCallback } from 'react';
 import { useExperienceLevel, usePhageStore } from '@phage-explorer/state';
 import { useHotkey } from '../../hooks';
 import { Overlay } from './Overlay';
-import { useOverlay } from './OverlayProvider';
+import { useOverlay, useIsTopOverlay } from './OverlayProvider';
 import {
   OverlayStack,
   OverlayToolbar,
@@ -135,6 +135,7 @@ export function HelpOverlay(): React.ReactElement | null {
   const [detailLevel, setDetailLevel] = useState<'essential' | 'detailed'>(defaultDetail);
 
   const overlayOpen = isOpen('help');
+  const isTopmost = useIsTopOverlay('help');
 
   // Cycle through detail levels and promote experience if user explores advanced shortcuts
   const cycleDetailLevel = useCallback(() => {
@@ -154,10 +155,11 @@ export function HelpOverlay(): React.ReactElement | null {
     { modes: ['NORMAL'] }
   );
 
+  // Overlay-internal hotkeys only active when this overlay is topmost
   useHotkey(
     ActionIds.HelpToggleDetail,
     cycleDetailLevel,
-    { modes: ['NORMAL'], enabled: overlayOpen }
+    { modes: ['NORMAL'], enabled: overlayOpen && isTopmost }
   );
 
   const hotkeys = useMemo(() => {
@@ -195,7 +197,13 @@ export function HelpOverlay(): React.ReactElement | null {
       <OverlayStack>
         {/* Detail level toggle with experience level info */}
         <OverlayToolbar>
-          <span style={{ color: 'var(--color-text-dim)' }}>
+          <span
+            style={{
+              color: 'var(--overlay-description-color)',
+              fontSize: 'var(--overlay-description-size)',
+              lineHeight: 'var(--overlay-description-line-height)',
+            }}
+          >
             {detailLevel === 'essential' ? 'Essential' : 'All'} shortcuts
             {experienceLevel !== 'novice' && (
               <> • {experienceLevel.charAt(0).toUpperCase() + experienceLevel.slice(1)} user</>
@@ -207,10 +215,12 @@ export function HelpOverlay(): React.ReactElement | null {
               background: 'var(--color-accent)',
               color: 'var(--color-background)',
               border: 'none',
-              padding: '0.25rem 0.75rem',
+              padding: 'var(--chrome-padding-compact-y) var(--chrome-padding-x)',
               borderRadius: 'var(--radius-sm)',
               cursor: 'pointer',
-              fontSize: '0.85rem',
+              fontSize: 'var(--overlay-body-size)',
+              fontWeight: 'var(--font-medium)',
+              transition: 'opacity var(--duration-fast) var(--ease-out)',
             }}
           >
             {detailLevel === 'essential' ? 'Show all (D)' : 'Show essential (D)'}

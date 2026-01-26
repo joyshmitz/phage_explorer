@@ -24,6 +24,10 @@ import { ActionIds } from '../../keyboard';
 import { Overlay } from './Overlay';
 import { useOverlay } from './OverlayProvider';
 import { AnalysisPanelSkeleton } from '../ui/Skeleton';
+import {
+  OverlayLoadingState,
+  OverlayEmptyState,
+} from './primitives';
 import { IconDna, IconTarget, IconAlertTriangle, IconRepeat } from '../ui';
 
 // Confidence color scale
@@ -114,7 +118,6 @@ export function ProphageExcisionOverlay({
         style={{
           padding: '1rem',
           color: colors.text,
-          fontFamily: "'JetBrains Mono', monospace",
           fontSize: '0.85rem',
         }}
       >
@@ -146,27 +149,17 @@ export function ProphageExcisionOverlay({
 
         {/* Loading State */}
         {loading && (
-          <AnalysisPanelSkeleton
-            message="Analyzing prophage integration sites..."
-            rows={5}
-          />
+          <OverlayLoadingState message="Analyzing prophage integration sites...">
+            <AnalysisPanelSkeleton rows={5} />
+          </OverlayLoadingState>
         )}
 
         {/* No Data State */}
         {!loading && !analysis && (
-          <div
-            style={{
-              padding: '2rem',
-              textAlign: 'center',
-              color: colors.textMuted,
-            }}
-          >
-            <IconAlertTriangle
-              size={32}
-              style={{ marginBottom: '0.5rem', opacity: 0.5 }}
-            />
-            <div>No sequence data available</div>
-          </div>
+          <OverlayEmptyState
+            message="No sequence data available"
+            hint={!currentPhage ? 'Select a phage to analyze prophage excision.' : 'Sequence data is required to predict attachment sites.'}
+          />
         )}
 
         {/* Analysis Results */}
@@ -360,12 +353,17 @@ function SummaryCard({
               }}
             >
               Excised region:{' '}
-              {formatPosition(
-                bestPrediction.excisionProduct.excisedRegion.start
-              )}{' '}
-              -{' '}
-              {formatPosition(bestPrediction.excisionProduct.excisedRegion.end)}{' '}
-              ({formatPosition(bestPrediction.excisionProduct.circularGenomeSize)}{' '}
+              <span className="font-data">
+                {formatPosition(
+                  bestPrediction.excisionProduct.excisedRegion.start
+                )}{' '}
+                -{' '}
+                {formatPosition(bestPrediction.excisionProduct.excisedRegion.end)}
+              </span>{' '}
+              (
+              <span className="font-data">
+                {formatPosition(bestPrediction.excisionProduct.circularGenomeSize)}
+              </span>{' '}
               bp circular)
             </div>
           )}
@@ -504,7 +502,7 @@ function AttSiteChip({
       }}
     >
       <span style={{ fontWeight: 'bold' }}>{site.type}</span>
-      <span style={{ color: colors.textMuted }}>
+      <span className="font-data" style={{ color: colors.textMuted }}>
         @{formatPosition(site.position)}
       </span>
     </div>
@@ -670,7 +668,7 @@ function IntegrasesView({
               color: colors.textMuted,
             }}
           >
-            <span>
+            <span className="font-data">
               {formatPosition(int.gene.startPos)} -{' '}
               {formatPosition(int.gene.endPos)}
             </span>
@@ -844,10 +842,11 @@ function AttSiteRow({
           alignItems: 'center',
         }}
       >
-        <span style={{ fontSize: '0.7rem' }}>
+        <span className="font-data" style={{ fontSize: '0.7rem' }}>
           @{formatPosition(site.position)}
         </span>
         <span
+          className="font-data"
           style={{
             fontSize: '0.6rem',
             padding: '0.1rem 0.25rem',
@@ -860,9 +859,9 @@ function AttSiteRow({
         </span>
       </div>
       <div
+        className="font-data"
         style={{
           marginTop: '0.25rem',
-          fontFamily: 'monospace',
           fontSize: '0.6rem',
           color: colors.textMuted,
           wordBreak: 'break-all',
@@ -872,7 +871,14 @@ function AttSiteRow({
         {site.sequence.length > 20 && '...'}
       </div>
       <div style={{ marginTop: '0.2rem', fontSize: '0.6rem', color: colors.textMuted }}>
-        partner @{formatPosition(site.partnerPosition)} · mismatches {site.hammingDistance}/{site.length}
+        partner{' '}
+        <span className="font-data">
+          @{formatPosition(site.partnerPosition)}
+        </span>{' '}
+        · mismatches{' '}
+        <span className="font-data">
+          {site.hammingDistance}/{site.length}
+        </span>
       </div>
       {site.matchesKnownCore && (
         <div
@@ -978,39 +984,39 @@ function HotspotsView({
         </div>
       </div>
 
-      {/* Table */}
-      <div style={{ border: `1px solid ${colors.border}`, borderRadius: '6px', overflow: 'hidden' }}>
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: '90px 60px 90px 1fr',
-            background: colors.background + '80',
-            borderBottom: `1px solid ${colors.border}`,
-            padding: '0.5rem 0.75rem',
-            fontSize: '0.7rem',
-            fontFamily: 'monospace',
-            color: colors.textMuted,
-          }}
-        >
+	      {/* Table */}
+	      <div style={{ border: `1px solid ${colors.border}`, borderRadius: '6px', overflow: 'hidden' }}>
+	        <div
+	          className="font-data"
+	          style={{
+	            display: 'grid',
+	            gridTemplateColumns: '90px 60px 90px 1fr',
+	            background: colors.background + '80',
+	            borderBottom: `1px solid ${colors.border}`,
+	            padding: '0.5rem 0.75rem',
+	            fontSize: '0.7rem',
+	            color: colors.textMuted,
+	          }}
+	        >
           <div>Pos</div>
           <div>Str</div>
           <div>Score</div>
           <div>Notes</div>
         </div>
 
-        {hotspots.slice(0, 25).map((h, idx) => (
-          <div
-            key={`${h.position}-${h.strand}-${idx}`}
-            style={{
-              display: 'grid',
-              gridTemplateColumns: '90px 60px 90px 1fr',
-              padding: '0.5rem 0.75rem',
-              borderBottom: idx < Math.min(24, hotspots.length - 1) ? `1px solid ${colors.border}` : 'none',
-              fontFamily: 'monospace',
-              fontSize: '0.75rem',
-              color: colors.text,
-            }}
-          >
+	        {hotspots.slice(0, 25).map((h, idx) => (
+	          <div
+	            className="font-data"
+	            key={`${h.position}-${h.strand}-${idx}`}
+	            style={{
+	              display: 'grid',
+	              gridTemplateColumns: '90px 60px 90px 1fr',
+	              padding: '0.5rem 0.75rem',
+	              borderBottom: idx < Math.min(24, hotspots.length - 1) ? `1px solid ${colors.border}` : 'none',
+	              fontSize: '0.75rem',
+	              color: colors.text,
+	            }}
+	          >
             <div>@{formatPosition(h.position)}</div>
             <div style={{ color: colors.textMuted }}>{h.strand}</div>
             <div style={{ color: scoreColor(h.score), fontWeight: 'bold' }}>{Math.round(h.score * 100)}%</div>

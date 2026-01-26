@@ -1,10 +1,16 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Overlay } from './Overlay';
 import { useOverlay } from './OverlayProvider';
 import { useTheme } from '../../hooks/useTheme';
 import { useReducedMotion } from '../../hooks/useReducedMotion';
 import { useBeginnerMode } from '../../education';
-import { useWebPreferences } from '../../store/createWebStore';
+import {
+  detectCoarsePointerDevice,
+  getEffectiveBackgroundEffects,
+  getEffectiveGlow,
+  getEffectiveScanlines,
+  useWebPreferences,
+} from '../../store/createWebStore';
 import { useDatabase } from '../../hooks/useDatabase';
 import { IconContrast, IconLearn, IconSettings, IconDatabase } from '../ui';
 
@@ -18,8 +24,30 @@ export function SettingsOverlay(): React.ReactElement | null {
   const setBackgroundEffects = useWebPreferences((s) => s.setBackgroundEffects);
   const scanlines = useWebPreferences((s) => s.scanlines);
   const setScanlines = useWebPreferences((s) => s.setScanlines);
+  const scanlineIntensity = useWebPreferences((s) => s.scanlineIntensity);
+  const setScanlineIntensity = useWebPreferences((s) => s.setScanlineIntensity);
   const glow = useWebPreferences((s) => s.glow);
   const setGlow = useWebPreferences((s) => s.setGlow);
+  const fxSafeMode = useWebPreferences((s) => s.fxSafeMode);
+  const setFxSafeMode = useWebPreferences((s) => s.setFxSafeMode);
+  const coarsePointer = useMemo(() => detectCoarsePointerDevice(), []);
+  const narrowViewport = useMemo(() => {
+    if (typeof window === 'undefined') return false;
+    try {
+      return window.matchMedia?.('(max-width: 1100px)')?.matches ?? false;
+    } catch {
+      return false;
+    }
+  }, []);
+
+  const effectiveBackgroundEffects = getEffectiveBackgroundEffects(backgroundEffects, {
+    reducedMotion,
+    coarsePointer,
+    safeMode: fxSafeMode,
+    narrowViewport,
+  });
+  const effectiveScanlines = getEffectiveScanlines(scanlines, { reducedMotion, coarsePointer, safeMode: fxSafeMode });
+  const effectiveGlow = getEffectiveGlow(glow, { reducedMotion, coarsePointer, safeMode: fxSafeMode });
 
   const { reload, isFetching } = useDatabase();
   const [reloadStatus, setReloadStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
@@ -107,10 +135,32 @@ export function SettingsOverlay(): React.ReactElement | null {
 
           <div className="settings-row">
             <div className="settings-row-text">
+              <div className="settings-row-label">Performance safe mode</div>
+              <div className="settings-row-desc">
+                Temporarily disables heavy visual effects if scrolling becomes janky. Session-only (does not change your settings).
+              </div>
+            </div>
+            <button
+              type="button"
+              className="btn"
+              onClick={() => setFxSafeMode(!fxSafeMode)}
+              aria-pressed={fxSafeMode}
+              aria-label={fxSafeMode ? 'Disable performance safe mode' : 'Enable performance safe mode'}
+            >
+              {fxSafeMode ? 'On' : 'Off'}
+            </button>
+          </div>
+
+          <div className="settings-row">
+            <div className="settings-row-text">
               <div className="settings-row-label">Background effects</div>
               <div className="settings-row-desc">
-                Matrix rain and CRT overlay.
+                Matrix rain background. CRT overlay requires Scanlines.
                 {reducedMotion ? ' Suppressed by your Reduced Motion preference.' : ''}
+                {coarsePointer ? ' Suppressed on touch devices.' : ''}
+                {fxSafeMode ? ' Suppressed by Safe Mode.' : ''}
+                {narrowViewport ? ' Suppressed on smaller screens.' : ''}
+                {backgroundEffects && !effectiveBackgroundEffects ? ' (Currently suppressed)' : ''}
               </div>
             </div>
             <button
@@ -128,8 +178,11 @@ export function SettingsOverlay(): React.ReactElement | null {
             <div className="settings-row-text">
               <div className="settings-row-label">Scanlines</div>
               <div className="settings-row-desc">
-                Subtle scanline overlay.
+                Subtle CRT scanlines on overlays and the sequence view.
                 {reducedMotion ? ' Suppressed by your Reduced Motion preference.' : ''}
+                {coarsePointer ? ' Suppressed on touch devices.' : ''}
+                {fxSafeMode ? ' Suppressed by Safe Mode.' : ''}
+                {scanlines && !effectiveScanlines ? ' (Currently suppressed)' : ''}
               </div>
             </div>
             <button
@@ -146,7 +199,13 @@ export function SettingsOverlay(): React.ReactElement | null {
           <div className="settings-row">
             <div className="settings-row-text">
               <div className="settings-row-label">Glow</div>
-              <div className="settings-row-desc">Adds a subtle glow to diff highlights.</div>
+              <div className="settings-row-desc">
+                Adds subtle bloom to diff highlights.
+                {reducedMotion ? ' Suppressed by your Reduced Motion preference.' : ''}
+                {coarsePointer ? ' Suppressed on touch devices.' : ''}
+                {fxSafeMode ? ' Suppressed by Safe Mode.' : ''}
+                {glow && !effectiveGlow ? ' (Currently suppressed)' : ''}
+              </div>
             </div>
             <button
               type="button"
@@ -157,6 +216,42 @@ export function SettingsOverlay(): React.ReactElement | null {
             >
               {glow ? 'On' : 'Off'}
             </button>
+          </div>
+
+          <div className="settings-row">
+            <div className="settings-row-text">
+              <div className="settings-row-label">Scanline intensity</div>
+              <div className="settings-row-desc">
+                How strong scanlines appear (0–8%).
+                {scanlines && !effectiveScanlines ? ' Currently suppressed.' : ''}
+              </div>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', minWidth: '200px' }}>
+              <input
+                type="range"
+                min={0}
+                max={0.08}
+                step={0.01}
+                value={scanlineIntensity}
+                onChange={(e) => setScanlineIntensity(parseFloat(e.target.value))}
+                aria-label="Adjust scanline intensity"
+                style={{
+                  width: '140px',
+                  height: '4px',
+                  accentColor: 'var(--color-accent)',
+                }}
+              />
+              <span
+                style={{
+                  width: '4ch',
+                  textAlign: 'right',
+                  fontFamily: 'var(--font-mono)',
+                  color: 'var(--color-text-dim)',
+                }}
+              >
+                {Math.round(scanlineIntensity * 100)}%
+              </span>
+            </div>
           </div>
         </section>
 

@@ -19,6 +19,11 @@ import { Overlay } from './Overlay';
 import { useOverlay } from './OverlayProvider';
 import { AnalysisPanelSkeleton } from '../ui/Skeleton';
 import type { HilbertWorkerAPI, HilbertWorkerResult } from '../../workers/hilbert.worker';
+import {
+  OverlayLoadingState,
+  OverlayEmptyState,
+  OverlayErrorState,
+} from './primitives';
 
 interface HilbertOverlayProps {
   repository: PhageRepository | null;
@@ -127,10 +132,12 @@ export function HilbertOverlay({ repository, currentPhage }: HilbertOverlayProps
   const workerRef = useRef<Worker | null>(null);
   const workerApiRef = useRef<Comlink.Remote<HilbertWorkerAPI> | null>(null);
   const [sequence, setSequence] = useState<string>('');
-  const [loading, setLoading] = useState(false);
+  const [sequenceLoading, setSequenceLoading] = useState(false);
+  const [computeLoading, setComputeLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [renderResult, setRenderResult] = useState<HilbertRender | null>(null);
   const [colorMode, setColorMode] = useState<ColorMode>('nucleotide');
+  const loading = sequenceLoading || computeLoading;
 
   useHotkey(
     ActionIds.OverlayHilbert,
@@ -172,10 +179,14 @@ export function HilbertOverlay({ repository, currentPhage }: HilbertOverlayProps
 
   // Fetch full genome when overlay opens
   useEffect(() => {
-    if (!isOpen('hilbert')) return;
+    if (!isOpen('hilbert')) {
+      setSequenceLoading(false);
+      return;
+    }
     if (!repository || !currentPhage) {
       setSequence('');
-      setLoading(false);
+      setSequenceLoading(false);
+      setComputeLoading(false);
       return;
     }
 
@@ -184,11 +195,11 @@ export function HilbertOverlay({ repository, currentPhage }: HilbertOverlayProps
     const cached = sequenceCache.current.get(phageId);
     if (cached) {
       setSequence(cached);
-      setLoading(false);
+      setSequenceLoading(false);
       return;
     }
 
-    setLoading(true);
+    setSequenceLoading(true);
     setError(null);
     void (async () => {
       try {
@@ -206,13 +217,14 @@ export function HilbertOverlay({ repository, currentPhage }: HilbertOverlayProps
         }
       } finally {
         if (!cancelled) {
-          setLoading(false);
+          setSequenceLoading(false);
         }
       }
     })();
 
     return () => {
       cancelled = true;
+      setSequenceLoading(false);
     };
   }, [isOpen, repository, currentPhage]);
 
@@ -220,11 +232,12 @@ export function HilbertOverlay({ repository, currentPhage }: HilbertOverlayProps
   useEffect(() => {
     if (!isOpen('hilbert') || !sequence) {
       setRenderResult(null);
+      setComputeLoading(false);
       return;
     }
 
     let cancelled = false;
-    setLoading(true);
+    setComputeLoading(true);
     setError(null);
 
     const colorMap = buildColorMap(theme, colorMode);
@@ -268,7 +281,7 @@ export function HilbertOverlay({ repository, currentPhage }: HilbertOverlayProps
         setRenderResult(null);
       } finally {
         if (!cancelled) {
-          setLoading(false);
+          setComputeLoading(false);
         }
       }
     };
@@ -277,6 +290,7 @@ export function HilbertOverlay({ repository, currentPhage }: HilbertOverlayProps
 
     return () => {
       cancelled = true;
+      setComputeLoading(false);
     };
   }, [isOpen, sequence, theme, colorMode]);
 
@@ -337,16 +351,22 @@ export function HilbertOverlay({ repository, currentPhage }: HilbertOverlayProps
           Blocks and color shifts surface compositional domains, repeats, and abrupt transitions.
         </div>
 
-        {loading && <AnalysisPanelSkeleton />}
+        {loading && (
+          <OverlayLoadingState message="Computing Hilbert curve...">
+            <AnalysisPanelSkeleton />
+          </OverlayLoadingState>
+        )}
         {!loading && statusMessage && (
-          <div style={{ color: colors.textDim }}>
-            {statusMessage}
-          </div>
+          <OverlayEmptyState
+            message={statusMessage}
+            hint={!repository ? 'Wait for database initialization.' : 'Select a phage from the list.'}
+          />
         )}
         {error && (
-          <div style={{ color: colors.error }}>
-            {error}
-          </div>
+          <OverlayErrorState
+            message="Failed to render Hilbert curve"
+            details={error}
+          />
         )}
 
         <div

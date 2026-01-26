@@ -165,7 +165,7 @@ export function ActionDrawer({ isOpen, onClose }: ActionDrawerProps): React.Reac
       minHeight={35}
       maxHeight={85}
     >
-      <div className="action-drawer" id="action-drawer">
+      <div className="action-drawer" id="action-drawer" data-testid="action-drawer">
         {ACTION_DRAWER_SECTIONS.map((category) => (
           <div key={category.id} className="action-drawer__category">
             <h3 className="action-drawer__category-label">{category.label}</h3>
@@ -202,6 +202,7 @@ export function ActionDrawer({ isOpen, onClose }: ActionDrawerProps): React.Reac
                     disabled={isDisabled}
                     aria-pressed={active}
                     data-action-id={item.actionId}
+                    data-testid={`action-drawer-item-${item.actionId}`}
                   >
                     <span className="action-drawer__item-icon">{icon}</span>
                     <span className="action-drawer__item-label">{label}</span>

@@ -1,13 +1,12 @@
 import { describe, expect, it } from 'bun:test';
 import { ActionRegistry, ActionIds, ActionRegistryList, type ActionDefinition } from '../../keyboard/actionRegistry';
-import { formatKeyCombo } from '../../keyboard/types';
+import { formatPrimaryActionShortcut } from '../../keyboard/actionSurfaces';
 
-function getPrimaryShortcut(def: ActionDefinition): string | undefined {
-  if (Array.isArray(def.defaultShortcut)) {
-    if (def.defaultShortcut.length === 0) return undefined;
-    return formatKeyCombo(def.defaultShortcut[0]);
-  }
-  return formatKeyCombo(def.defaultShortcut);
+function getPrimaryShortcut(def: ActionDefinition): string | null {
+  // Keep test expectations in sync with command palette UI:
+  // - selection logic lives in formatPrimaryActionShortcut()
+  // - empty shortcut arrays are allowed (returns null)
+  return formatPrimaryActionShortcut(def, 'default');
 }
 
 describe('CommandPalette', () => {
@@ -29,9 +28,9 @@ describe('CommandPalette', () => {
     expect(getPrimaryShortcut(ActionRegistry[ActionIds.OverlayHelp])).toBe('?');
 
     // Export actions intentionally have no default shortcut today.
-    expect(getPrimaryShortcut(ActionRegistry[ActionIds.ExportFasta])).toBeUndefined();
-    expect(getPrimaryShortcut(ActionRegistry[ActionIds.ExportCopy])).toBeUndefined();
-    expect(getPrimaryShortcut(ActionRegistry[ActionIds.ExportJson])).toBeUndefined();
+    expect(getPrimaryShortcut(ActionRegistry[ActionIds.ExportFasta])).toBeNull();
+    expect(getPrimaryShortcut(ActionRegistry[ActionIds.ExportCopy])).toBeNull();
+    expect(getPrimaryShortcut(ActionRegistry[ActionIds.ExportJson])).toBeNull();
   });
 
   describe('Command Palette Shortcut Drift Prevention', () => {
@@ -77,7 +76,7 @@ describe('CommandPalette', () => {
           def.overlayAction,
           `Overlay action ${def.id} missing overlayAction - command palette cannot auto-generate handler`
         ).toBeDefined();
-        expect(['open', 'toggle']).toContain(def.overlayAction);
+        expect(['open', 'toggle']).toContain(def.overlayAction!);
       }
     });
 

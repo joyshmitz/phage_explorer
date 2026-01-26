@@ -21,6 +21,10 @@ import { useOverlay } from './OverlayProvider';
 import { AnalysisPanelSkeleton } from '../ui/Skeleton';
 import { InfoButton } from '../ui';
 import { GenomeTrack } from './primitives/GenomeTrack';
+import {
+  OverlayLoadingState,
+  OverlayEmptyState,
+} from './primitives';
 import type { GenomeTrackSegment, GenomeTrackInteraction } from './primitives/types';
 import {
   analyzeHGTProvenance,
@@ -397,11 +401,14 @@ export function HGTOverlay({
         </div>
 
         {loading ? (
-          <AnalysisPanelSkeleton />
+          <OverlayLoadingState message="Analyzing horizontal gene transfer patterns...">
+            <AnalysisPanelSkeleton />
+          </OverlayLoadingState>
         ) : !provenanceAnalysis ? (
-          <div style={{ padding: '2rem', textAlign: 'center', color: colors.textMuted }}>
-            {!sequence ? 'No sequence loaded' : 'Sequence too short for analysis'}
-          </div>
+          <OverlayEmptyState
+            message={!sequence ? 'No sequence loaded' : 'Sequence too short for analysis'}
+            hint={!sequence ? 'Select a phage to analyze.' : 'HGT detection requires at least 10kb of sequence data.'}
+          />
         ) : (
           <>
             {/* Controls */}

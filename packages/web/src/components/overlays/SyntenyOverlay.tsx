@@ -20,6 +20,10 @@ import { useOverlay } from './OverlayProvider';
 import { AnalysisPanelSkeleton } from '../ui/Skeleton';
 import { InfoButton } from '../ui';
 import { GenomeTrack } from './primitives/GenomeTrack';
+import {
+  OverlayLoadingState,
+  OverlayErrorState,
+} from './primitives';
 import { HeatmapCanvas } from '../primitives/HeatmapCanvas';
 import type { GenomeTrackSegment, GenomeTrackInteraction, HeatmapHover, ColorScale } from '../primitives/types';
 
@@ -375,11 +379,14 @@ export function SyntenyOverlay({
         </div>
 
         {loading ? (
-          <AnalysisPanelSkeleton />
+          <OverlayLoadingState message="Computing gene similarity matrix...">
+            <AnalysisPanelSkeleton />
+          </OverlayLoadingState>
         ) : error ? (
-          <div style={{ padding: '1rem', color: '#ef4444', backgroundColor: colors.backgroundAlt, borderRadius: '4px' }}>
-            {error}
-          </div>
+          <OverlayErrorState
+            message="Analysis failed"
+            details={error}
+          />
         ) : !referencePhage ? (
           <div style={{ padding: '2rem', textAlign: 'center', color: colors.textMuted }}>
             Select a reference phage to compare

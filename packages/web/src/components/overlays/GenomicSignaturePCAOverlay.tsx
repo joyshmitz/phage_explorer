@@ -14,9 +14,14 @@ import { useTheme } from '../../hooks/useTheme';
 import { useHotkey } from '../../hooks';
 import { ActionIds } from '../../keyboard';
 import { Overlay } from './Overlay';
-import { useOverlay } from './OverlayProvider';
+import { useOverlay, useIsTopOverlay } from './OverlayProvider';
 import { AnalysisPanelSkeleton } from '../ui/Skeleton';
 import { ScatterCanvas } from './primitives/ScatterCanvas';
+import {
+  OverlayLoadingState,
+  OverlayEmptyState,
+  OverlayErrorState,
+} from './primitives';
 import {
   getTopLoadings,
 } from '@phage-explorer/core';
@@ -120,6 +125,7 @@ export function GenomicSignaturePCAOverlay({
   const [includeReverseComplement, setIncludeReverseComplement] = useState(true);
 
   const overlayOpen = isOpen('genomicSignaturePCA');
+  const isTopmost = useIsTopOverlay('genomicSignaturePCA');
   const kmerDims = 4 ** kmerSize;
 
   // Hotkey to toggle overlay (Alt+P for PCA)
@@ -129,13 +135,14 @@ export function GenomicSignaturePCAOverlay({
     { modes: ['NORMAL'] }
   );
 
+  // Overlay-internal hotkey: only active when this overlay is topmost
   useHotkey(
     ActionIds.AnalysisGenomicSignatureRecenter,
     () => {
       if (!overlayOpen || !currentPhage) return;
       setSelectedPhageId(currentPhage.id);
     },
-    { modes: ['NORMAL'], enabled: overlayOpen }
+    { modes: ['NORMAL'], enabled: overlayOpen && isTopmost }
   );
 
   // Load all phages and compute k-mer vectors when overlay opens
@@ -421,22 +428,21 @@ export function GenomicSignaturePCAOverlay({
         </div>
 
         {loading || pcaLoading ? (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+          <OverlayLoadingState
+            message={loading ? `Computing ${kmerSize}-mer frequencies... ${progress}%` : 'Computing PCA projection...'}
+          >
             <AnalysisPanelSkeleton />
-            <div style={{ color: colors.textMuted, textAlign: 'center', fontSize: '0.85rem' }}>
-              {loading
-                ? `Computing ${kmerSize}-mer frequencies... ${progress}%`
-                : 'Computing PCA projection...'}
-            </div>
-          </div>
+          </OverlayLoadingState>
         ) : error ? (
-          <div style={{ padding: '2rem', textAlign: 'center', color: colors.error }}>
-            {error}
-          </div>
+          <OverlayErrorState
+            message="Analysis failed"
+            details={error}
+          />
         ) : !pcaResult ? (
-          <div style={{ padding: '2rem', textAlign: 'center', color: colors.textMuted }}>
-            Need at least 3 phages for PCA analysis
-          </div>
+          <OverlayEmptyState
+            message="Need at least 3 phages for PCA analysis"
+            hint="Genomic signature PCA requires multiple genomes for comparative analysis."
+          />
         ) : (
           <>
             {/* Controls */}

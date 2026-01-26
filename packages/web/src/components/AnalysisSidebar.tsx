@@ -117,7 +117,7 @@ export function AnalysisSidebar({
   }
 
   return (
-    <aside className={`analysis-sidebar ${className}`} aria-label="Analysis tools">
+    <aside className={`analysis-sidebar ${className}`} aria-label="Analysis tools" data-testid="analysis-sidebar">
       <div className="sidebar-header">
         <h2 className="sidebar-title">
           <IconBeaker size={18} />
@@ -188,6 +188,7 @@ export function AnalysisSidebar({
                           onClick={() => handleToolClick(tool.actionId)}
                           disabled={!hasPhage}
                           title={tool.description}
+                          data-testid={`analysis-tool-${tool.actionId}`}
                         >
                           <span className="tool-name">{action.title}</span>
                           {shortcut && <kbd className="tool-shortcut">{shortcut}</kbd>}

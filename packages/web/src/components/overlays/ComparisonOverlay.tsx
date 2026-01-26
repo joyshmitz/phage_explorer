@@ -2,12 +2,13 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useOverlay } from './OverlayProvider';
 import { Overlay } from './Overlay';
 import { Badge } from '../ui/Badge';
-import { useTheme } from '../../hooks/useTheme';
+import { AnalysisPanelSkeleton } from '../ui/Skeleton';
 import type { PhageRepository } from '../../db';
 import type { GenomeComparisonResult, StructuralVariantCall, StructuralVariantType } from '@phage-explorer/comparison';
 import { formatSimilarity } from '@phage-explorer/comparison';
 import { usePhageStore } from '@phage-explorer/state';
 import DiffHighlighter, { type DiffStats as DiffStatsType } from '../DiffHighlighter';
+import { OverlayEmptyState, OverlayErrorState, OverlayLoadingState, OverlayStack } from './primitives';
 import { SharedSequencePool } from '../../workers/SharedSequencePool';
 import type { ComparisonWorkerMessage } from '../../workers/types';
 
@@ -62,9 +63,7 @@ type ComparisonWorkerPayload = {
 };
 
 export const ComparisonOverlay: React.FC<ComparisonOverlayProps> = ({ repository }) => {
-  const { isOpen, close } = useOverlay();
-  const { theme } = useTheme();
-  const colors = theme.colors;
+  const { isOpen } = useOverlay();
 
   const phages = usePhageStore((s) => s.phages);
   const phageAIndex = usePhageStore((s) => s.comparisonPhageAIndex);
@@ -90,6 +89,7 @@ export const ComparisonOverlay: React.FC<ComparisonOverlayProps> = ({ repository
 
   const phageA = phageAIndex !== null ? phages[phageAIndex] : null;
   const phageB = phageBIndex !== null ? phages[phageBIndex] : null;
+  const canCompare = Boolean(repository && phageA && phageB && phageA.id !== phageB.id);
 
   // Create worker once
   useEffect(() => {
@@ -235,12 +235,12 @@ export const ComparisonOverlay: React.FC<ComparisonOverlayProps> = ({ repository
             </option>
           ))}
         </select>
-        <button className="btn" type="button" onClick={() => void runComparison()} disabled={comparisonLoading}>
+        <button className="btn" type="button" onClick={() => void runComparison()} disabled={comparisonLoading || !canCompare}>
           {comparisonLoading ? 'Comparing…' : 'Run'}
         </button>
       </div>
     );
-  }, [comparisonLoading, phageAIndex, phageBIndex, phages, runComparison, setComparisonPhageA, setComparisonPhageB]);
+  }, [canCompare, comparisonLoading, phageAIndex, phageBIndex, phages, runComparison, setComparisonPhageA, setComparisonPhageB]);
 
   const tabs = useMemo(
     () => [
@@ -256,14 +256,61 @@ export const ComparisonOverlay: React.FC<ComparisonOverlayProps> = ({ repository
   );
 
   const content = useMemo(() => {
+    if (!repository) {
+      return (
+        <OverlayEmptyState
+          message="Database is still loading."
+          hint="Wait a moment for the genome database to finish initializing, then try Comparison again."
+        />
+      );
+    }
+
     if (error) {
-      return <div style={{ color: colors.error }}>Error: {error}</div>;
+      return (
+        <OverlayErrorState
+          message="Comparison failed."
+          details={error}
+          onRetry={() => void runComparison()}
+        />
+      );
     }
     if (comparisonLoading) {
-      return <div className="text-dim">Running comparison…</div>;
+      return (
+        <OverlayLoadingState message="Running comparison…">
+          <AnalysisPanelSkeleton rows={5} />
+        </OverlayLoadingState>
+      );
+    }
+
+    if (!phageA || !phageB) {
+      return (
+        <OverlayEmptyState
+          message="Select two phages to compare."
+          hint="Pick Phage A and Phage B above, then run the comparison."
+        />
+      );
+    }
+
+    if (phageA.id === phageB.id) {
+      return (
+        <OverlayEmptyState
+          message="Pick two different phages."
+          hint="Comparison requires two distinct genomes."
+        />
+      );
     }
     if (!comparisonResult) {
-      return <div className="text-dim">Select two phages and run comparison.</div>;
+      return (
+        <OverlayEmptyState
+          message="Run a comparison to see results."
+          hint="Press “Run” to compute similarity, k-mer overlap, and more."
+          action={
+            <button className="btn" type="button" onClick={() => void runComparison()}>
+              Run comparison
+            </button>
+          }
+        />
+      );
     }
     const formatPct = (value: number, digits = 2) => `${value.toFixed(digits)}%`;
     const summary = comparisonResult.summary;
@@ -623,18 +670,7 @@ export const ComparisonOverlay: React.FC<ComparisonOverlayProps> = ({ repository
         Tab <strong>{comparisonTab}</strong> not yet implemented. Results available in summary above.
       </div>
     );
-  }, [
-    colors.error,
-    comparisonLoading,
-    comparisonResult,
-    comparisonTab,
-    diffMask,
-    diffPositions,
-    diffStats,
-    error,
-    sequenceA,
-    sequenceB,
-  ]);
+  }, [comparisonLoading, comparisonResult, comparisonTab, diffMask, diffPositions, diffStats, error, phageA, phageB, repository, runComparison, sequenceA, sequenceB]);
 
   return (
     <Overlay
@@ -644,7 +680,7 @@ export const ComparisonOverlay: React.FC<ComparisonOverlayProps> = ({ repository
       onClose={() => closeComparison()}
       showBackdrop
     >
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+      <OverlayStack gap="sm">
         {header}
         <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
           {tabs.map((t) => (
@@ -662,14 +698,19 @@ export const ComparisonOverlay: React.FC<ComparisonOverlayProps> = ({ repository
           {content}
         </div>
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem' }}>
-          <button className="btn" type="button" onClick={() => void runComparison()} disabled={comparisonLoading || !phageA || !phageB}>
+          <button
+            className="btn"
+            type="button"
+            onClick={() => void runComparison()}
+            disabled={comparisonLoading || !canCompare}
+          >
             {comparisonLoading ? 'Running…' : 'Re-run'}
           </button>
-          <button className="btn-secondary" type="button" onClick={() => close('comparison')}>
+          <button className="btn-secondary" type="button" onClick={() => closeComparison()}>
             Close
           </button>
         </div>
-      </div>
+      </OverlayStack>
     </Overlay>
   );
 };

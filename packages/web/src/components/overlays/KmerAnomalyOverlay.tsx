@@ -13,7 +13,7 @@ import { useHotkey } from '../../hooks';
 import { ActionIds } from '../../keyboard';
 import { Overlay } from './Overlay';
 import { useOverlay } from './OverlayProvider';
-import { ColorLegend, createLinearColorScale } from './primitives';
+import { ColorLegend, createLinearColorScale, OverlayLoadingState, OverlayEmptyState } from './primitives';
 import { AnalysisPanelSkeleton } from '../ui/Skeleton';
 
 interface KmerAnomalyOverlayProps {
@@ -238,7 +238,9 @@ export function KmerAnomalyOverlay({
       <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
         {/* Loading State */}
         {loading && (
-          <AnalysisPanelSkeleton message="Loading sequence data..." rows={3} />
+          <OverlayLoadingState message="Loading sequence data...">
+            <AnalysisPanelSkeleton rows={3} />
+          </OverlayLoadingState>
         )}
 
         {/* Description */}
@@ -376,9 +378,10 @@ export function KmerAnomalyOverlay({
         )}
 
         {!loading && sequence.length === 0 && (
-          <div style={{ textAlign: 'center', padding: '2rem', color: colors.textMuted }}>
-            No sequence data available. Select a phage to analyze.
-          </div>
+          <OverlayEmptyState
+            message="No sequence data available"
+            hint="Select a phage to analyze k-mer anomalies."
+          />
         )}
       </div>
     </Overlay>

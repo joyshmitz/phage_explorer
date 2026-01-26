@@ -15,6 +15,11 @@ import { ActionIds } from '../../keyboard';
 import { Overlay } from './Overlay';
 import { useOverlay } from './OverlayProvider';
 import { AnalysisPanelSkeleton } from '../ui/Skeleton';
+import {
+  OverlayLoadingState,
+  OverlayEmptyState,
+  OverlayErrorState,
+} from './primitives';
 import { ScatterCanvas } from './primitives/ScatterCanvas';
 import type { DominantProperty, PhasePortraitResult, PortraitPoint } from '@phage-explorer/core';
 import { usePhageStore } from '@phage-explorer/state';
@@ -252,15 +257,19 @@ export function PhasePortraitOverlay({ repository, currentPhage }: PhasePortrait
         </div>
 
         {loading || analysisLoading ? (
-          <AnalysisPanelSkeleton />
+          <OverlayLoadingState message={loading ? 'Loading sequence data...' : 'Computing phase portrait...'}>
+            <AnalysisPanelSkeleton />
+          </OverlayLoadingState>
         ) : analysisError ? (
-          <div style={{ padding: '2rem', textAlign: 'center', color: colors.error }}>
-            {analysisError}
-          </div>
+          <OverlayErrorState
+            message="Phase portrait analysis failed"
+            details={analysisError}
+          />
         ) : !analysis ? (
-          <div style={{ padding: '2rem', textAlign: 'center', color: colors.textMuted }}>
-            {!sequence ? 'No sequence loaded' : 'Sequence too short for analysis'}
-          </div>
+          <OverlayEmptyState
+            message={!sequence ? 'No sequence loaded' : 'Sequence too short for analysis'}
+            hint={!sequence ? 'Select a phage to analyze amino acid properties.' : 'Phase portrait requires sufficient protein sequence length.'}
+          />
         ) : (
           <>
             {/* Controls */}

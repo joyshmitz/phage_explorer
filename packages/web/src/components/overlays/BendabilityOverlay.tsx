@@ -13,6 +13,15 @@ import { ActionIds } from '../../keyboard';
 import { Overlay } from './Overlay';
 import { useOverlay } from './OverlayProvider';
 import { AnalysisPanelSkeleton } from '../ui/Skeleton';
+import {
+  OverlayLoadingState,
+  OverlayEmptyState,
+  OverlayDescription,
+  OverlaySection,
+  OverlayStack,
+  OverlayStatCard,
+  OverlayStatGrid,
+} from './primitives';
 
 interface BendabilityOverlayProps {
   repository: PhageRepository | null;
@@ -51,6 +60,54 @@ function calculateBendability(sequence: string, windowSize = 50): number[] {
   }
 
   return values;
+}
+
+type Rgb = { r: number; g: number; b: number };
+
+function clampChannel(value: number): number {
+  return Math.max(0, Math.min(255, Math.round(value)));
+}
+
+function parseCssColorToRgb(color: string): Rgb | null {
+  const trimmed = color.trim();
+
+  if (trimmed.startsWith('#')) {
+    const hex = trimmed.slice(1);
+    if (hex.length === 3) {
+      const r = Number.parseInt(hex[0] + hex[0], 16);
+      const g = Number.parseInt(hex[1] + hex[1], 16);
+      const b = Number.parseInt(hex[2] + hex[2], 16);
+      if (Number.isNaN(r) || Number.isNaN(g) || Number.isNaN(b)) return null;
+      return { r, g, b };
+    }
+    if (hex.length === 6) {
+      const r = Number.parseInt(hex.slice(0, 2), 16);
+      const g = Number.parseInt(hex.slice(2, 4), 16);
+      const b = Number.parseInt(hex.slice(4, 6), 16);
+      if (Number.isNaN(r) || Number.isNaN(g) || Number.isNaN(b)) return null;
+      return { r, g, b };
+    }
+    return null;
+  }
+
+  const rgbMatch = trimmed.match(
+    /^rgba?\(\s*(?<r>\d{1,3})\s*,\s*(?<g>\d{1,3})\s*,\s*(?<b>\d{1,3})(?:\s*,\s*(?<a>[\d.]+))?\s*\)$/i
+  );
+  if (!rgbMatch?.groups) return null;
+
+  const r = Number(rgbMatch.groups.r);
+  const g = Number(rgbMatch.groups.g);
+  const b = Number(rgbMatch.groups.b);
+  if (!Number.isFinite(r) || !Number.isFinite(g) || !Number.isFinite(b)) return null;
+  return { r: clampChannel(r), g: clampChannel(g), b: clampChannel(b) };
+}
+
+function lerpColor(a: Rgb, b: Rgb, t: number): string {
+  const clampedT = Math.max(0, Math.min(1, t));
+  const r = clampChannel(a.r + (b.r - a.r) * clampedT);
+  const g = clampChannel(a.g + (b.g - a.g) * clampedT);
+  const bChannel = clampChannel(a.b + (b.b - a.b) * clampedT);
+  return `rgb(${r}, ${g}, ${bChannel})`;
 }
 
 export function BendabilityOverlay({
@@ -130,16 +187,17 @@ export function BendabilityOverlay({
     const max = Math.max(...bendability);
     const range = max - min || 1;
 
+    const rigidRgb = parseCssColorToRgb(colors.info) ?? { r: 0, g: 80, b: 255 };
+    const flexibleRgb = parseCssColorToRgb(colors.error) ?? { r: 255, g: 80, b: 0 };
+
     // Draw heatmap-style bars
     const barWidth = width / bendability.length;
     for (let i = 0; i < bendability.length; i++) {
       const normalized = (bendability[i] - min) / range;
       const x = i * barWidth;
 
-      // Color gradient from blue (rigid) to red (flexible)
-      const r = Math.round(normalized * 255);
-      const b = Math.round((1 - normalized) * 255);
-      ctx.fillStyle = `rgb(${r}, 80, ${b})`;
+      // Color gradient from rigid (low) to flexible (high)
+      ctx.fillStyle = lerpColor(rigidRgb, flexibleRgb, normalized);
       ctx.fillRect(x, 0, barWidth + 1, height);
     }
 
@@ -176,88 +234,68 @@ export function BendabilityOverlay({
       hotkey="b"
       size="lg"
     >
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+      <OverlayStack>
         {/* Loading State */}
         {loading && (
-          <AnalysisPanelSkeleton message="Loading sequence data..." rows={3} />
+          <OverlayLoadingState message="Loading sequence data...">
+            <AnalysisPanelSkeleton rows={3} />
+          </OverlayLoadingState>
         )}
 
         {/* Description */}
         {!loading && (
-          <div style={{
-            padding: '0.75rem',
-            backgroundColor: colors.backgroundAlt,
-            borderRadius: '4px',
-            color: colors.textDim,
-            fontSize: '0.9rem',
-          }}>
-            <strong style={{ color: colors.primary }}>DNA Bendability</strong> predicts local flexibility based on
-            dinucleotide step parameters. Flexible regions (red) may be involved in protein binding,
-            nucleosome positioning, or regulatory functions.
-          </div>
+          <OverlayDescription title="DNA Bendability">
+            Predicts local flexibility based on dinucleotide step parameters. Flexible regions (red) may be involved
+            in protein binding, nucleosome positioning, or regulatory functions.
+          </OverlayDescription>
         )}
 
         {/* Stats */}
         {!loading && bendability.length > 0 && (
-          <div style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(3, 1fr)',
-            gap: '1rem',
-          }}>
-            <div style={{ textAlign: 'center', padding: '0.5rem', backgroundColor: colors.backgroundAlt, borderRadius: '4px' }}>
-              <div style={{ color: colors.textMuted, fontSize: '0.75rem' }}>Average</div>
-              <div style={{ color: colors.text, fontFamily: 'monospace', fontSize: '1.25rem' }}>{avg}</div>
-            </div>
-            <div style={{ textAlign: 'center', padding: '0.5rem', backgroundColor: colors.backgroundAlt, borderRadius: '4px' }}>
-              <div style={{ color: colors.error, fontSize: '0.75rem' }}>Most Flexible</div>
-              <div style={{ color: colors.text, fontFamily: 'monospace', fontSize: '1.25rem' }}>{maxBend}</div>
-            </div>
-            <div style={{ textAlign: 'center', padding: '0.5rem', backgroundColor: colors.backgroundAlt, borderRadius: '4px' }}>
-              <div style={{ color: colors.info, fontSize: '0.75rem' }}>Most Rigid</div>
-              <div style={{ color: colors.text, fontFamily: 'monospace', fontSize: '1.25rem' }}>{minBend}</div>
-            </div>
-          </div>
+          <OverlayStatGrid>
+            <OverlayStatCard label="Average" value={avg} />
+            <OverlayStatCard label="Most Flexible" value={maxBend} labelColor="var(--color-error)" />
+            <OverlayStatCard label="Most Rigid" value={minBend} labelColor="var(--color-info)" />
+          </OverlayStatGrid>
         )}
 
         {/* Canvas */}
         {!loading && bendability.length >= 2 && (
-          <div style={{
-            border: `1px solid ${colors.borderLight}`,
-            borderRadius: '4px',
-            overflow: 'hidden',
-          }}>
+          <OverlaySection>
             <canvas
               ref={canvasRef}
               style={{ width: '100%', height: '150px', display: 'block' }}
             />
-          </div>
-        )}
-
-        {/* Legend */}
-        {!loading && bendability.length >= 2 && (
-          <div style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            padding: '0.5rem',
-          }}>
-            <span style={{ color: colors.info }}>Rigid</span>
-            <div style={{
-              width: '200px',
-              height: '12px',
-              background: 'linear-gradient(to right, rgb(0, 80, 255), rgb(128, 80, 128), rgb(255, 80, 0))',
-              borderRadius: '4px',
-            }} />
-            <span style={{ color: colors.error }}>Flexible</span>
-          </div>
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                gap: 'var(--chrome-gap)',
+                padding: 'var(--chrome-padding-compact-y) var(--chrome-padding-x)',
+              }}
+            >
+              <span style={{ color: 'var(--color-info)' }}>Rigid</span>
+              <div
+                style={{
+                  width: '200px',
+                  height: '12px',
+                  background: 'linear-gradient(to right, var(--color-info), var(--color-error))',
+                  borderRadius: 'var(--radius-sm)',
+                }}
+              />
+              <span style={{ color: 'var(--color-error)' }}>Flexible</span>
+            </div>
+          </OverlaySection>
         )}
 
         {!loading && sequence.length === 0 && (
-          <div style={{ textAlign: 'center', padding: '2rem', color: colors.textMuted }}>
-            No sequence data available. Select a phage to analyze.
-          </div>
+          <OverlayEmptyState
+            message="No sequence data available."
+            hint="Select a phage to analyze."
+          />
         )}
-      </div>
+      </OverlayStack>
     </Overlay>
   );
 }

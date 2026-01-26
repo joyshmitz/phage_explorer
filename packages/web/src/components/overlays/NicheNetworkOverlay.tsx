@@ -13,6 +13,11 @@ import { Overlay } from './Overlay';
 import { useOverlay } from './OverlayProvider';
 import { AnalysisPanelSkeleton } from '../ui/Skeleton';
 import {
+  OverlayLoadingState,
+  OverlayEmptyState,
+  OverlayErrorState,
+} from './primitives';
+import {
   analyzeNiches,
   generateDemoAbundanceTable,
   type NicheAnalysisResult,
@@ -496,13 +501,19 @@ export function NicheNetworkOverlay(): React.ReactElement | null {
         </div>
 
         {loading ? (
-          <AnalysisPanelSkeleton />
+          <OverlayLoadingState message="Running NMF niche analysis...">
+            <AnalysisPanelSkeleton />
+          </OverlayLoadingState>
         ) : error ? (
-          <div style={{ padding: '1rem', color: colors.error }}>{error}</div>
+          <OverlayErrorState
+            message="Niche analysis failed"
+            details={error}
+          />
         ) : !analysisResult ? (
-          <div style={{ padding: '2rem', textAlign: 'center', color: colors.textMuted }}>
-            No analysis data available.
-          </div>
+          <OverlayEmptyState
+            message="No analysis data available"
+            hint="Adjust parameters or try again to generate niche network."
+          />
         ) : (
           <div style={{ display: 'flex', gap: '1rem' }}>
             {/* Network Canvas */}

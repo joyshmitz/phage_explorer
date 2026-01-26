@@ -5,7 +5,15 @@
  * Supports focus trapping, z-index management, and keyboard navigation.
  */
 
-import React, { createContext, useContext, useCallback, useEffect, useState, type ReactNode } from 'react';
+import React, { createContext, useContext, useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import { ActionRegistryList } from '../../keyboard/actionRegistry';
+
+const OVERLAY_TITLE_BY_ID = new Map<string, string>();
+for (const action of ActionRegistryList) {
+  if (action.overlayId && action.overlayAction) {
+    OVERLAY_TITLE_BY_ID.set(action.overlayId, action.title);
+  }
+}
 
 // =============================================================================
 // Mobile Detection
@@ -109,6 +117,10 @@ export type OverlayId =
   | 'epistasis'
   | 'environmentalProvenance';
 
+function formatOverlayTitle(id: OverlayId): string {
+  return OVERLAY_TITLE_BY_ID.get(id) ?? id;
+}
+
 export interface OverlayConfig {
   id: OverlayId;
   blocking?: boolean; // Prevents interaction with content below
@@ -120,6 +132,12 @@ interface OverlayStackItem {
   id: OverlayId;
   config: OverlayConfig;
   zIndex: number;
+}
+
+interface StackLimitToast {
+  message: string;
+  expectedIds: string;
+  undoStack: OverlayStackItem[];
 }
 
 interface OverlayContextValue {
@@ -161,9 +179,56 @@ interface OverlayProviderProps {
 }
 
 export function OverlayProvider({ children }: OverlayProviderProps): React.ReactElement {
-  const [stack, setStack] = useState<OverlayStackItem[]>([]);
+  const [stackState, setStackState] = useState<{
+    stack: OverlayStackItem[];
+    stackLimitToast: StackLimitToast | null;
+  }>({
+    stack: [],
+    stackLimitToast: null,
+  });
+  const { stack, stackLimitToast } = stackState;
   const [overlayData, setOverlayDataState] = useState<Record<string, unknown>>({});
   const isMobile = useMobile();
+  const stackLimitToastTimerRef = useRef<number | null>(null);
+
+  const clearStackLimitToastTimer = useCallback(() => {
+    if (typeof window === 'undefined') return;
+    if (stackLimitToastTimerRef.current) {
+      window.clearTimeout(stackLimitToastTimerRef.current);
+      stackLimitToastTimerRef.current = null;
+    }
+  }, []);
+
+  const handleUndoStackLimitToast = useCallback(() => {
+    clearStackLimitToastTimer();
+    setStackState((current) => {
+      const toast = current.stackLimitToast;
+      if (!toast) return current;
+
+      const currentIds = current.stack.map((item) => item.id).join('|');
+      if (currentIds !== toast.expectedIds) {
+        return { ...current, stackLimitToast: null };
+      }
+
+      return { ...current, stack: toast.undoStack, stackLimitToast: null };
+    });
+  }, [clearStackLimitToastTimer]);
+
+  useEffect(() => {
+    if (!stackLimitToast) return;
+    if (typeof window === 'undefined') return;
+
+    clearStackLimitToastTimer();
+    stackLimitToastTimerRef.current = window.setTimeout(() => {
+      setStackState((current) => {
+        if (!current.stackLimitToast) return current;
+        return { ...current, stackLimitToast: null };
+      });
+      stackLimitToastTimerRef.current = null;
+    }, 4500);
+
+    return clearStackLimitToastTimer;
+  }, [clearStackLimitToastTimer, stackLimitToast]);
 
   // Get the top overlay
   const topOverlay = stack.length > 0 ? stack[stack.length - 1].id : null;
@@ -178,9 +243,13 @@ export function OverlayProvider({ children }: OverlayProviderProps): React.React
 
   // Open an overlay
   const open = useCallback((id: OverlayId, config?: Partial<OverlayConfig>) => {
-    setStack(currentStack => {
+    setStackState((current) => {
+      const currentStack = current.stack;
       // Remove if already in stack (will re-add at top)
       const filtered = currentStack.filter(item => item.id !== id);
+      const willEvict = filtered.length >= MAX_STACK_SIZE;
+      const evicted = willEvict ? filtered[0] : null;
+      const prevStack = currentStack;
 
       // Create new item
       const newItem: OverlayStackItem = {
@@ -193,23 +262,43 @@ export function OverlayProvider({ children }: OverlayProviderProps): React.React
       const newStack = [...filtered, newItem].slice(-MAX_STACK_SIZE);
 
       // Update z-indices
-      return newStack.map((item, index) => ({
+      const normalized = newStack.map((item, index) => ({
         ...item,
         zIndex: BASE_Z_INDEX + index,
       }));
+
+      if (!evicted) {
+        return { ...current, stack: normalized };
+      }
+
+      // If we hit the stack cap, never fail silently. Use a toast with an "Undo" escape hatch.
+      const evictedTitle = formatOverlayTitle(evicted.id);
+      const openedTitle = formatOverlayTitle(id);
+      const message = `Overlay limit (${MAX_STACK_SIZE}) — closed “${evictedTitle}” to open “${openedTitle}”.`;
+      const expectedIds = normalized.map((item) => item.id).join('|');
+      const undoStack = prevStack.map((item, index) => ({
+        ...item,
+        zIndex: BASE_Z_INDEX + index,
+      }));
+
+      return {
+        ...current,
+        stack: normalized,
+        stackLimitToast: { message, expectedIds, undoStack },
+      };
     });
   }, []);
 
   // Close an overlay (specific or top)
   const close = useCallback((id?: OverlayId) => {
-    setStack(currentStack => {
+    setStackState((current) => {
       if (id) {
         // Close specific overlay
-        return currentStack.filter(item => item.id !== id);
-      } else {
-        // Close top overlay
-        return currentStack.slice(0, -1);
+        return { ...current, stack: current.stack.filter((item) => item.id !== id) };
       }
+
+      // Close top overlay
+      return { ...current, stack: current.stack.slice(0, -1) };
     });
   }, []);
 
@@ -224,8 +313,9 @@ export function OverlayProvider({ children }: OverlayProviderProps): React.React
 
   // Close all overlays
   const closeAll = useCallback(() => {
-    setStack([]);
-  }, []);
+    clearStackLimitToastTimer();
+    setStackState((current) => ({ ...current, stack: [], stackLimitToast: null }));
+  }, [clearStackLimitToastTimer]);
 
   // Set overlay data
   const setOverlayData = useCallback((key: string, value: unknown) => {
@@ -239,6 +329,7 @@ export function OverlayProvider({ children }: OverlayProviderProps): React.React
   useEffect(() => {
     const handleEscape = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return;
+      if (e.isComposing) return;
       if (e.defaultPrevented) return;
       if (stack.length === 0) return;
 
@@ -275,6 +366,16 @@ export function OverlayProvider({ children }: OverlayProviderProps): React.React
   return (
     <OverlayContext value={value}>
       {children}
+      {stackLimitToast && (
+        <div className="toast toast-warning" role="status" aria-live="polite" data-testid="overlay-stack-limit-toast">
+          <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
+            <span>{stackLimitToast.message}</span>
+            <button className="btn btn-ghost btn-sm" type="button" onClick={handleUndoStackLimitToast} data-testid="overlay-stack-limit-undo">
+              Undo
+            </button>
+          </div>
+        </div>
+      )}
     </OverlayContext>
   );
 }

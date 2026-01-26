@@ -10,12 +10,16 @@ import type { PhageFull } from '@phage-explorer/core';
 import type { PhageRepository } from '../../db';
 import { useTheme } from '../../hooks/useTheme';
 import { useHotkey } from '../../hooks';
-import { ActionIds } from '../../keyboard';
+import { ActionIds, getKeyboardManager, type HotkeyDefinition } from '../../keyboard';
 import { getOverlayContext, useBeginnerMode } from '../../education';
 import { Overlay } from './Overlay';
-import { useOverlay } from './OverlayProvider';
+import { useIsTopOverlay, useOverlay } from './OverlayProvider';
 import { AnalysisPanelSkeleton } from '../ui/Skeleton';
 import { InfoButton } from '../ui';
+import {
+  OverlayLoadingState,
+  OverlayEmptyState,
+} from './primitives';
 import { GenomeTrack } from './primitives/GenomeTrack';
 import type { GenomeTrackSegment, GenomeTrackInteraction } from './primitives/types';
 import {
@@ -109,6 +113,9 @@ export function MosaicRadarOverlay({
   const { theme } = useTheme();
   const colors = theme.colors;
   const { isOpen, toggle } = useOverlay();
+  const isTopmost = useIsTopOverlay('mosaicRadar');
+  const overlayOpen = isOpen('mosaicRadar');
+  const shouldCaptureHotkeys = overlayOpen && isTopmost;
   const { isEnabled: beginnerModeEnabled, showContextFor } = useBeginnerMode();
   const overlayHelp = getOverlayContext('mosaicRadar');
 
@@ -140,41 +147,91 @@ export function MosaicRadarOverlay({
 
   // Keyboard controls
   useEffect(() => {
-    if (!isOpen('mosaicRadar')) return;
+    if (!shouldCaptureHotkeys) return;
+    if (typeof window === 'undefined') return;
 
-    const handleKey = (e: KeyboardEvent) => {
-      if (e.altKey || e.metaKey || e.ctrlKey) return;
-      switch (e.key) {
-        case '+':
-        case '=':
-          setWindowSize((w) => Math.min(10000, Math.round(w * 1.25)));
-          break;
-        case '-':
-        case '_':
-          setWindowSize((w) => Math.max(500, Math.round(w / 1.25)));
-          break;
-        case '[':
-          setK((v) => Math.max(3, v - 1));
-          break;
-        case ']':
-          setK((v) => Math.min(8, v + 1));
-          break;
-        case 'b':
-        case 'B':
-          setShowBreakpoints((v) => !v);
-          break;
-        case 'm':
-          setMinSimilarity((s) => Math.max(0.01, +(s - 0.02).toFixed(2)));
-          break;
-        case 'M':
-          setMinSimilarity((s) => Math.min(0.95, +(s + 0.02).toFixed(2)));
-          break;
-      }
-    };
+    const manager = getKeyboardManager();
 
-    window.addEventListener('keydown', handleKey);
-    return () => window.removeEventListener('keydown', handleKey);
-  }, [isOpen]);
+    const definitions: HotkeyDefinition[] = [
+      // Window size
+      {
+        combo: { key: '+' },
+        description: 'Mosaic radar: increase window size',
+        action: () => setWindowSize((w) => Math.min(10000, Math.round(w * 1.25))),
+        modes: ['NORMAL'],
+        priority: 10,
+      },
+      {
+        combo: { key: '=' },
+        description: 'Mosaic radar: increase window size',
+        action: () => setWindowSize((w) => Math.min(10000, Math.round(w * 1.25))),
+        modes: ['NORMAL'],
+        priority: 10,
+      },
+      {
+        combo: { key: '-' },
+        description: 'Mosaic radar: decrease window size',
+        action: () => setWindowSize((w) => Math.max(500, Math.round(w / 1.25))),
+        modes: ['NORMAL'],
+        priority: 10,
+      },
+      {
+        combo: { key: '_' },
+        description: 'Mosaic radar: decrease window size',
+        action: () => setWindowSize((w) => Math.max(500, Math.round(w / 1.25))),
+        modes: ['NORMAL'],
+        priority: 10,
+      },
+      // K-mer size
+      {
+        combo: { key: '[' },
+        description: 'Mosaic radar: decrease k',
+        action: () => setK((v) => Math.max(3, v - 1)),
+        modes: ['NORMAL'],
+        priority: 10,
+      },
+      {
+        combo: { key: ']' },
+        description: 'Mosaic radar: increase k',
+        action: () => setK((v) => Math.min(8, v + 1)),
+        modes: ['NORMAL'],
+        priority: 10,
+      },
+      // Breakpoints toggle
+      {
+        combo: { key: 'b' },
+        description: 'Mosaic radar: toggle breakpoints',
+        action: () => setShowBreakpoints((v) => !v),
+        modes: ['NORMAL'],
+        priority: 10,
+      },
+      {
+        combo: { key: 'b', modifiers: { shift: true } },
+        description: 'Mosaic radar: toggle breakpoints',
+        action: () => setShowBreakpoints((v) => !v),
+        modes: ['NORMAL'],
+        priority: 10,
+      },
+      // Similarity threshold
+      {
+        combo: { key: 'm' },
+        description: 'Mosaic radar: decrease min similarity',
+        action: () => setMinSimilarity((s) => Math.max(0.01, +(s - 0.02).toFixed(2))),
+        modes: ['NORMAL'],
+        priority: 10,
+      },
+      {
+        combo: { key: 'm', modifiers: { shift: true } },
+        description: 'Mosaic radar: increase min similarity',
+        action: () => setMinSimilarity((s) => Math.min(0.95, +(s + 0.02).toFixed(2))),
+        modes: ['NORMAL'],
+        priority: 10,
+      },
+    ];
+
+    const unregister = manager.registerMany(definitions);
+    return unregister;
+  }, [shouldCaptureHotkeys]);
 
   // Fetch sequence and references when overlay opens
   useEffect(() => {
@@ -324,15 +381,26 @@ export function MosaicRadarOverlay({
         </div>
 
         {loading ? (
-          <AnalysisPanelSkeleton />
+          <OverlayLoadingState message="Loading sequence and references...">
+            <AnalysisPanelSkeleton />
+          </OverlayLoadingState>
         ) : !analysis ? (
-          <div style={{ padding: '2rem', textAlign: 'center', color: colors.textMuted }}>
-            {!sequence
-              ? 'No sequence loaded'
-              : references.length === 0
-              ? 'No reference genomes available'
-              : 'Analysis error'}
-          </div>
+          <OverlayEmptyState
+            message={
+              !sequence
+                ? 'No sequence loaded'
+                : references.length === 0
+                  ? 'No reference genomes available'
+                  : 'Analysis error'
+            }
+            hint={
+              !sequence
+                ? 'Select a phage to analyze.'
+                : references.length === 0
+                  ? 'Mosaic detection requires at least one reference genome in the database.'
+                  : 'Try adjusting analysis parameters.'
+            }
+          />
         ) : (
           <>
             {/* Parameter controls */}

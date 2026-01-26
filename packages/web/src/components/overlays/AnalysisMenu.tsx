@@ -1,16 +1,24 @@
 /**
  * AnalysisMenu - Drawer Component
  *
- * A drawer menu showing all available analysis options organized by category.
- * Keyboard-navigable with hotkey hints.
+ * A drawer menu showing analysis overlays organized by category.
+ * Shortcut labels are rendered from ActionRegistry - never hardcoded.
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useTheme } from '../../hooks/useTheme';
-import { useHotkey } from '../../hooks';
-import { ActionIds } from '../../keyboard';
+import { detectShortcutPlatform, formatPrimaryActionShortcut, getPrimaryShortcutCombo } from '../../keyboard/actionSurfaces';
+import {
+  ActionIds,
+  ActionRegistry,
+  ActionRegistryList,
+  getKeyboardManager,
+  type ActionDefinition,
+  type HotkeyDefinition,
+  type KeyCombo,
+} from '../../keyboard';
 import { Overlay } from './Overlay';
-import { useOverlay, type OverlayId } from './OverlayProvider';
+import { useIsTopOverlay, useOverlay, type OverlayId } from './OverlayProvider';
 import {
   IconAlertTriangle,
   IconAperture,
@@ -21,414 +29,282 @@ import {
   IconLayers,
   IconMagnet,
   IconRepeat,
-  IconSearch,
   IconShield,
   IconTarget,
   IconTrendingUp,
+  IconZap,
+  IconFlask,
 } from '../ui';
 
 const ITEM_ICON_SIZE = 18;
 
-interface AnalysisItem {
-  id: string;
+interface AnalysisMenuItem {
+  action: ActionDefinition;
   overlayId: OverlayId;
-  label: string;
-  description: string;
-  icon: React.ReactNode;
-  shortcut: string;
   category: string;
-  requiresLevel?: 'novice' | 'intermediate' | 'power';
+  icon: React.ReactNode;
+  shortcutLabel: string | null;
+  shortcutCombos: KeyCombo[];
 }
 
-const ANALYSIS_ITEMS: AnalysisItem[] = [
-  // Sequence Analysis
-  {
-    id: 'gc-skew',
-    overlayId: 'gcSkew',
-    label: 'GC Skew',
-    description: 'Cumulative GC skew plot for origin/terminus detection',
-    icon: <IconTrendingUp size={ITEM_ICON_SIZE} />,
-    shortcut: 'g',
-    category: 'Sequence Analysis',
-    requiresLevel: 'intermediate',
-  },
-  {
-    id: 'complexity',
-    overlayId: 'complexity',
-    label: 'Sequence Complexity',
-    description: 'Shannon entropy and linguistic complexity',
-    icon: <IconCube size={ITEM_ICON_SIZE} />,
-    shortcut: 'x',
-    category: 'Sequence Analysis',
-    requiresLevel: 'intermediate',
-  },
-  {
-    id: 'bendability',
-    overlayId: 'bendability',
-    label: 'DNA Bendability',
-    description: 'Curvature and flexibility prediction',
-    icon: <IconAperture size={ITEM_ICON_SIZE} />,
-    shortcut: 'b',
-    category: 'Sequence Analysis',
-    requiresLevel: 'intermediate',
-  },
-  {
-    id: 'packaging-pressure',
-    overlayId: 'pressure',
-    label: 'Packaging Pressure',
-    description: 'Capsid fill fraction, force, and pressure gauge',
-    icon: <IconMagnet size={ITEM_ICON_SIZE} />,
-    shortcut: 'v',
-    category: 'Sequence Analysis',
-    requiresLevel: 'intermediate',
-  },
-  {
-    id: 'virion-stability',
-    overlayId: 'stability',
-    label: 'Virion Stability',
-    description: 'Capsid robustness vs temperature / salt',
-    icon: <IconShield size={ITEM_ICON_SIZE} />,
-    shortcut: 'Alt+V',
-    category: 'Sequence Analysis',
-    requiresLevel: 'intermediate',
-  },
-  {
-    id: 'hilbert',
-    overlayId: 'hilbert',
-    label: 'Hilbert Curve',
-    description: 'Space-filling curve view of genome composition',
-    icon: <IconAperture size={ITEM_ICON_SIZE} />,
-    shortcut: 'Alt+Shift+H',
-    category: 'Sequence Analysis',
-    requiresLevel: 'intermediate',
-  },
-  {
-    id: 'sequence-logo',
-    overlayId: 'logo',
-    label: 'Sequence Logo',
-    description: 'Gene-start motif logo from real CDS start windows',
-    icon: <IconBookmark size={ITEM_ICON_SIZE} />,
-    shortcut: 'o',
-    category: 'Sequence Analysis',
-    requiresLevel: 'intermediate',
-  },
-  {
-    id: 'fold-quickview',
-    overlayId: 'foldQuickview',
-    label: 'Fold Quickview',
-    description: 'Protein embedding novelty + nearest neighbors',
-    icon: <IconAperture size={ITEM_ICON_SIZE} />,
-    shortcut: 'Alt+Shift+F',
-    category: 'Sequence Analysis',
-    requiresLevel: 'power',
-  },
-  {
-    id: 'periodicity',
-    overlayId: 'periodicity',
-    label: 'Periodicity Spectrogram',
-    description: 'Windowed autocorrelation heatmap + tandem repeat candidates',
-    icon: <IconRepeat size={ITEM_ICON_SIZE} />,
-    shortcut: 'Alt+W',
-    category: 'Sequence Analysis',
-    requiresLevel: 'power',
-  },
+const EXCLUDED_OVERLAY_IDS: ReadonlySet<OverlayId> = new Set([
+  'analysisMenu',
+  'help',
+  'search',
+  'commandPalette',
+  'settings',
+  'goto',
+]);
 
-  // Gene Features
-  {
-    id: 'promoter',
-    overlayId: 'promoter',
-    label: 'Promoter/RBS Sites',
-    description: 'Predicted promoters and ribosome binding sites',
-    icon: <IconTarget size={ITEM_ICON_SIZE} />,
-    shortcut: 'p',
-    category: 'Gene Features',
-    requiresLevel: 'intermediate',
-  },
-  {
-    id: 'repeats',
-    overlayId: 'repeats',
-    label: 'Repeats & Palindromes',
-    description: 'Direct, inverted, and palindromic sequences',
-    icon: <IconRepeat size={ITEM_ICON_SIZE} />,
-    shortcut: 'r',
-    category: 'Gene Features',
-    requiresLevel: 'intermediate',
-  },
-  {
-    id: 'module-coherence',
-    overlayId: 'modules',
-    label: 'Module Coherence',
-    description: 'Functional module completeness & stoichiometry',
-    icon: <IconLayers size={ITEM_ICON_SIZE} />,
-    shortcut: 'l',
-    category: 'Gene Features',
-    requiresLevel: 'intermediate',
-  },
+const CATEGORY_ORDER: readonly string[] = ['Analysis', 'Comparison', 'Simulation', 'Reference', 'Dev'];
 
-  // Codon Analysis
-  {
-    id: 'rna-structure',
-    overlayId: 'rnaStructure',
-    label: 'RNA Structure Explorer',
-    description: 'Synonymous stress analysis & regulatory element detection',
-    icon: <IconDna size={ITEM_ICON_SIZE} />,
-    shortcut: 'Alt+R',
-    category: 'Codon Analysis',
-    requiresLevel: 'power',
-  },
-  {
-    id: 'bias',
-    overlayId: 'biasDecomposition',
-    label: 'Codon Bias Decomposition',
-    description: 'Principal component analysis of codon usage',
-    icon: <IconTrendingUp size={ITEM_ICON_SIZE} />,
-    shortcut: 'Alt+B',
-    category: 'Codon Analysis',
-    requiresLevel: 'power',
-  },
-  {
-    id: 'phase',
-    overlayId: 'phasePortrait',
-    label: 'Phase Portrait',
-    description: 'Codon usage phase space visualization',
-    icon: <IconAperture size={ITEM_ICON_SIZE} />,
-    shortcut: 'Alt+Shift+P',
-    category: 'Codon Analysis',
-    requiresLevel: 'power',
-  },
-
-  // Evolutionary Analysis
-  {
-    id: 'epistasis',
-    overlayId: 'epistasis',
-    label: 'Epistasis Explorer',
-    description: 'Fitness landscape & compensatory mutation analysis',
-    icon: <IconLayers size={ITEM_ICON_SIZE} />,
-    shortcut: 'Alt+E',
-    category: 'Evolutionary',
-    requiresLevel: 'power',
-  },
-  {
-    id: 'kmer',
-    overlayId: 'kmerAnomaly',
-    label: 'K-mer Anomaly',
-    description: 'Unusual k-mer composition detection',
-    icon: <IconSearch size={ITEM_ICON_SIZE} />,
-    shortcut: 'Alt+J',
-    category: 'Evolutionary',
-    requiresLevel: 'power',
-  },
-  {
-    id: 'anomaly',
-    overlayId: 'anomaly',
-    label: 'Anomaly Detection',
-    description: 'Composite anomalies (KL, compression, skews, bias)',
-    icon: <IconAlertTriangle size={ITEM_ICON_SIZE} />,
-    shortcut: 'Alt+Y',
-    category: 'Evolutionary',
-    requiresLevel: 'power',
-  },
-  {
-    id: 'hgt',
-    overlayId: 'hgt',
-    label: 'HGT Analysis',
-    description: 'Horizontal gene transfer detection',
-    icon: <IconDiff size={ITEM_ICON_SIZE} />,
-    shortcut: 'Alt+H',
-    category: 'Evolutionary',
-    requiresLevel: 'power',
-  },
-  {
-    id: 'prophage-excision',
-    overlayId: 'prophageExcision',
-    label: 'Prophage Excision',
-    description: 'Predict attL/attR sites and model excision product',
-    icon: <IconRepeat size={ITEM_ICON_SIZE} />,
-    shortcut: 'Alt+X',
-    category: 'Evolutionary',
-    requiresLevel: 'power',
-  },
-
-  // Host Interaction
-  {
-    id: 'tropism',
-    overlayId: 'tropism',
-    label: 'Tropism & Receptors',
-    description: 'Host receptor binding predictions',
-    icon: <IconTarget size={ITEM_ICON_SIZE} />,
-    shortcut: '0',
-    category: 'Host Interaction',
-    requiresLevel: 'power',
-  },
-  {
-    id: 'crispr',
-    overlayId: 'crispr',
-    label: 'CRISPR Spacers',
-    description: 'CRISPR spacer matches in phage genome',
-    icon: <IconDna size={ITEM_ICON_SIZE} />,
-    shortcut: 'Alt+C',
-    category: 'Host Interaction',
-    requiresLevel: 'power',
-  },
-
-  // Comparative Analysis
-  {
-    id: 'synteny',
-    overlayId: 'synteny',
-    label: 'Synteny Analysis',
-    description: 'Gene order conservation between phage genomes',
-    icon: <IconLayers size={ITEM_ICON_SIZE} />,
-    shortcut: 'Alt+S',
-    category: 'Comparative',
-    requiresLevel: 'power',
-  },
-  {
-    id: 'dot-plot',
-    overlayId: 'dotPlot',
-    label: 'Dot Plot',
-    description: 'Self-similarity matrix for repeats and palindromes',
-    icon: <IconDiff size={ITEM_ICON_SIZE} />,
-    shortcut: 'Alt+O',
-    category: 'Comparative',
-    requiresLevel: 'intermediate',
-  },
-
+const ICON_BY_OVERLAY_ID: Partial<Record<OverlayId, React.ReactNode>> = {
   // Reference
-  {
-    id: 'aa-key',
-    overlayId: 'aaKey',
-    label: 'Amino Acid Key',
-    description: 'Color legend for amino acids by property',
-    icon: <IconDna size={ITEM_ICON_SIZE} />,
-    shortcut: 'k',
-    category: 'Reference',
-    requiresLevel: 'novice',
-  },
-  {
-    id: 'aa-legend',
-    overlayId: 'aaLegend',
-    label: 'Amino Acid Legend (compact)',
-    description: 'Compact amino acid color legend',
-    icon: <IconBookmark size={ITEM_ICON_SIZE} />,
-    shortcut: 'l',
-    category: 'Reference',
-    requiresLevel: 'novice',
-  },
+  aaKey: <IconDna size={ITEM_ICON_SIZE} />,
+  aaLegend: <IconBookmark size={ITEM_ICON_SIZE} />,
+  // Simulation & comparison
+  simulationHub: <IconZap size={ITEM_ICON_SIZE} />,
+  resistanceEvolution: <IconZap size={ITEM_ICON_SIZE} />,
+  comparison: <IconDiff size={ITEM_ICON_SIZE} />,
+  // Sequence analysis
+  gcSkew: <IconTrendingUp size={ITEM_ICON_SIZE} />,
+  complexity: <IconCube size={ITEM_ICON_SIZE} />,
+  bendability: <IconAperture size={ITEM_ICON_SIZE} />,
+  promoter: <IconTarget size={ITEM_ICON_SIZE} />,
+  repeats: <IconRepeat size={ITEM_ICON_SIZE} />,
+  transcriptionFlow: <IconTrendingUp size={ITEM_ICON_SIZE} />,
+  // Visualizations / comparative
+  cgr: <IconDna size={ITEM_ICON_SIZE} />,
+  hilbert: <IconAperture size={ITEM_ICON_SIZE} />,
+  dotPlot: <IconDiff size={ITEM_ICON_SIZE} />,
+  synteny: <IconDiff size={ITEM_ICON_SIZE} />,
+  phasePortrait: <IconAperture size={ITEM_ICON_SIZE} />,
+  gel: <IconAperture size={ITEM_ICON_SIZE} />,
+  logo: <IconBookmark size={ITEM_ICON_SIZE} />,
+  mosaicRadar: <IconLayers size={ITEM_ICON_SIZE} />,
+  periodicity: <IconRepeat size={ITEM_ICON_SIZE} />,
+  // Genomic analysis
+  hgt: <IconMagnet size={ITEM_ICON_SIZE} />,
+  crispr: <IconDna size={ITEM_ICON_SIZE} />,
+  nonBDNA: <IconDna size={ITEM_ICON_SIZE} />,
+  anomaly: <IconAlertTriangle size={ITEM_ICON_SIZE} />,
+  genomicSignaturePCA: <IconTrendingUp size={ITEM_ICON_SIZE} />,
+  prophageExcision: <IconRepeat size={ITEM_ICON_SIZE} />,
+  // Codon & protein
+  codonBias: <IconTrendingUp size={ITEM_ICON_SIZE} />,
+  codonAdaptation: <IconTrendingUp size={ITEM_ICON_SIZE} />,
+  biasDecomposition: <IconTrendingUp size={ITEM_ICON_SIZE} />,
+  proteinDomains: <IconLayers size={ITEM_ICON_SIZE} />,
+  foldQuickview: <IconAperture size={ITEM_ICON_SIZE} />,
+  rnaStructure: <IconDna size={ITEM_ICON_SIZE} />,
+  // Host interactions
+  tropism: <IconTarget size={ITEM_ICON_SIZE} />,
+  amgPathway: <IconFlask size={ITEM_ICON_SIZE} />,
+  defenseArmsRace: <IconShield size={ITEM_ICON_SIZE} />,
+  cocktailCompatibility: <IconShield size={ITEM_ICON_SIZE} />,
+  nicheNetwork: <IconLayers size={ITEM_ICON_SIZE} />,
+  // Structural
+  pressure: <IconMagnet size={ITEM_ICON_SIZE} />,
+  stability: <IconShield size={ITEM_ICON_SIZE} />,
+  structureConstraint: <IconCube size={ITEM_ICON_SIZE} />,
+  modules: <IconLayers size={ITEM_ICON_SIZE} />,
+  epistasis: <IconLayers size={ITEM_ICON_SIZE} />,
+  // Dev
+  gpuWasmBenchmark: <IconCube size={ITEM_ICON_SIZE} />,
+};
 
-  ...(import.meta.env.DEV
-    ? ([
-        {
-          id: 'gpu-wasm-benchmark',
-          overlayId: 'gpuWasmBenchmark',
-          label: 'GPU vs WASM Benchmark',
-          description: 'Measure WebGPU vs WASM timings (dev-only)',
-          icon: <IconCube size={ITEM_ICON_SIZE} />,
-          shortcut: 'Alt+Shift+B',
-          category: 'Dev',
-          requiresLevel: 'power',
-        },
-      ] satisfies AnalysisItem[])
-    : []),
-];
-
-function parseShortcut(shortcut: string): {
-  key: string;
-  alt: boolean;
-  shift: boolean;
-  ctrl: boolean;
-  meta: boolean;
-} | null {
-  const trimmed = shortcut.trim();
-  if (!trimmed) return null;
-  const parts = trimmed.split('+').map((part) => part.trim()).filter(Boolean);
-  if (parts.length === 0) return null;
-  const key = parts.pop()!;
-  const modifiers = new Set(parts.map((part) => part.toLowerCase()));
-
-  return {
-    key,
-    alt: modifiers.has('alt'),
-    shift: modifiers.has('shift'),
-    ctrl: modifiers.has('ctrl') || modifiers.has('control'),
-    meta: modifiers.has('meta') || modifiers.has('cmd') || modifiers.has('command'),
-  };
+function getShortcutCombos(action: ActionDefinition): KeyCombo[] {
+  const shortcut = action.defaultShortcut;
+  if (Array.isArray(shortcut)) return shortcut;
+  return shortcut ? [shortcut] : [];
 }
 
-function matchesShortcut(event: KeyboardEvent, shortcut: string): boolean {
-  const parsed = parseShortcut(shortcut);
-  if (!parsed) return false;
-  if (event.altKey !== parsed.alt) return false;
-  if (event.shiftKey !== parsed.shift) return false;
-  if (event.ctrlKey !== parsed.ctrl) return false;
-  if (event.metaKey !== parsed.meta) return false;
+function formatMenuCategory(action: ActionDefinition, overlayId: OverlayId): string {
+  if (overlayId === 'aaKey' || overlayId === 'aaLegend') return 'Reference';
+  return action.category;
+}
 
-  const expectedKey = parsed.key.length === 1 ? parsed.key.toLowerCase() : parsed.key.toLowerCase();
-  const actualKey = event.key.length === 1 ? event.key.toLowerCase() : event.key.toLowerCase();
-  return expectedKey === actualKey;
+function sortCategory(a: string, b: string): number {
+  const aIdx = CATEGORY_ORDER.indexOf(a);
+  const bIdx = CATEGORY_ORDER.indexOf(b);
+  const aRank = aIdx === -1 ? CATEGORY_ORDER.length : aIdx;
+  const bRank = bIdx === -1 ? CATEGORY_ORDER.length : bIdx;
+  if (aRank !== bRank) return aRank - bRank;
+  return a.localeCompare(b);
 }
 
 export function AnalysisMenu(): React.ReactElement | null {
   const { theme } = useTheme();
   const colors = theme.colors;
-  const { isOpen, toggle, open, close } = useOverlay();
+  const { isOpen, open, close } = useOverlay();
+  const menuOpen = isOpen('analysisMenu');
+  const isTopmost = useIsTopOverlay('analysisMenu');
+  const shouldCaptureHotkeys = menuOpen && isTopmost;
+  const shortcutPlatform = useMemo(() => detectShortcutPlatform(), []);
   const [selectedIndex, setSelectedIndex] = useState(0);
 
-  // Register hotkey
-  useHotkey(
-    ActionIds.OverlayAnalysisMenu,
-    () => toggle('analysisMenu'),
-    { modes: ['NORMAL'] }
-  );
-
-  // Handle keyboard navigation
+  const selectedIndexRef = useRef(selectedIndex);
   useEffect(() => {
-    if (!isOpen('analysisMenu')) return;
+    selectedIndexRef.current = selectedIndex;
+  }, [selectedIndex]);
 
-    const handleKeyDown = (e: KeyboardEvent) => {
-      switch (e.key) {
-        case 'ArrowDown':
-        case 'j':
-          e.preventDefault();
-          setSelectedIndex(prev => Math.min(prev + 1, ANALYSIS_ITEMS.length - 1));
-          break;
-        case 'ArrowUp':
-        case 'k':
-          e.preventDefault();
-          setSelectedIndex(prev => Math.max(prev - 1, 0));
-          break;
-        case 'Enter':
-          e.preventDefault();
-          const item = ANALYSIS_ITEMS[selectedIndex];
-          close('analysisMenu');
-          open(item.overlayId);
-          break;
-        default:
-          // Check for shortcut key
-          const matchingItem = ANALYSIS_ITEMS.find((item) => matchesShortcut(e, item.shortcut));
-          if (matchingItem) {
-            e.preventDefault();
-            close('analysisMenu');
-            open(matchingItem.overlayId);
-          }
-      }
+  // The Analysis Menu is modal: switch to a dedicated keyboard mode while it's topmost,
+  // so global hotkeys (NORMAL) don't compete with menu navigation/selection.
+  useEffect(() => {
+    if (!shouldCaptureHotkeys) return;
+    if (typeof window === 'undefined') return;
+
+    const manager = getKeyboardManager();
+    const previousMode = manager.getMode();
+    manager.setMode('COMMAND');
+
+    return () => {
+      manager.setMode(previousMode);
+    };
+  }, [shouldCaptureHotkeys]);
+
+  const menuHotkey = useMemo(() => {
+    const action = ActionRegistry[ActionIds.OverlayAnalysisMenu];
+    return formatPrimaryActionShortcut(action, shortcutPlatform) ?? 'a';
+  }, [shortcutPlatform]);
+
+  const menuHotkeyCombo = useMemo(() => {
+    const action = ActionRegistry[ActionIds.OverlayAnalysisMenu];
+    return getPrimaryShortcutCombo(action, shortcutPlatform);
+  }, [shortcutPlatform]);
+
+  const { grouped, flatItems } = useMemo(() => {
+    const items: AnalysisMenuItem[] = ActionRegistryList
+      .filter((action): action is ActionDefinition & { overlayId: string } => Boolean(action.overlayId))
+      .filter((action) => !action.surfaces || action.surfaces.includes('web'))
+      .map((action) => {
+        const overlayId = action.overlayId as OverlayId;
+        return {
+          action,
+          overlayId,
+          category: formatMenuCategory(action, overlayId),
+          icon: ICON_BY_OVERLAY_ID[overlayId] ?? <IconFlask size={ITEM_ICON_SIZE} />,
+          shortcutLabel: formatPrimaryActionShortcut(action, shortcutPlatform),
+          shortcutCombos: getShortcutCombos(action),
+        };
+      })
+      .filter((item) => !EXCLUDED_OVERLAY_IDS.has(item.overlayId));
+
+    items.sort((a, b) =>
+      sortCategory(a.category, b.category) ||
+      a.action.title.localeCompare(b.action.title)
+    );
+
+    const groupedByCategory: Record<string, AnalysisMenuItem[]> = {};
+    for (const item of items) {
+      groupedByCategory[item.category] ??= [];
+      groupedByCategory[item.category].push(item);
+    }
+
+    return { grouped: groupedByCategory, flatItems: items };
+  }, [shortcutPlatform]);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    if (selectedIndex < flatItems.length) return;
+    setSelectedIndex(0);
+  }, [flatItems.length, menuOpen, selectedIndex]);
+
+  useEffect(() => {
+    if (!shouldCaptureHotkeys) return;
+    if (flatItems.length === 0) return;
+    if (typeof window === 'undefined') return;
+
+    const manager = getKeyboardManager();
+    const definitions: HotkeyDefinition[] = [];
+
+    const moveDown = () => {
+      setSelectedIndex((prev) => Math.min(prev + 1, flatItems.length - 1));
+    };
+    const moveUp = () => {
+      setSelectedIndex((prev) => Math.max(prev - 1, 0));
+    };
+    const select = () => {
+      const item = flatItems[selectedIndexRef.current];
+      if (!item) return;
+      close('analysisMenu');
+      open(item.overlayId);
     };
 
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen, selectedIndex, close, open]);
+    // Menu navigation (vim + arrows)
+    definitions.push(
+      {
+        combo: { key: 'j' },
+        description: 'Analysis menu: next item',
+        action: moveDown,
+        modes: ['COMMAND'],
+        priority: 10,
+      },
+      {
+        combo: { key: 'ArrowDown' },
+        description: 'Analysis menu: next item',
+        action: moveDown,
+        modes: ['COMMAND'],
+        priority: 10,
+      },
+      {
+        combo: { key: 'k' },
+        description: 'Analysis menu: previous item',
+        action: moveUp,
+        modes: ['COMMAND'],
+        priority: 10,
+      },
+      {
+        combo: { key: 'ArrowUp' },
+        description: 'Analysis menu: previous item',
+        action: moveUp,
+        modes: ['COMMAND'],
+        priority: 10,
+      },
+      {
+        combo: { key: 'Enter' },
+        description: 'Analysis menu: open selected overlay',
+        action: select,
+        modes: ['COMMAND'],
+        priority: 10,
+      },
+    );
 
-  if (!isOpen('analysisMenu')) {
+    if (menuHotkeyCombo && !('sequence' in menuHotkeyCombo)) {
+      definitions.push({
+        combo: menuHotkeyCombo,
+        description: 'Analysis menu: close',
+        action: () => close('analysisMenu'),
+        modes: ['COMMAND'],
+        priority: 10,
+      });
+    }
+
+    // Overlay shortcuts while the menu is open:
+    // register contextual handlers so pressing an overlay hotkey closes the menu first.
+    for (const item of flatItems) {
+      for (const combo of item.shortcutCombos) {
+        if ('sequence' in combo) continue; // AnalysisMenu doesn't support sequences today
+        definitions.push({
+          combo,
+          description: `Open ${item.action.title} (from analysis menu)`,
+          action: () => {
+            close('analysisMenu');
+            open(item.overlayId);
+          },
+          modes: ['COMMAND'],
+          priority: 10,
+        });
+      }
+    }
+
+    const unregister = manager.registerMany(definitions);
+    return unregister;
+  }, [close, flatItems, menuHotkeyCombo, open, shouldCaptureHotkeys]);
+
+  if (!menuOpen) {
     return null;
   }
-
-  // Group items by category
-  const grouped = ANALYSIS_ITEMS.reduce((acc, item) => {
-    if (!acc[item.category]) {
-      acc[item.category] = [];
-    }
-    acc[item.category].push(item);
-    return acc;
-  }, {} as Record<string, AnalysisItem[]>);
 
   let flatIndex = 0;
 
@@ -436,7 +312,7 @@ export function AnalysisMenu(): React.ReactElement | null {
     <Overlay
       id="analysisMenu"
       title="ANALYSIS MENU"
-      hotkey="a"
+      hotkey={menuHotkey}
       size="lg"
     >
       <div style={{
@@ -472,7 +348,7 @@ export function AnalysisMenu(): React.ReactElement | null {
 
                 return (
                   <div
-                    key={item.id}
+                    key={item.action.id}
                     onClick={() => {
                       close('analysisMenu');
                       open(item.overlayId);
@@ -501,26 +377,20 @@ export function AnalysisMenu(): React.ReactElement | null {
                           color: isSelected ? colors.text : colors.textDim,
                           fontWeight: isSelected ? 'bold' : 'normal',
                         }}>
-                          {item.label}
+                          {item.action.title}
                         </span>
-                        <span style={{
-                          color: colors.accent,
-                          fontSize: '0.8rem',
-                          padding: '0.1rem 0.4rem',
-                          backgroundColor: colors.background,
-                          border: `1px solid ${colors.borderLight}`,
-                          borderRadius: '3px',
-                          fontFamily: 'monospace',
-                        }}>
-                          {item.shortcut}
-                        </span>
+                        {item.shortcutLabel && (
+                          <span className="key-hint">
+                            {item.shortcutLabel}
+                          </span>
+                        )}
                       </div>
                       <div style={{
                         color: colors.textMuted,
                         fontSize: '0.85rem',
                         marginTop: '0.25rem',
                       }}>
-                        {item.description}
+                        {item.action.description ?? ''}
                       </div>
                     </div>
                   </div>
@@ -543,7 +413,7 @@ export function AnalysisMenu(): React.ReactElement | null {
       }}>
         <span>↑↓ or j/k Navigate</span>
         <span>Enter or shortcut key to open</span>
-        <span>ESC or a to close</span>
+        <span>ESC{menuHotkey ? ` or ${menuHotkey}` : ''} to close</span>
       </div>
     </Overlay>
   );

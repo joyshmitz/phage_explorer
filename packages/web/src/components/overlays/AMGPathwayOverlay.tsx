@@ -16,6 +16,10 @@ import { Overlay } from './Overlay';
 import { useOverlay } from './OverlayProvider';
 import { AnalysisPanelSkeleton } from '../ui/Skeleton';
 import { InfoButton } from '../ui';
+import {
+  OverlayLoadingState,
+  OverlayEmptyState,
+} from './primitives';
 import { GenomeTrack } from './primitives/GenomeTrack';
 import type { GenomeTrackSegment } from './primitives/types';
 
@@ -188,13 +192,14 @@ export function AMGPathwayOverlay({
         </div>
 
         {loading ? (
-          <AnalysisPanelSkeleton />
+          <OverlayLoadingState message="Loading AMG annotations...">
+            <AnalysisPanelSkeleton />
+          </OverlayLoadingState>
         ) : amgs.length === 0 ? (
-          <div style={{ padding: '2rem', textAlign: 'center', color: colors.textMuted }}>
-            {!currentPhage
-              ? 'No phage selected'
-              : 'No AMG annotations available for this phage'}
-          </div>
+          <OverlayEmptyState
+            message={!currentPhage ? 'No phage selected' : 'No AMG annotations available'}
+            hint={!currentPhage ? 'Select a phage to analyze.' : 'AMG detection requires KEGG pathway annotations.'}
+          />
         ) : (
           <>
             {/* Summary stats */}

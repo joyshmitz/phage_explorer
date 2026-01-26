@@ -26,6 +26,7 @@ import { useSpringValue, animated, config } from '@react-spring/web';
 import { useDrag } from '@use-gesture/react';
 import { haptics } from '../../utils/haptics';
 import { useReducedMotion } from '../../hooks/useReducedMotion';
+import { isUserTyping } from '../../keyboard';
 
 // =============================================================================
 // Types
@@ -515,6 +516,7 @@ export function BottomSheet({
     if (!isOpen) return;
 
     const handleKeyDown = (e: KeyboardEvent) => {
+      if (isUserTyping(e)) return;
       if (e.key === 'Escape') {
         haptics.light();
         animateToSnapPoint('closed');

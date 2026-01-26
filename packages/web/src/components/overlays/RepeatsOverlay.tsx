@@ -13,6 +13,10 @@ import { ActionIds } from '../../keyboard';
 import { Overlay } from './Overlay';
 import { useOverlay } from './OverlayProvider';
 import { AnalysisPanelSkeleton } from '../ui/Skeleton';
+import {
+  OverlayLoadingState,
+  OverlayEmptyState,
+} from './primitives';
 import { getOrchestrator } from '../../workers/ComputeOrchestrator';
 import type { RepeatResult } from '../../workers/types';
 
@@ -146,10 +150,9 @@ export function RepeatsOverlay({
       <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
         {/* Loading State */}
         {(sequenceLoading || analysisLoading) && (
-          <AnalysisPanelSkeleton
-            message={sequenceLoading ? 'Loading sequence data...' : 'Analyzing repeats...'}
-            rows={3}
-          />
+          <OverlayLoadingState message={sequenceLoading ? 'Loading sequence data...' : 'Analyzing repeats...'}>
+            <AnalysisPanelSkeleton rows={3} />
+          </OverlayLoadingState>
         )}
 
         {/* Description */}
@@ -264,9 +267,10 @@ export function RepeatsOverlay({
         )}
 
         {!sequenceLoading && !analysisLoading && sequence.length === 0 && (
-          <div style={{ textAlign: 'center', padding: '2rem', color: colors.textMuted }}>
-            No sequence data available. Select a phage to analyze.
-          </div>
+          <OverlayEmptyState
+            message="No sequence data available"
+            hint="Select a phage to analyze repeats and palindromes."
+          />
         )}
       </div>
     </Overlay>

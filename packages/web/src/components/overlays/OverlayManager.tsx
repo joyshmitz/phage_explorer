@@ -11,6 +11,22 @@
 import React, { Suspense, lazy } from 'react';
 import type { PhageFull } from '@phage-explorer/core';
 import type { PhageRepository } from '../../db';
+import { useOverlay, type OverlayId } from './OverlayProvider';
+import { ActionRegistryList } from '../../keyboard/actionRegistry';
+import { Overlay } from './Overlay';
+import ErrorBoundary from '../layout/ErrorBoundary';
+import { OverlayErrorState } from './primitives';
+
+const OVERLAY_TITLE_BY_ID = new Map<string, string>();
+for (const action of ActionRegistryList) {
+  if (action.overlayId && action.overlayAction) {
+    OVERLAY_TITLE_BY_ID.set(action.overlayId, action.title);
+  }
+}
+
+function formatOverlayTitle(id: OverlayId): string {
+  return OVERLAY_TITLE_BY_ID.get(id) ?? id;
+}
 
 // ============================================================================
 // EAGER-LOADED OVERLAYS (essential for core UX, frequently accessed)
@@ -42,6 +58,7 @@ const BendabilityOverlay = lazy(() => import('./BendabilityOverlay').then(m => (
 const PromoterOverlay = lazy(() => import('./PromoterOverlay').then(m => ({ default: m.PromoterOverlay })));
 const RepeatsOverlay = lazy(() => import('./RepeatsOverlay').then(m => ({ default: m.RepeatsOverlay })));
 const KmerAnomalyOverlay = lazy(() => import('./KmerAnomalyOverlay').then(m => ({ default: m.KmerAnomalyOverlay })));
+const TranscriptionFlowOverlay = lazy(() => import('./TranscriptionFlowOverlay').then(m => ({ default: m.TranscriptionFlowOverlay })));
 
 // Visualization overlays
 const CGROverlay = lazy(() => import('./CGROverlay').then(m => ({ default: m.CGROverlay })));
@@ -107,13 +124,37 @@ interface OverlayManagerProps {
 }
 
 /**
- * Suspense fallback - minimal to avoid layout shift
+ * Suspense fallback - show an instant shell so opening an overlay always feels responsive
  */
-function OverlayFallback(): null {
-  return null;
+function OverlayFallback({ id }: { id: OverlayId }): React.ReactElement {
+  const { isMobile } = useOverlay();
+  // On mobile, prefer a half-height sheet during the load to avoid covering the entire UI.
+  const size = isMobile ? 'sm' : 'lg';
+  return (
+    <Overlay id={id} title={formatOverlayTitle(id)} size={size}>
+      <div aria-busy="true" aria-label="Loading overlay" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
+        <div className="skeleton skeleton-text skeleton--pulse" style={{ width: '44%' }} />
+        <div className="skeleton skeleton-text skeleton--pulse" style={{ width: '76%' }} />
+        <div className="skeleton skeleton-card skeleton--pulse" />
+      </div>
+    </Overlay>
+  );
 }
 
 export function OverlayManager({ repository, currentPhage }: OverlayManagerProps): React.ReactElement | null {
+  const { stack, isMobile } = useOverlay();
+  const size = isMobile ? 'sm' : 'lg';
+
+  const lazyOverlays = stack
+    .map((item) => item.id)
+    .map((id) => {
+      return {
+        id,
+        element: renderLazyOverlay(id, repository, currentPhage),
+      };
+    })
+    .filter((entry): entry is { id: OverlayId; element: React.ReactElement } => Boolean(entry.element));
+
   return (
     <>
       {/* EAGER: Essential overlays that must be instantly available */}
@@ -126,83 +167,165 @@ export function OverlayManager({ repository, currentPhage }: OverlayManagerProps
       <SettingsOverlay />
       <CommandPalette />
 
-      {/* LAZY: Analysis overlays loaded on-demand */}
-      <Suspense fallback={<OverlayFallback />}>
-        {/* Simulation & Comparison */}
-        <SimulationHub />
-        <SimulationView />
-        <ComparisonOverlay repository={repository} />
-        <CollaborationOverlay />
-        <ResistanceEvolutionOverlay />
-
-        {/* Sequence analysis */}
-        <GCSkewOverlay repository={repository} currentPhage={currentPhage} />
-        <ComplexityOverlay repository={repository} currentPhage={currentPhage} />
-        <BendabilityOverlay repository={repository} currentPhage={currentPhage} />
-        <PromoterOverlay repository={repository} currentPhage={currentPhage} />
-        <RepeatsOverlay repository={repository} currentPhage={currentPhage} />
-        <KmerAnomalyOverlay repository={repository} currentPhage={currentPhage} />
-
-        {/* Visualizations */}
-        <CGROverlay repository={repository} currentPhage={currentPhage} />
-        <HilbertOverlay repository={repository} currentPhage={currentPhage} />
-        <DotPlotOverlay repository={repository} currentPhage={currentPhage} />
-        <SyntenyOverlay repository={repository} currentPhage={currentPhage} />
-        <PhasePortraitOverlay repository={repository} currentPhage={currentPhage} />
-        <GelOverlay repository={repository} currentPhage={currentPhage} />
-        <LogoOverlay repository={repository} currentPhage={currentPhage} />
-        <PeriodicityOverlay repository={repository} currentPhage={currentPhage} />
-        <MosaicRadarOverlay repository={repository} currentPhage={currentPhage} />
-        <IllustrationOverlay />
-
-        {/* Genomic analysis */}
-        <HGTOverlay repository={repository} currentPhage={currentPhage} />
-        <CRISPROverlay repository={repository} phage={currentPhage} />
-        <NonBDNAOverlay repository={repository} currentPhage={currentPhage} />
-        <AnomalyOverlay repository={repository} currentPhage={currentPhage} />
-        <GenomicSignaturePCAOverlay repository={repository} currentPhage={currentPhage} />
-        <ProphageExcisionOverlay repository={repository} currentPhage={currentPhage} />
-
-        {/* Codon & protein */}
-        <CodonBiasOverlay repository={repository} currentPhage={currentPhage} />
-        <CodonAdaptationOverlay repository={repository} currentPhage={currentPhage} />
-        <SelectionPressureOverlay repository={repository} currentPhage={currentPhage} />
-        <BiasDecompositionOverlay repository={repository} currentPhage={currentPhage} />
-        <ProteinDomainOverlay repository={repository} currentPhage={currentPhage} />
-        <FoldQuickviewOverlay repository={repository} currentPhage={currentPhage} />
-        <RNAStructureOverlay repository={repository} currentPhage={currentPhage} />
-
-        {/* Host interactions */}
-        <TropismOverlay repository={repository} phage={currentPhage} />
-        <DefenseArmsRaceOverlay repository={repository} currentPhage={currentPhage} />
-        <AMGPathwayOverlay repository={repository} currentPhage={currentPhage} />
-        <CocktailCompatibilityOverlay repository={repository} currentPhage={currentPhage} />
-
-        {/* Structure & stability */}
-        <StructureConstraintOverlay repository={repository} currentPhage={currentPhage} />
-        <VirionStabilityOverlay />
-        <PackagingPressureOverlay />
-
-        {/* Module analysis */}
-        <ModuleOverlay repository={repository} currentPhage={currentPhage} />
-
-        {/* Epistasis & fitness landscape */}
-        <EpistasisOverlay repository={repository} currentPhage={currentPhage} />
-
-        {/* Benchmark */}
-        <GpuWasmBenchmarkOverlay repository={repository} currentPhage={currentPhage} />
-
-        {/* Metagenomic niche analysis */}
-        <NicheNetworkOverlay />
-
-        {/* Phylodynamic trajectory analysis */}
-        <PhylodynamicsOverlay repository={repository} currentPhage={currentPhage} />
-
-        {/* Environmental provenance analysis */}
-        <EnvironmentalProvenanceOverlay repository={repository} currentPhage={currentPhage} />
-      </Suspense>
+      {/* LAZY: Analysis overlays loaded only when open */}
+      {lazyOverlays.map(({ id, element }) => (
+        <ErrorBoundary
+          key={id}
+          fallback={({ error, errorInfo, reset }) => (
+            <Overlay id={id} title={formatOverlayTitle(id)} size={size}>
+              <OverlayErrorState
+                message="This overlay hit an unexpected error."
+                details={import.meta.env.DEV ? formatOverlayErrorDetails(error, errorInfo) : undefined}
+                onRetry={reset}
+              />
+            </Overlay>
+          )}
+        >
+          <Suspense fallback={<OverlayFallback id={id} />}>{element}</Suspense>
+        </ErrorBoundary>
+      ))}
     </>
   );
 }
 
 export default OverlayManager;
+
+function renderLazyOverlay(
+  id: OverlayId,
+  repository: PhageRepository | null,
+  currentPhage: PhageFull | null
+): React.ReactElement | null {
+  switch (id) {
+    // Simulation & comparison
+    case 'simulationHub':
+      return <SimulationHub />;
+    case 'simulationView':
+      return <SimulationView />;
+    case 'comparison':
+      return <ComparisonOverlay repository={repository} />;
+    case 'collaboration':
+      return <CollaborationOverlay />;
+    case 'resistanceEvolution':
+      return <ResistanceEvolutionOverlay />;
+
+    // Sequence analysis
+    case 'gcSkew':
+      return <GCSkewOverlay repository={repository} currentPhage={currentPhage} />;
+    case 'complexity':
+      return <ComplexityOverlay repository={repository} currentPhage={currentPhage} />;
+    case 'bendability':
+      return <BendabilityOverlay repository={repository} currentPhage={currentPhage} />;
+    case 'promoter':
+      return <PromoterOverlay repository={repository} currentPhage={currentPhage} />;
+    case 'repeats':
+      return <RepeatsOverlay repository={repository} currentPhage={currentPhage} />;
+    case 'kmerAnomaly':
+      return <KmerAnomalyOverlay repository={repository} currentPhage={currentPhage} />;
+    case 'transcriptionFlow':
+      return <TranscriptionFlowOverlay repository={repository} currentPhage={currentPhage} />;
+
+    // Visualizations
+    case 'cgr':
+      return <CGROverlay repository={repository} currentPhage={currentPhage} />;
+    case 'hilbert':
+      return <HilbertOverlay repository={repository} currentPhage={currentPhage} />;
+    case 'dotPlot':
+      return <DotPlotOverlay repository={repository} currentPhage={currentPhage} />;
+    case 'synteny':
+      return <SyntenyOverlay repository={repository} currentPhage={currentPhage} />;
+    case 'phasePortrait':
+      return <PhasePortraitOverlay repository={repository} currentPhage={currentPhage} />;
+    case 'gel':
+      return <GelOverlay repository={repository} currentPhage={currentPhage} />;
+    case 'logo':
+      return <LogoOverlay repository={repository} currentPhage={currentPhage} />;
+    case 'periodicity':
+      return <PeriodicityOverlay repository={repository} currentPhage={currentPhage} />;
+    case 'mosaicRadar':
+      return <MosaicRadarOverlay repository={repository} currentPhage={currentPhage} />;
+    case 'illustration':
+      return <IllustrationOverlay />;
+
+    // Genomic analysis
+    case 'hgt':
+      return <HGTOverlay repository={repository} currentPhage={currentPhage} />;
+    case 'crispr':
+      return <CRISPROverlay repository={repository} phage={currentPhage} />;
+    case 'nonBDNA':
+      return <NonBDNAOverlay repository={repository} currentPhage={currentPhage} />;
+    case 'anomaly':
+      return <AnomalyOverlay repository={repository} currentPhage={currentPhage} />;
+    case 'genomicSignaturePCA':
+      return <GenomicSignaturePCAOverlay repository={repository} currentPhage={currentPhage} />;
+    case 'prophageExcision':
+      return <ProphageExcisionOverlay repository={repository} currentPhage={currentPhage} />;
+
+    // Codon & protein
+    case 'codonBias':
+      return <CodonBiasOverlay repository={repository} currentPhage={currentPhage} />;
+    case 'codonAdaptation':
+      return <CodonAdaptationOverlay repository={repository} currentPhage={currentPhage} />;
+    case 'selectionPressure':
+      return <SelectionPressureOverlay repository={repository} currentPhage={currentPhage} />;
+    case 'biasDecomposition':
+      return <BiasDecompositionOverlay repository={repository} currentPhage={currentPhage} />;
+    case 'proteinDomains':
+      return <ProteinDomainOverlay repository={repository} currentPhage={currentPhage} />;
+    case 'foldQuickview':
+      return <FoldQuickviewOverlay repository={repository} currentPhage={currentPhage} />;
+    case 'rnaStructure':
+      return <RNAStructureOverlay repository={repository} currentPhage={currentPhage} />;
+
+    // Host interactions
+    case 'tropism':
+      return <TropismOverlay repository={repository} phage={currentPhage} />;
+    case 'defenseArmsRace':
+      return <DefenseArmsRaceOverlay repository={repository} currentPhage={currentPhage} />;
+    case 'amgPathway':
+      return <AMGPathwayOverlay repository={repository} currentPhage={currentPhage} />;
+    case 'cocktailCompatibility':
+      return <CocktailCompatibilityOverlay repository={repository} currentPhage={currentPhage} />;
+
+    // Structure & stability
+    case 'structureConstraint':
+      return <StructureConstraintOverlay repository={repository} currentPhage={currentPhage} />;
+    case 'stability':
+      return <VirionStabilityOverlay />;
+    case 'pressure':
+      return <PackagingPressureOverlay />;
+
+    // Module analysis
+    case 'modules':
+      return <ModuleOverlay repository={repository} currentPhage={currentPhage} />;
+
+    // Epistasis & fitness landscape
+    case 'epistasis':
+      return <EpistasisOverlay repository={repository} currentPhage={currentPhage} />;
+
+    // Benchmark & diagnostic
+    case 'gpuWasmBenchmark':
+      return <GpuWasmBenchmarkOverlay repository={repository} currentPhage={currentPhage} />;
+
+    // Metagenomic niche analysis
+    case 'nicheNetwork':
+      return <NicheNetworkOverlay />;
+
+    // Phylodynamic trajectory analysis
+    case 'phylodynamics':
+      return <PhylodynamicsOverlay repository={repository} currentPhage={currentPhage} />;
+
+    // Environmental provenance analysis
+    case 'environmentalProvenance':
+      return <EnvironmentalProvenanceOverlay repository={repository} currentPhage={currentPhage} />;
+
+    default:
+      return null;
+  }
+}
+
+function formatOverlayErrorDetails(error: Error | null, errorInfo: React.ErrorInfo | null): string {
+  const message = error ? error.toString() : 'Unknown error';
+  const stack = errorInfo?.componentStack?.trim();
+  if (!stack) return message;
+  return `${message}\n${stack}`;
+}

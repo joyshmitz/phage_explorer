@@ -7,6 +7,11 @@ import { Overlay } from './Overlay';
 import { useOverlay } from './OverlayProvider';
 import { calculateSelectionPressure } from '@phage-explorer/core';
 import { AnalysisPanelSkeleton } from '../ui/Skeleton';
+import {
+  OverlayLoadingState,
+  OverlayEmptyState,
+  OverlayErrorState,
+} from './primitives';
 
 interface SelectionPressureOverlayProps {
   repository: PhageRepository | null;
@@ -130,15 +135,19 @@ export function SelectionPressureOverlay({ repository, currentPhage }: Selection
         </div>
 
         {loading ? (
-           <AnalysisPanelSkeleton />
+           <OverlayLoadingState message="Computing selection pressure...">
+             <AnalysisPanelSkeleton />
+           </OverlayLoadingState>
         ) : error ? (
-           <div style={{ padding: '2rem', textAlign: 'center', color: colors.error }}>
-             Error: {error}
-           </div>
+           <OverlayErrorState
+             message="Analysis failed"
+             details={error}
+           />
         ) : !analysis ? (
-           <div style={{ padding: '2rem', textAlign: 'center', color: colors.textMuted }}>
-             {!diffEnabled ? 'Requires reference comparison (enable Diff mode).' : 'Preparing analysis...'}
-           </div>
+           <OverlayEmptyState
+             message={!diffEnabled ? 'Requires reference comparison' : 'Preparing analysis...'}
+             hint={!diffEnabled ? 'Enable Diff mode to compare against a reference sequence.' : 'Loading sequence data...'}
+           />
         ) : (
            <>
              <div style={{

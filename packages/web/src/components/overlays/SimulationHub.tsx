@@ -6,12 +6,13 @@
  * Includes SVG preview thumbnails for each simulation type.
  */
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useTheme } from '../../hooks/useTheme';
 import { useHotkey } from '../../hooks';
-import { ActionIds } from '../../keyboard';
+import { ActionIds, getKeyboardManager, type HotkeyDefinition } from '../../keyboard';
+import { detectShortcutPlatform, formatActionShortcutForSurface } from '../../keyboard/actionSurfaces';
 import { Overlay } from './Overlay';
-import { useOverlay } from './OverlayProvider';
+import { useIsTopOverlay, useOverlay } from './OverlayProvider';
 import { SIMULATION_METADATA } from '@phage-explorer/core';
 
 interface SimulationDef {
@@ -128,6 +129,19 @@ export function SimulationHub(): React.ReactElement | null {
   const colors = theme.colors;
   const { isOpen, toggle, close, open, setOverlayData } = useOverlay();
   const [selectedIndex, setSelectedIndex] = useState(0);
+  const isTopmost = useIsTopOverlay('simulationHub');
+  const overlayOpen = isOpen('simulationHub');
+  const shouldCaptureHotkeys = overlayOpen && isTopmost;
+  const shortcutPlatform = useMemo(() => detectShortcutPlatform(), []);
+  const overlayHotkey = useMemo(
+    () => formatActionShortcutForSurface(ActionIds.OverlaySimulationHub, shortcutPlatform) ?? undefined,
+    [shortcutPlatform]
+  );
+
+  const selectedIndexRef = useRef(selectedIndex);
+  useEffect(() => {
+    selectedIndexRef.current = selectedIndex;
+  }, [selectedIndex]);
 
   // Sort by priority, fall back to label
   const orderedSims = useMemo(
@@ -144,46 +158,78 @@ export function SimulationHub(): React.ReactElement | null {
 
   // Handle keyboard navigation
   useEffect(() => {
-    if (!isOpen('simulationHub')) return;
+    if (!shouldCaptureHotkeys) return;
+    if (typeof window === 'undefined') return;
 
-    const handleKeyDown = (e: KeyboardEvent) => {
-      switch (e.key) {
-        case 'ArrowDown':
-        case 'j':
-          e.preventDefault();
-          setSelectedIndex(prev => Math.min(prev + 1, orderedSims.length - 1));
-          break;
-        case 'ArrowUp':
-        case 'k':
-          e.preventDefault();
-          setSelectedIndex(prev => Math.max(prev - 1, 0));
-          break;
-        case 'Enter':
-          e.preventDefault();
-          const sim = orderedSims[selectedIndex];
-          setOverlayData('simulationView.simId', sim.id);
-          close('simulationHub');
-          open('simulationView');
-          break;
-        default:
-          // Check for shortcut key (1-9, 0)
-          if (/^[0-9]$/.test(e.key)) {
-            const matchingSim = orderedSims.find(s => s.shortcut === e.key);
-            if (matchingSim) {
-              e.preventDefault();
-              setOverlayData('simulationView.simId', matchingSim.id);
-              close('simulationHub');
-              open('simulationView');
-            }
-          }
-      }
+    const manager = getKeyboardManager();
+
+    const launchSim = (simId: string) => {
+      setOverlayData('simulationView.simId', simId);
+      close('simulationHub');
+      open('simulationView');
     };
 
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen, selectedIndex, close, open, orderedSims, setOverlayData]);
+    const next = () => setSelectedIndex((prev) => Math.min(prev + 1, orderedSims.length - 1));
+    const prev = () => setSelectedIndex((prev) => Math.max(prev - 1, 0));
 
-  if (!isOpen('simulationHub')) {
+    const definitions: HotkeyDefinition[] = [
+      {
+        combo: { key: 'ArrowDown' },
+        description: 'Simulation hub: next item',
+        action: next,
+        modes: ['NORMAL'],
+        priority: 10,
+      },
+      {
+        combo: { key: 'j' },
+        description: 'Simulation hub: next item',
+        action: next,
+        modes: ['NORMAL'],
+        priority: 10,
+      },
+      {
+        combo: { key: 'ArrowUp' },
+        description: 'Simulation hub: previous item',
+        action: prev,
+        modes: ['NORMAL'],
+        priority: 10,
+      },
+      {
+        combo: { key: 'k' },
+        description: 'Simulation hub: previous item',
+        action: prev,
+        modes: ['NORMAL'],
+        priority: 10,
+      },
+      {
+        combo: { key: 'Enter' },
+        description: 'Simulation hub: launch selected simulation',
+        action: () => {
+          const sim = orderedSims[selectedIndexRef.current];
+          if (!sim) return;
+          launchSim(sim.id);
+        },
+        modes: ['NORMAL'],
+        priority: 10,
+      },
+    ];
+
+    // Shortcut digits (1-9 then 0)
+    for (const sim of orderedSims) {
+      definitions.push({
+        combo: { key: sim.shortcut },
+        description: `Simulation hub: launch ${sim.label}`,
+        action: () => launchSim(sim.id),
+        modes: ['NORMAL'],
+        priority: 10,
+      });
+    }
+
+    const unregister = manager.registerMany(definitions);
+    return unregister;
+  }, [close, open, orderedSims, setOverlayData, shouldCaptureHotkeys]);
+
+  if (!overlayOpen) {
     return null;
   }
 
@@ -211,7 +257,7 @@ export function SimulationHub(): React.ReactElement | null {
     <Overlay
       id="simulationHub"
       title="SIMULATION HUB"
-      hotkey="Shift+S"
+      hotkey={overlayHotkey}
       size="xl"
     >
       <div style={{
@@ -305,15 +351,7 @@ export function SimulationHub(): React.ReactElement | null {
                               {sim.duration}
                             </span>
                           )}
-                          <span style={{
-                            color: colors.accent,
-                            fontSize: '0.8rem',
-                            padding: '0.1rem 0.4rem',
-                            backgroundColor: colors.background,
-                            border: `1px solid ${colors.borderLight}`,
-                            borderRadius: '3px',
-                            fontFamily: 'monospace',
-                          }}>
+                          <span className="key-hint">
                             {sim.shortcut}
                           </span>
                         </div>

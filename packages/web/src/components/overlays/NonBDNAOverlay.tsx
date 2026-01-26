@@ -15,6 +15,10 @@ import { Overlay } from './Overlay';
 import { useOverlay } from './OverlayProvider';
 import { AnalysisPanelSkeleton } from '../ui/Skeleton';
 import { GenomeTrack } from './primitives/GenomeTrack';
+import {
+  OverlayLoadingState,
+  OverlayEmptyState,
+} from './primitives';
 import type { GenomeTrackSegment, GenomeTrackInteraction } from './primitives/types';
 
 // Non-B-DNA structure types
@@ -415,15 +419,19 @@ export function NonBDNAOverlay({
         </div>
 
         {loading ? (
-          <AnalysisPanelSkeleton />
+          <OverlayLoadingState message="Loading sequence data...">
+            <AnalysisPanelSkeleton />
+          </OverlayLoadingState>
         ) : !sequence ? (
-          <div style={{ padding: '2rem', textAlign: 'center', color: colors.textMuted }}>
-            No sequence loaded
-          </div>
+          <OverlayEmptyState
+            message="No sequence loaded"
+            hint="Select a phage to analyze."
+          />
         ) : !analysis ? (
-          <div style={{ padding: '2rem', textAlign: 'center', color: colors.textMuted }}>
-            Sequence too short for analysis
-          </div>
+          <OverlayEmptyState
+            message="Sequence too short for analysis"
+            hint="Non-B-DNA detection requires at least 100 bp of sequence data."
+          />
         ) : (
           <>
             {/* Toggle controls */}

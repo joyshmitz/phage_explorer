@@ -27,6 +27,11 @@ import {
 } from '@phage-explorer/core';
 import { AnalysisPanelSkeleton } from '../ui/Skeleton';
 import {
+  OverlayLoadingState,
+  OverlayEmptyState,
+  OverlayErrorState,
+} from './primitives';
+import {
   searchPhageRelated,
   fetchSRARunMetadataBatch,
   processProvenanceData,
@@ -491,13 +496,19 @@ export function EnvironmentalProvenanceOverlay({
 
         {/* Content area */}
         {loading ? (
-          <AnalysisPanelSkeleton />
+          <OverlayLoadingState message={apiMessage || 'Connecting to metagenome databases...'}>
+            <AnalysisPanelSkeleton />
+          </OverlayLoadingState>
         ) : error ? (
-          <div style={{ padding: '1rem', color: colors.error }}>{error}</div>
+          <OverlayErrorState
+            message="Failed to load provenance data"
+            details={error}
+          />
         ) : !result ? (
-          <div style={{ padding: '2rem', textAlign: 'center', color: colors.textMuted }}>
-            No provenance data available.
-          </div>
+          <OverlayEmptyState
+            message="No provenance data available"
+            hint="Provenance analysis requires metagenome containment data from Serratus or similar databases."
+          />
         ) : (
           <div style={{ flex: 1, overflow: 'auto' }}>
             {viewMode === 'overview' && (

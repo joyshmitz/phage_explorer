@@ -5,7 +5,7 @@
  * and handles blocked hotkey notifications.
  */
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { usePhageStore } from '@phage-explorer/state';
 import { getKeyboardManager } from '../keyboard/KeyboardManager';
 import type { ExperienceLevel, KeyboardEvent } from '../keyboard/types';
@@ -47,11 +47,18 @@ export function useBlockedHotkeyNotification(): {
     setBlockedHotkey(null);
   }, []);
 
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   useEffect(() => {
     const manager = getKeyboardManager();
 
     const handleEvent = (event: KeyboardEvent) => {
       if (event.type === 'hotkey_blocked') {
+        // Clear any existing timeout before setting a new one
+        if (timeoutRef.current) {
+          clearTimeout(timeoutRef.current);
+        }
+
         setBlockedHotkey({
           description: event.description,
           keyDisplay: formatKeyCombo(event.combo),
@@ -60,16 +67,21 @@ export function useBlockedHotkeyNotification(): {
         });
 
         // Auto-dismiss after 4 seconds
-        const timeout = setTimeout(() => {
+        timeoutRef.current = setTimeout(() => {
           setBlockedHotkey(null);
+          timeoutRef.current = null;
         }, 4000);
-
-        return () => clearTimeout(timeout);
       }
     };
 
     const unsubscribe = manager.addEventListener(handleEvent);
-    return unsubscribe;
+    return () => {
+      unsubscribe();
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+        timeoutRef.current = null;
+      }
+    };
   }, []);
 
   return { blockedHotkey, dismiss };

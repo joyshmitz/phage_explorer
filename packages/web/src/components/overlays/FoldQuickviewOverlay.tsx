@@ -20,9 +20,9 @@ import {
 import type { PhageRepository } from '../../db';
 import { useTheme } from '../../hooks/useTheme';
 import { useHotkey } from '../../hooks/useHotkey';
-import { ActionIds } from '../../keyboard';
+import { ActionIds, getKeyboardManager, type HotkeyDefinition } from '../../keyboard';
 import { Overlay } from './Overlay';
-import { useOverlay } from './OverlayProvider';
+import { useIsTopOverlay, useOverlay } from './OverlayProvider';
 
 const EMBEDDING_MODEL = 'protein-k3-hash-v1';
 
@@ -150,6 +150,9 @@ export function FoldQuickviewOverlay({
   const { theme } = useTheme();
   const colors = theme.colors;
   const { isOpen, toggle } = useOverlay();
+  const isTopmost = useIsTopOverlay('foldQuickview');
+  const overlayOpen = isOpen('foldQuickview');
+  const shouldCaptureHotkeys = overlayOpen && isTopmost;
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [corpus, setCorpus] = useState<FoldEmbedding[]>([]);
@@ -295,23 +298,33 @@ export function FoldQuickviewOverlay({
 
   // Arrow navigation (when open).
   useEffect(() => {
-    if (!isOpen('foldQuickview')) return;
+    if (!shouldCaptureHotkeys) return;
+    if (genesWithEmbeddings.length === 0) return;
+    if (typeof window === 'undefined') return;
 
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'ArrowUp') {
-        event.preventDefault();
-        setSelectedGeneIdx((idx) => clampIndex(idx - 1, genesWithEmbeddings.length));
-        return;
-      }
-      if (event.key === 'ArrowDown') {
-        event.preventDefault();
-        setSelectedGeneIdx((idx) => clampIndex(idx + 1, genesWithEmbeddings.length));
-      }
-    };
+    const manager = getKeyboardManager();
+    const total = genesWithEmbeddings.length;
 
-    window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
-  }, [genesWithEmbeddings.length, isOpen]);
+    const definitions: HotkeyDefinition[] = [
+      {
+        combo: { key: 'ArrowUp' },
+        description: 'Fold quickview: previous gene',
+        action: () => setSelectedGeneIdx((idx) => clampIndex(idx - 1, total)),
+        modes: ['NORMAL'],
+        priority: 10,
+      },
+      {
+        combo: { key: 'ArrowDown' },
+        description: 'Fold quickview: next gene',
+        action: () => setSelectedGeneIdx((idx) => clampIndex(idx + 1, total)),
+        modes: ['NORMAL'],
+        priority: 10,
+      },
+    ];
+
+    const unregister = manager.registerMany(definitions);
+    return unregister;
+  }, [genesWithEmbeddings.length, shouldCaptureHotkeys]);
 
   const title = currentPhage ? `Fold Quickview — ${currentPhage.name}` : 'Fold Quickview';
 

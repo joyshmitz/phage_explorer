@@ -25,6 +25,10 @@ import { ActionIds } from '../../keyboard';
 import { Overlay } from './Overlay';
 import { useOverlay } from './OverlayProvider';
 import { AnalysisPanelSkeleton } from '../ui/Skeleton';
+import {
+  OverlayLoadingState,
+  OverlayEmptyState,
+} from './primitives';
 import { GenomeTrack } from './primitives/GenomeTrack';
 import type { GenomeTrackSegment, GenomeTrackInteraction } from './primitives/types';
 
@@ -438,15 +442,19 @@ export function StructureConstraintOverlay({
         </div>
 
         {loading ? (
-          <AnalysisPanelSkeleton />
+          <OverlayLoadingState message="Loading sequence for structure analysis...">
+            <AnalysisPanelSkeleton />
+          </OverlayLoadingState>
         ) : !sequence ? (
-          <div style={{ padding: '2rem', textAlign: 'center', color: colors.textMuted }}>
-            No sequence loaded
-          </div>
+          <OverlayEmptyState
+            message="No sequence loaded"
+            hint={!currentPhage ? 'Select a phage to analyze structure constraints.' : 'Unable to load sequence data.'}
+          />
         ) : viewMode === 'rna' && !analysis ? (
-          <div style={{ padding: '2rem', textAlign: 'center', color: colors.textMuted }}>
-            Sequence too short for analysis
-          </div>
+          <OverlayEmptyState
+            message="Sequence too short for analysis"
+            hint="RNA structure analysis requires sufficient sequence length."
+          />
         ) : (
           <>
             {viewMode === 'protein' ? (

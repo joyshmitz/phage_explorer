@@ -55,10 +55,12 @@ export function CRISPROverlay({ repository, phage }: CRISPROverlayProps): React.
 
   const [sequence, setSequence] = useState<string>('');
   const [analysis, setAnalysis] = useState<CRISPRAnalysisResult | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [sequenceLoading, setSequenceLoading] = useState(false);
+  const [analysisLoading, setAnalysisLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedHit, setSelectedHit] = useState<SpacerHit | null>(null);
   const [hoverInfo, setHoverInfo] = useState<GenomeTrackInteraction | null>(null);
+  const loading = sequenceLoading || analysisLoading;
 
   const workerRef = useRef<Worker | null>(null);
   const sequenceCache = useRef<Map<number, string>>(new Map());
@@ -86,11 +88,17 @@ export function CRISPROverlay({ repository, phage }: CRISPROverlayProps): React.
 
   // Fetch sequence when overlay opens or phage changes
   useEffect(() => {
-    if (!isOpen('crispr')) return;
+    if (!isOpen('crispr')) {
+      setSequenceLoading(false);
+      setAnalysisLoading(false);
+      return;
+    }
     if (!repository || !phage) {
       setSequence('');
       setAnalysis(null);
-      setLoading(false);
+      setSequenceLoading(false);
+      setAnalysisLoading(false);
+      setError(null);
       return;
     }
 
@@ -98,12 +106,12 @@ export function CRISPROverlay({ repository, phage }: CRISPROverlayProps): React.
     const cached = sequenceCache.current.get(phageId);
     if (cached) {
       setSequence(cached);
-      setLoading(false);
+      setSequenceLoading(false);
       return;
     }
 
     let cancelled = false;
-    setLoading(true);
+    setSequenceLoading(true);
     setError(null);
 
     repository
@@ -120,25 +128,35 @@ export function CRISPROverlay({ repository, phage }: CRISPROverlayProps): React.
         setError('Unable to load genome sequence for CRISPR analysis.');
       })
       .finally(() => {
-        if (!cancelled) setLoading(false);
+        if (!cancelled) setSequenceLoading(false);
       });
 
     return () => {
       cancelled = true;
+      setSequenceLoading(false);
     };
   }, [isOpen, repository, phage]);
 
   // Run analysis in worker
   useEffect(() => {
-    if (!isOpen('crispr')) return;
-    if (!sequence || !phage?.genes) return;
+    if (!isOpen('crispr')) {
+      setAnalysisLoading(false);
+      return;
+    }
+    if (!sequence || !phage?.genes) {
+      setAnalysis(null);
+      setAnalysisLoading(false);
+      return;
+    }
     if (!workerRef.current) {
       setError('CRISPR analysis worker unavailable.');
+      setAnalysis(null);
+      setAnalysisLoading(false);
       return;
     }
 
     let cancelled = false;
-    setLoading(true);
+    setAnalysisLoading(true);
     setError(null);
     setAnalysis(null);
     const worker = workerRef.current;
@@ -151,7 +169,7 @@ export function CRISPROverlay({ repository, phage }: CRISPROverlayProps): React.
       } else {
         setError(message.error ?? 'CRISPR analysis failed.');
       }
-      setLoading(false);
+      setAnalysisLoading(false);
     };
 
     worker.addEventListener('message', handleMessage);
@@ -160,6 +178,7 @@ export function CRISPROverlay({ repository, phage }: CRISPROverlayProps): React.
     return () => {
       cancelled = true;
       worker.removeEventListener('message', handleMessage);
+      setAnalysisLoading(false);
     };
   }, [isOpen, sequence, phage]);
 

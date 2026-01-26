@@ -16,6 +16,11 @@ import { Overlay } from './Overlay';
 import { useOverlay } from './OverlayProvider';
 import { AnalysisPanelSkeleton } from '../ui/Skeleton';
 import { InfoButton } from '../ui';
+import {
+  OverlayLoadingState,
+  OverlayEmptyState,
+  OverlayErrorState,
+} from './primitives';
 import { HeatmapCanvas } from '../primitives/HeatmapCanvas';
 import type { ColorScale, HeatmapHover } from '../primitives/types';
 import { GenomeTrack } from './primitives/GenomeTrack';
@@ -606,13 +611,14 @@ export function ProteinDomainOverlay({
 
         {viewMode === 'phage' ? (
           loading ? (
-            <AnalysisPanelSkeleton />
+            <OverlayLoadingState message="Loading protein domains...">
+              <AnalysisPanelSkeleton />
+            </OverlayLoadingState>
           ) : domains.length === 0 ? (
-            <div style={{ padding: '2rem', textAlign: 'center', color: colors.textMuted }}>
-              {!currentPhage
-                ? 'No phage selected'
-                : 'No protein domain annotations available for this phage'}
-            </div>
+            <OverlayEmptyState
+              message={!currentPhage ? 'No phage selected' : 'No protein domain annotations available'}
+              hint={!currentPhage ? 'Select a phage to analyze.' : 'Domain annotations are computed via InterProScan.'}
+            />
           ) : (
             <>
               {/* Stats and filter */}
@@ -782,23 +788,19 @@ export function ProteinDomainOverlay({
             </>
           )
         ) : loadingChord ? (
-          <AnalysisPanelSkeleton message="Loading domain annotations across phages..." rows={3} />
+          <OverlayLoadingState message="Loading domain annotations across phages...">
+            <AnalysisPanelSkeleton rows={3} />
+          </OverlayLoadingState>
         ) : chordError ? (
-          <div
-            style={{
-              padding: '1rem',
-              color: '#ef4444',
-              backgroundColor: colors.backgroundAlt,
-              borderRadius: '4px',
-              border: `1px solid ${colors.borderLight}`,
-            }}
-          >
-            {chordError}
-          </div>
+          <OverlayErrorState
+            message="Failed to load chord plot data"
+            details={chordError}
+          />
         ) : !chordMatrix || chordPhages.length === 0 ? (
-          <div style={{ padding: '2rem', textAlign: 'center', color: colors.textMuted }}>
-            No cross-phage domain data available.
-          </div>
+          <OverlayEmptyState
+            message="No cross-phage domain data available"
+            hint="Chord plot requires protein_domains annotations in the database."
+          />
         ) : (
           <>
             {/* Controls */}

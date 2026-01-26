@@ -13,15 +13,14 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import * as Comlink from 'comlink';
 import { useTheme } from '../../hooks/useTheme';
-import { useHotkey } from '../../hooks';
 import {
   ActionIds,
   ActionRegistryList,
   formatKeyCombo,
-  type ActionDefinition,
   type KeyCombo,
   type ExperienceLevel as KbExperienceLevel,
 } from '../../keyboard';
+import { detectShortcutPlatform, formatPrimaryActionShortcut } from '../../keyboard/actionSurfaces';
 import { Overlay } from './Overlay';
 import { useOverlay, type OverlayId } from './OverlayProvider';
 import { usePhageStore } from '@phage-explorer/state';
@@ -159,21 +158,6 @@ function mapExperienceLevel(level?: KbExperienceLevel): ExperienceLevel | undefi
   return level as ExperienceLevel | undefined;
 }
 
-/**
- * Infer command context from action properties
- */
-function inferContextFromAction(action: ActionDefinition): CommandContext[] {
-  // Most overlay actions require a phage to be loaded
-  if (action.overlayId && action.category === 'Analysis') {
-    return ['has-phage'];
-  }
-  if (action.scope === 'contextual') {
-    // Contextual actions typically require a phage
-    return ['has-phage'];
-  }
-  return ['always'];
-}
-
 // Category icons for visual scanning
 const CATEGORY_ICON_SIZE = 14;
 const DEFAULT_CATEGORY_ICON = <IconLayers size={CATEGORY_ICON_SIZE} />;
@@ -251,6 +235,7 @@ export function CommandPalette({ commands: customCommands, context: propContext 
   const colors = theme.colors;
   const { isOpen, toggle, open, close, isMobile } = useOverlay();
   const paletteOpen = isOpen('commandPalette');
+  const shortcutPlatform = useMemo(() => detectShortcutPlatform(), []);
   const [query, setQuery] = useState('');
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [recentCommandIds, setRecentCommandIds] = useState<string[]>([]);
@@ -276,6 +261,14 @@ export function CommandPalette({ commands: customCommands, context: propContext 
   const setBeginnerModeEnabled = usePhageStore((s) => s.setBeginnerModeEnabled);
   const openGlossary = usePhageStore((s) => s.openGlossary);
   const startTour = usePhageStore((s) => s.startTour);
+  // We need these for action implementations
+  const toggleSequenceViewMode = usePhageStore((s) => s.toggleViewMode);
+  const setReadingFrame = usePhageStore((s) => s.setReadingFrame);
+  const readingFrame = usePhageStore((s) => s.readingFrame);
+  const setScrollPosition = usePhageStore((s) => s.setScrollPosition);
+  const toggle3DModel = usePhageStore((s) => s.toggle3DModel);
+  const setCurrentPhageIndex = usePhageStore((s) => s.setCurrentPhageIndex);
+  const currentPhageIndex = usePhageStore((s) => s.currentPhageIndex);
 
   // Merge prop context with inferred context
   const appContext: AppContext = useMemo(() => ({
@@ -354,170 +347,178 @@ export function CommandPalette({ commands: customCommands, context: propContext 
     close('commandPalette');
   }, [close]);
 
-  // Generate overlay commands from ActionRegistry (single source of truth for shortcuts)
+  // Implementations for non-overlay actions
+  const commandImpls = useMemo<Record<string, () => void>>(() => ({
+    [ActionIds.NavNextPhage]: () => {
+      if (phageSummaries.length > 0) {
+        const nextIndex = (currentPhageIndex + 1) % phageSummaries.length;
+        setCurrentPhageIndex(nextIndex);
+      }
+    },
+    [ActionIds.NavPrevPhage]: () => {
+      if (phageSummaries.length > 0) {
+        const prevIndex = (currentPhageIndex - 1 + phageSummaries.length) % phageSummaries.length;
+        setCurrentPhageIndex(prevIndex);
+      }
+    },
+    [ActionIds.ViewCycleTheme]: () => {
+      const idx = availableThemes.findIndex((t) => t.id === theme.id);
+      const next = availableThemes[(idx + 1) % availableThemes.length];
+      setTheme(next.id);
+    },
+    [ActionIds.ViewCycleMode]: () => {
+      toggleSequenceViewMode();
+    },
+    [ActionIds.ViewCycleReadingFrame]: () => {
+      const frames: Array<0 | 1 | 2 | -1 | -2 | -3> = [0, 1, 2, -1, -2, -3];
+      const currentIdx = frames.indexOf(readingFrame as typeof frames[number]);
+      const nextIdx = (currentIdx + 1) % frames.length;
+      setReadingFrame(frames[nextIdx]);
+    },
+    [ActionIds.ViewScrollStart]: () => {
+      setScrollPosition(0);
+    },
+    [ActionIds.ViewScrollEnd]: () => {
+      const len = currentPhage?.genomeLength || 0;
+      setScrollPosition(len);
+    },
+    [ActionIds.ViewZoomIn]: () => {
+      const store = usePhageStore.getState();
+      const current = store.zoomScale ?? 1.0;
+      store.setZoomScale(Math.min(4.0, current * 1.2));
+    },
+    [ActionIds.ViewZoomOut]: () => {
+      const store = usePhageStore.getState();
+      const current = store.zoomScale ?? 1.0;
+      store.setZoomScale(Math.max(0.1, current / 1.2));
+    },
+    [ActionIds.ViewToggle3DModel]: () => {
+      toggle3DModel();
+    },
+    [ActionIds.EducationToggleBeginnerMode]: () => {
+      toggleBeginnerMode();
+    },
+    [ActionIds.ExportFasta]: () => {
+      const { currentPhage, diffReferenceSequence } = usePhageStore.getState();
+      const seq = diffReferenceSequence;
+      if (!seq || seq.length === 0) {
+        alert('No sequence available to export.');
+        return;
+      }
+      const name = currentPhage?.name || 'phage';
+      const fasta = formatFasta(`${name} [exported from Phage Explorer]`, seq);
+      downloadString(fasta, `${name.replace(/\s+/g, '_')}.fasta`);
+    },
+    [ActionIds.ExportCopy]: () => {
+      const { currentPhage, diffReferenceSequence } = usePhageStore.getState();
+      const seq = diffReferenceSequence;
+      if (!seq || seq.length === 0) {
+        alert('No sequence loaded to copy.');
+        return;
+      }
+      const header = currentPhage ? `${currentPhage.name} | ${currentPhage.accession}` : 'phage-sequence';
+      const payload = buildSequenceClipboardPayload({ header, sequence: seq, wrap: 80 });
+      copyToClipboard(payload.text, payload.html)
+        .then(() => alert('Sequence copied (text + HTML).'))
+        .catch(() => alert('Failed to copy sequence.'));
+    },
+    [ActionIds.ExportJson]: () => {
+      const state = usePhageStore.getState();
+      const exportData = {
+        phage: state.currentPhage,
+        overlays: state.overlayData,
+        timestamp: new Date().toISOString(),
+      };
+      downloadString(JSON.stringify(exportData, null, 2), 'analysis_export.json', 'application/json');
+    },
+    'edu:enable-beginner': () => {
+      if (!beginnerModeEnabled) setBeginnerModeEnabled(true);
+    },
+    'edu:open-glossary': () => {
+      setBeginnerModeEnabled(true);
+      openGlossary();
+    },
+    'edu:start-welcome-tour': () => {
+      setBeginnerModeEnabled(true);
+      startTour('welcome');
+    },
+  }), [
+    availableThemes, beginnerModeEnabled, currentPhage, currentPhageIndex,
+    openGlossary, phageSummaries, readingFrame, setBeginnerModeEnabled, setCurrentPhageIndex,
+    setReadingFrame, setScrollPosition, setTheme, startTour, theme.id,
+    toggle3DModel, toggleBeginnerMode, toggleSequenceViewMode
+  ]);
+
+  // Generate commands from ActionRegistry (single source of truth for shortcuts)
   const registryCommands: Command[] = useMemo(() => {
-    return ActionRegistryList
-      .filter((action) => {
-        // Only include web-surface actions
-        if (action.surfaces && !action.surfaces.includes('web')) return false;
-        // Skip command palette itself and close-all (handled separately)
-        if (action.id === ActionIds.OverlayCommandPalette) return false;
-        if (action.id === ActionIds.OverlayCloseAll) return false;
-        // Skip contextual-only actions that need special handling
-        if (action.scope === 'contextual' && !action.overlayId) return false;
-        return true;
-      })
-      .map((action): Command => {
-        const shortcut = formatRegistryShortcut(action.defaultShortcut);
-        const contexts = inferContextFromAction(action);
+    const actionCommands: Command[] = [];
 
-        // Create the action handler based on whether it opens an overlay
-        let actionHandler: () => void;
-        if (action.overlayId) {
-          const overlayId = action.overlayId as OverlayId;
-          if (action.overlayAction === 'toggle') {
-            actionHandler = () => { close('commandPalette'); toggle(overlayId); };
-          } else {
-            actionHandler = () => { close('commandPalette'); open(overlayId); };
-          }
-        } else {
-          // Non-overlay actions are placeholders (view mode, nav, etc.)
-          // The actual handlers are registered via useHotkey in their components
-          actionHandler = () => {};
-        }
+    for (const def of ActionRegistryList) {
+      if (def.surfaces && !def.surfaces.includes('web')) continue;
+      let action: (() => void) | undefined;
 
-        return {
-          id: `registry:${action.id}`,
-          label: action.title,
-          description: action.description,
-          category: action.category,
-          shortcut,
-          action: actionHandler,
-          minLevel: mapExperienceLevel(action.minLevel),
-          contexts: contexts.includes('always') ? undefined : contexts,
-        };
+      if (def.overlayId) {
+        const overlayId = def.overlayId as OverlayId;
+        action = def.overlayAction === 'toggle'
+          ? () => { close('commandPalette'); toggle(overlayId); }
+          : () => { close('commandPalette'); open(overlayId); };
+      } else {
+        action = commandImpls[def.id];
+      }
+
+      if (!action) continue;
+
+      let contexts: CommandContext[] | undefined = undefined;
+      if (['Analysis', 'Simulation', 'Comparison', 'Advanced'].includes(def.category)) {
+        contexts = ['has-phage'];
+      }
+      if (def.id === ActionIds.ExportFasta || def.id === ActionIds.ExportCopy || def.id === ActionIds.ExportJson) {
+        contexts = ['has-phage'];
+      }
+
+      const shortcut = formatPrimaryActionShortcut(def, shortcutPlatform) ?? undefined;
+
+      actionCommands.push({
+        id: def.id,
+        label: def.title,
+        category: def.category,
+        description: def.description,
+        shortcut,
+        action,
+        minLevel: mapExperienceLevel(def.minLevel),
+        contexts,
       });
-  }, [close, open, toggle]);
+    }
 
-  // Default commands with experience levels and contexts
-  // These supplement the registry commands with dynamic/custom actions
-  const defaultCommands: Command[] = useMemo(() => [
-    // Theme commands (dynamic based on available themes)
-    ...availableThemes.map((next) => ({
+    const themeCommands: Command[] = availableThemes.map((next) => ({
       id: `theme:${next.id}`,
       label: next.id === theme.id ? `Theme: ${next.name} (current)` : `Theme: ${next.name}`,
       category: 'Theme',
       action: () => setTheme(next.id),
       minLevel: 'novice' as const,
-    })),
+    }));
 
-    // Education commands (dynamic based on current state)
-    {
-      id: 'edu:toggle-beginner',
-      label: beginnerModeEnabled ? 'Disable Beginner Mode' : 'Enable Beginner Mode',
-      category: 'Education',
-      shortcut: 'Ctrl+B',
-      action: () => {
-        toggleBeginnerMode();
+    const eduCommands: Command[] = [
+      {
+        id: 'edu:open-glossary',
+        label: 'Open Glossary',
+        category: 'Education',
+        action: commandImpls['edu:open-glossary']!,
+        minLevel: 'novice' as const,
       },
-      minLevel: 'novice',
-    },
-    {
-      id: 'edu:enable-beginner',
-      label: 'Enable Beginner Mode',
-      category: 'Education',
-      action: () => {
-        if (!beginnerModeEnabled) {
-          setBeginnerModeEnabled(true);
-        }
+      {
+        id: 'edu:start-welcome-tour',
+        label: 'Start Welcome Tour',
+        category: 'Education',
+        action: commandImpls['edu:start-welcome-tour']!,
+        minLevel: 'novice' as const,
       },
-      minLevel: 'novice',
-    },
-    {
-      id: 'edu:open-glossary',
-      label: 'Open Glossary',
-      category: 'Education',
-      action: () => {
-        setBeginnerModeEnabled(true);
-        openGlossary();
-      },
-      minLevel: 'novice',
-    },
-    {
-      id: 'edu:start-welcome-tour',
-      label: 'Start Welcome Tour',
-      category: 'Education',
-      action: () => {
-        setBeginnerModeEnabled(true);
-        startTour('welcome');
-      },
-      minLevel: 'novice',
-    },
+    ];
 
-    // Export commands (custom actions that use store state)
-    {
-      id: 'export:fasta',
-      label: 'Export as FASTA',
-      category: 'Export',
-      action: () => {
-        const { currentPhage, diffReferenceSequence } = usePhageStore.getState();
-        const seq = diffReferenceSequence;
-        if (!seq || seq.length === 0) {
-          alert('No sequence available to export yet.');
-          return;
-        }
-        const name = currentPhage?.name || 'phage';
-        const fasta = formatFasta(`${name} [exported from Phage Explorer]`, seq);
-        downloadString(fasta, `${name.replace(/\s+/g, '_')}.fasta`);
-        close('commandPalette');
-      },
-      minLevel: 'intermediate',
-      contexts: ['has-phage']
-    },
-    {
-      id: 'export:copy',
-      label: 'Copy Sequence (rich clipboard)',
-      category: 'Export',
-      action: () => {
-        const { currentPhage, diffReferenceSequence } = usePhageStore.getState();
-        const seq = diffReferenceSequence;
-        if (!seq || seq.length === 0) {
-          alert('No sequence loaded to copy.');
-          return;
-        }
-        const header = currentPhage ? `${currentPhage.name} | ${currentPhage.accession}` : 'phage-sequence';
-        const payload = buildSequenceClipboardPayload({ header, sequence: seq, wrap: 80 });
-        copyToClipboard(payload.text, payload.html)
-          .then(() => alert('Sequence copied (text + HTML).'))
-          .catch(() => alert('Failed to copy sequence.'));
-        close('commandPalette');
-      },
-      minLevel: 'novice',
-      contexts: ['has-phage']
-    },
-    {
-      id: 'export:json',
-      label: 'Export Analysis as JSON',
-      category: 'Export',
-      action: () => {
-        const state = usePhageStore.getState();
-        const exportData = {
-          phage: state.currentPhage,
-          overlays: state.overlayData,
-          timestamp: new Date().toISOString(),
-        };
-        downloadString(JSON.stringify(exportData, null, 2), 'analysis_export.json', 'application/json');
-        close('commandPalette');
-      },
-      minLevel: 'power',
-      contexts: ['has-phage']
-    },
+    return [...themeCommands, ...actionCommands, ...eduCommands];
+  }, [availableThemes, close, commandImpls, open, setTheme, shortcutPlatform, theme.id, toggle]);
 
-    // Include all registry-derived commands
-    ...registryCommands,
-  ], [availableThemes, beginnerModeEnabled, close, open, openGlossary, registryCommands, setBeginnerModeEnabled, setTheme, startTour, theme.id, toggleBeginnerMode, toggle]);
-
-  const allCommands = customCommands ?? defaultCommands;
+  const allCommands = customCommands ?? registryCommands;
 
   // Keep worker index in sync with current phage list + current phage genes.
   useEffect(() => {
@@ -726,13 +727,6 @@ export function CommandPalette({ commands: customCommands, context: propContext 
     }
   }, [paletteOpen]);
 
-  // Register hotkey
-  useHotkey(
-    ActionIds.OverlayCommandPalette,
-    () => toggle('commandPalette'),
-    { modes: ['NORMAL'] }
-  );
-
   // Total navigable items (recent commands + filtered commands)
   const showRecent = !query.trim() && recentCommands.length > 0;
   const totalItems = (showRecent ? recentCommands.length : 0) + filteredCommands.length;
@@ -749,21 +743,23 @@ export function CommandPalette({ commands: customCommands, context: propContext 
   }, [showRecent, recentCommands, filteredCommands]);
 
   // Handle keyboard navigation
-  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
+  const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.nativeEvent.isComposing) return;
     switch (e.key) {
       case 'Escape':
         if (query.trim()) {
           e.preventDefault();
-          e.stopPropagation();
           setQuery('');
           setSelectedIndex(0);
         }
         break;
       case 'ArrowDown':
+        if (totalItems === 0) break;
         e.preventDefault();
         setSelectedIndex(prev => Math.min(prev + 1, totalItems - 1));
         break;
       case 'ArrowUp':
+        if (totalItems === 0) break;
         e.preventDefault();
         setSelectedIndex(prev => Math.max(prev - 1, 0));
         break;
@@ -775,6 +771,7 @@ export function CommandPalette({ commands: customCommands, context: propContext 
         }
         break;
       case 'Tab':
+        if (totalItems === 0) break;
         e.preventDefault();
         // Tab completion: fill in the selected command's label
         const tabCmd = getCommandAtIndex(selectedIndex);
@@ -806,13 +803,18 @@ export function CommandPalette({ commands: customCommands, context: propContext 
     return acc;
   }, {} as Record<string, Command[]>);
 
+  const paletteHotkey = useMemo(() => {
+    const action = ActionRegistryList.find((a) => a.id === ActionIds.OverlayCommandPalette);
+    return action ? formatRegistryShortcut(action.defaultShortcut) : '';
+  }, []);
+
   let flatIndex = 0;
 
   return (
     <Overlay
       id="commandPalette"
-      title="COMMAND PALETTE"
-      hotkey=":"
+      title="Command palette"
+      hotkey={paletteHotkey || undefined}
       size="md"
       position={isMobile ? 'bottom' : 'top'}
     >
@@ -829,9 +831,10 @@ export function CommandPalette({ commands: customCommands, context: propContext 
         <div
           role="group"
           aria-label="Experience level filter"
-          style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}
+          aria-labelledby="exp-level-label"
+          className="command-palette__experience"
         >
-          <span id="exp-level-label" style={{ color: colors.textMuted, fontSize: '0.9rem' }}>Experience</span>
+          <span id="exp-level-label" className="command-palette__experience-label">Experience</span>
           {(['novice', 'intermediate', 'power'] as ExperienceLevel[]).map((level) => {
             const active = level === experienceLevel;
             const descriptions: Record<ExperienceLevel, string> = {
@@ -845,22 +848,14 @@ export function CommandPalette({ commands: customCommands, context: propContext 
                 onClick={() => setExperienceLevel(level)}
                 aria-pressed={active}
                 aria-label={`${level} experience level: ${descriptions[level]}`}
-                style={{
-                  padding: '0.35rem 0.65rem',
-                  borderRadius: '4px',
-                  border: `1px solid ${active ? colors.accent : colors.border}`,
-                  backgroundColor: active ? colors.accent : colors.background,
-                  color: active ? '#000' : colors.text,
-                  cursor: 'pointer',
-                  textTransform: 'capitalize',
-                  fontWeight: active ? 700 : 500,
-                }}
+                className={`btn command-palette__experience-btn ${active ? 'is-active' : ''}`}
+                type="button"
               >
                 {level}
               </button>
             );
           })}
-          <span style={{ color: colors.textMuted, fontSize: '0.85rem' }} aria-hidden="true">
+          <span className="command-palette__experience-hint" aria-hidden="true">
             Novice shows core actions; Power reveals everything.
           </span>
         </div>
@@ -883,6 +878,7 @@ export function CommandPalette({ commands: customCommands, context: propContext 
           role="combobox"
           aria-expanded="true"
           aria-haspopup="listbox"
+          data-testid="command-palette-input"
         />
 
         {/* Screen reader result announcement */}
@@ -902,6 +898,7 @@ export function CommandPalette({ commands: customCommands, context: propContext 
           role="listbox"
           aria-label="Available commands"
           className="scrollable-y"
+          data-testid="command-palette-results"
           style={
             isMobile
               ? { flex: 1, minHeight: 0 }
@@ -924,6 +921,7 @@ export function CommandPalette({ commands: customCommands, context: propContext 
                     key={`recent-${cmd.id}`}
                     id={`cmd-item-${currentIndex}`}
                     data-cmd-index={currentIndex}
+                    data-testid="command-palette-result"
                     onClick={() => executeCommand(cmd)}
                     className={`list-item ${isSelected ? 'active' : ''}`}
                     role="option"
@@ -962,6 +960,7 @@ export function CommandPalette({ commands: customCommands, context: propContext 
                     key={cmd.id}
                     id={`cmd-item-${currentIndex}`}
                     data-cmd-index={currentIndex}
+                    data-testid="command-palette-result"
                     onClick={() => executeCommand(cmd)}
                     className={`list-item ${isSelected ? 'active' : ''}`}
                     role="option"
@@ -1003,18 +1002,7 @@ export function CommandPalette({ commands: customCommands, context: propContext 
         </div>
 
         {/* Footer hints */}
-        <div
-          id="command-palette-hints"
-          style={{
-            display: 'flex',
-            flexWrap: 'wrap',
-            gap: '0.75rem 1rem',
-            padding: '0.5rem',
-            borderTop: `1px solid ${colors.borderLight}`,
-            color: colors.textMuted,
-            fontSize: '0.75rem',
-          }}
-        >
+        <div id="command-palette-hints" className="command-palette__hints">
           <span>↑↓ Navigate</span>
           <span>Enter Select</span>
           <span>Tab Complete</span>

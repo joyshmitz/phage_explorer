@@ -16,6 +16,10 @@ import { useOverlay } from './OverlayProvider';
 import { AnalysisPanelSkeleton } from '../ui/Skeleton';
 import type { ThemePalette } from '../../theme/types';
 import {
+  OverlayLoadingState,
+  OverlayEmptyState,
+} from './primitives';
+import {
   computeModuleCoherence,
   type ModuleReport,
   type ModuleStatus,
@@ -376,11 +380,14 @@ export function ModuleOverlay({
     >
       <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
         {loading ? (
-          <AnalysisPanelSkeleton />
+          <OverlayLoadingState message="Analyzing module coherence...">
+            <AnalysisPanelSkeleton />
+          </OverlayLoadingState>
         ) : !report || !currentPhage ? (
-          <div style={{ color: colors.textDim, textAlign: 'center', padding: '2rem' }}>
-            No phage loaded or no genes available.
-          </div>
+          <OverlayEmptyState
+            message={!currentPhage ? 'No phage selected' : 'No genes available for analysis'}
+            hint={!currentPhage ? 'Select a phage to analyze.' : 'Module analysis requires annotated genes.'}
+          />
         ) : (
           <>
             {/* Header with Quality Grade */}

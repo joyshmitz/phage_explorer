@@ -22,6 +22,10 @@ import { Overlay } from './Overlay';
 import { useOverlay } from './OverlayProvider';
 import { AnalysisPanelSkeleton } from '../ui/Skeleton';
 import { HeatmapCanvas } from '../primitives/HeatmapCanvas';
+import {
+  OverlayLoadingState,
+  OverlayEmptyState,
+} from './primitives';
 import { DEFAULT_HEATMAP_SCALE } from '../primitives/colorScales';
 import type { HeatmapHover } from '../primitives/types';
 
@@ -72,6 +76,8 @@ export function PeriodicityOverlay({
       setSequence('');
       setAnalysis(null);
       setLoadingSequence(false);
+      setLoadingAnalysis(false);
+      setHover(null);
       return;
     }
 
@@ -79,6 +85,7 @@ export function PeriodicityOverlay({
     if (sequenceCache.current.has(phageId)) {
       setSequence(sequenceCache.current.get(phageId) ?? '');
       setLoadingSequence(false);
+      setLoadingAnalysis(false);
       return;
     }
 
@@ -96,9 +103,15 @@ export function PeriodicityOverlay({
 
   // Compute spectrogram + candidates
   useEffect(() => {
-    if (!isOpen('periodicity')) return;
+    if (!isOpen('periodicity')) {
+      setAnalysis(null);
+      setLoadingAnalysis(false);
+      setHover(null);
+      return;
+    }
     if (!sequence) {
       setAnalysis(null);
+      setLoadingAnalysis(false);
       return;
     }
 
@@ -106,7 +119,9 @@ export function PeriodicityOverlay({
     setHover(null);
 
     // Yield to allow overlay paint before compute.
+    let cancelled = false;
     const handle = window.setTimeout(() => {
+      if (cancelled) return;
       try {
         const res = analyzePeriodicity(sequence, {
           encoding,
@@ -118,11 +133,15 @@ export function PeriodicityOverlay({
         });
         setAnalysis(res);
       } finally {
-        setLoadingAnalysis(false);
+        if (!cancelled) setLoadingAnalysis(false);
       }
     }, 0);
 
-    return () => window.clearTimeout(handle);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(handle);
+      setLoadingAnalysis(false);
+    };
   }, [candidateThreshold, encoding, isOpen, maxPeriod, sequence, stepSize, windowSize]);
 
   const spectrum = analysis?.spectrum ?? null;
@@ -155,7 +174,6 @@ export function PeriodicityOverlay({
     borderRadius: '4px',
     padding: '0.35rem 0.5rem',
     fontSize: '0.8rem',
-    fontFamily: "'JetBrains Mono', monospace",
   };
 
   return (
@@ -169,7 +187,6 @@ export function PeriodicityOverlay({
         style={{
           padding: '1rem',
           color: colors.text,
-          fontFamily: "'JetBrains Mono', monospace",
           fontSize: '0.85rem',
           display: 'flex',
           flexDirection: 'column',
@@ -178,10 +195,14 @@ export function PeriodicityOverlay({
       >
         {/* Loading */}
         {loadingSequence && (
-          <AnalysisPanelSkeleton message="Loading sequence data..." rows={3} />
+          <OverlayLoadingState message="Loading sequence data...">
+            <AnalysisPanelSkeleton rows={3} />
+          </OverlayLoadingState>
         )}
         {!loadingSequence && loadingAnalysis && (
-          <AnalysisPanelSkeleton message="Computing periodicity spectrogram..." rows={3} />
+          <OverlayLoadingState message="Computing periodicity spectrogram...">
+            <AnalysisPanelSkeleton rows={3} />
+          </OverlayLoadingState>
         )}
 
         {/* Controls + description */}
@@ -269,21 +290,21 @@ export function PeriodicityOverlay({
             >
               <div style={{ padding: '0.5rem', borderRadius: '4px', backgroundColor: colors.background }}>
                 <div style={{ color: colors.textMuted }}>Genome</div>
-                <div style={{ color: colors.text }}>{formatBp(sequence.length)} bp</div>
+                <div className="font-data" style={{ color: colors.text }}>{formatBp(sequence.length)} bp</div>
               </div>
               <div style={{ padding: '0.5rem', borderRadius: '4px', backgroundColor: colors.background }}>
                 <div style={{ color: colors.textMuted }}>Windows</div>
-                <div style={{ color: colors.text }}>{formatBp(spectrum?.cols ?? 0)}</div>
+                <div className="font-data" style={{ color: colors.text }}>{formatBp(spectrum?.cols ?? 0)}</div>
               </div>
               <div style={{ padding: '0.5rem', borderRadius: '4px', backgroundColor: colors.background }}>
                 <div style={{ color: colors.textMuted }}>Period range</div>
-                <div style={{ color: colors.text }}>
+                <div className="font-data" style={{ color: colors.text }}>
                   {minPeriod}–{spectrum?.maxPeriod ?? maxPeriod} bp
                 </div>
               </div>
               <div style={{ padding: '0.5rem', borderRadius: '4px', backgroundColor: colors.background }}>
                 <div style={{ color: colors.textMuted }}>Candidates</div>
-                <div style={{ color: colors.text }}>{analysis?.candidates.length ?? 0}</div>
+                <div className="font-data" style={{ color: colors.text }}>{analysis?.candidates.length ?? 0}</div>
               </div>
             </div>
           </div>
@@ -291,9 +312,10 @@ export function PeriodicityOverlay({
 
         {/* Main view */}
         {!loadingSequence && !loadingAnalysis && (!analysis || !spectrum || spectrum.rows === 0) ? (
-          <div style={{ padding: '2rem', textAlign: 'center', color: colors.textMuted }}>
-            {!sequence ? 'No sequence loaded' : 'Sequence too short for spectrogram'}
-          </div>
+          <OverlayEmptyState
+            message={!sequence ? 'No sequence loaded' : 'Sequence too short for spectrogram'}
+            hint={!sequence ? 'Select a phage to analyze.' : 'The sequence must be long enough to compute windowed autocorrelation.'}
+          />
         ) : null}
 
         {!loadingSequence && !loadingAnalysis && spectrum && spectrum.rows > 0 ? (
@@ -322,11 +344,11 @@ export function PeriodicityOverlay({
                 <div style={{ marginTop: '0.5rem', fontSize: '0.75rem', color: colors.textMuted }}>
                   {hoverLabel ? (
                     <>
-                      period <span style={{ color: colors.text }}>{hoverLabel.period} bp</span> • window{' '}
-                      <span style={{ color: colors.text }}>
+                      period <span className="font-data" style={{ color: colors.text }}>{hoverLabel.period} bp</span> • window{' '}
+                      <span className="font-data" style={{ color: colors.text }}>
                         {formatBp(hoverLabel.start)}–{formatBp(hoverLabel.end)}
                       </span>{' '}
-                      • score <span style={{ color: colors.text }}>{hoverLabel.value.toFixed(3)}</span>
+                      • score <span className="font-data" style={{ color: colors.text }}>{hoverLabel.value.toFixed(3)}</span>
                     </>
                   ) : (
                     'Hover a cell to see period / position / score'
@@ -349,7 +371,7 @@ export function PeriodicityOverlay({
                 {(analysis?.topPeriods ?? []).length === 0 ? (
                   <div style={{ color: colors.textMuted }}>No peaks (try smaller window / lower threshold)</div>
                 ) : (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+                  <div className="font-data" style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
                     {analysis?.topPeriods.map((p) => (
                       <div
                         key={p.period}
@@ -385,7 +407,7 @@ export function PeriodicityOverlay({
                 {(analysis?.candidates ?? []).length === 0 ? (
                   <div style={{ color: colors.textMuted }}>No candidates above threshold</div>
                 ) : (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+                  <div className="font-data" style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
                     {analysis?.candidates.map((c, idx) => (
                       <div
                         key={`${c.start}-${c.end}-${idx}`}

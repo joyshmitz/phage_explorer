@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useCallback } from 'react';
+import React, { useEffect, useRef, useCallback, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useReducedMotion } from '../../hooks/useReducedMotion';
 import { haptics } from '../../utils/haptics';
@@ -9,6 +9,8 @@ interface FloatingActionButtonProps {
   onToggle: () => void;
   onLongPress?: () => void;
 }
+
+const FAB_HINT_STORAGE_KEY = 'phage-explorer-fab-hint-dismissed';
 
 /**
  * Mobile-first Floating Action Button (FAB)
@@ -26,15 +28,39 @@ export function FloatingActionButton({
   const portalRootRef = useRef<HTMLElement | null>(null);
   const longPressTimer = useRef<number | null>(null);
   const reducedMotion = useReducedMotion();
+  const [showHint, setShowHint] = useState(false);
 
   useEffect(() => {
     portalRootRef.current = document.body;
+
+    // Show hint for new users who haven't dismissed it
+    try {
+      const dismissed = localStorage.getItem(FAB_HINT_STORAGE_KEY);
+      if (!dismissed) {
+        setShowHint(true);
+      }
+    } catch {
+      // localStorage not available
+    }
+
     return () => {
       if (longPressTimer.current) {
         window.clearTimeout(longPressTimer.current);
       }
     };
   }, []);
+
+  // Hide hint when FAB is opened (user has discovered it)
+  useEffect(() => {
+    if (isOpen && showHint) {
+      setShowHint(false);
+      try {
+        localStorage.setItem(FAB_HINT_STORAGE_KEY, 'true');
+      } catch {
+        // localStorage not available
+      }
+    }
+  }, [isOpen, showHint]);
 
   const handleTouchStart = useCallback(() => {
     if (!onLongPress) return;
@@ -58,22 +84,29 @@ export function FloatingActionButton({
   }, [onToggle]);
 
   const content = (
-    <button
-      type="button"
-      className={`fab ${isOpen ? 'fab--open' : ''} ${reducedMotion ? 'fab--no-anim' : ''}`}
-      aria-label={isOpen ? 'Close control menu' : 'Open control menu'}
-      aria-expanded={isOpen}
-      aria-haspopup="menu"
-      aria-controls="action-drawer"
-      onClick={handleClick}
-      onTouchStart={handleTouchStart}
-      onTouchEnd={clearLongPress}
-      onTouchCancel={clearLongPress}
-    >
-      <span className="fab-icon" aria-hidden="true">
-        {isOpen ? <IconX size={24} strokeWidth={2.5} /> : <IconPlus size={24} strokeWidth={2.5} />}
-      </span>
-    </button>
+    <>
+      <button
+        type="button"
+        className={`fab ${isOpen ? 'fab--open' : ''} ${reducedMotion ? 'fab--no-anim' : ''}`}
+        aria-label={isOpen ? 'Close control menu' : 'Open control menu'}
+        aria-expanded={isOpen}
+        aria-haspopup="menu"
+        aria-controls="action-drawer"
+        onClick={handleClick}
+        onTouchStart={handleTouchStart}
+        onTouchEnd={clearLongPress}
+        onTouchCancel={clearLongPress}
+      >
+        <span className="fab-icon" aria-hidden="true">
+          {isOpen ? <IconX size={24} strokeWidth={2.5} /> : <IconPlus size={24} strokeWidth={2.5} />}
+        </span>
+      </button>
+      {showHint && !isOpen && (
+        <span className="fab-hint" aria-hidden="true">
+          Quick actions
+        </span>
+      )}
+    </>
   );
 
   if (portalRootRef.current) {

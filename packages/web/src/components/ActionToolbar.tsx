@@ -200,6 +200,7 @@ export function ActionToolbar({
             disabled={!hasPhage}
             title={toggle3DShortcut ? `Toggle 3D model (${toggle3DShortcut})` : 'Toggle 3D model'}
             aria-pressed={show3DModel}
+            data-testid="toolbar-3d-btn"
           >
             <IconCube size={16} />
             <span className="toolbar-btn-label">3D</span>
@@ -231,6 +232,7 @@ export function ActionToolbar({
             onClick={onOpenAnalysis}
             disabled={!hasPhage}
             title={analysisShortcut ? `Analysis tools (${analysisShortcut})` : 'Analysis tools'}
+            data-testid="toolbar-analyze-btn"
           >
             <IconChartBar size={16} />
             <span className="toolbar-btn-label">Analyze</span>
@@ -241,6 +243,7 @@ export function ActionToolbar({
             onClick={onOpenComparison}
             disabled={!hasPhage}
             title={comparisonShortcut ? `Compare genomes (${comparisonShortcut})` : 'Compare genomes'}
+            data-testid="toolbar-compare-btn"
           >
             <IconGitCompare size={16} />
             <span className="toolbar-btn-label">Compare</span>

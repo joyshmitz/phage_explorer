@@ -14,7 +14,6 @@
 import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import type { PhageFull } from '@phage-explorer/core';
 import type { PhageRepository } from '../../db';
-import { useTheme } from '../../hooks/useTheme';
 import { useHotkey } from '../../hooks';
 import { ActionIds } from '../../keyboard';
 import { getOverlayContext, useBeginnerMode } from '../../education';
@@ -65,8 +64,6 @@ export function DotPlotOverlay({
   repository,
   currentPhage,
 }: DotPlotOverlayProps): React.ReactElement | null {
-  const { theme } = useTheme();
-  const _colors = theme.colors;
   const { isOpen, toggle } = useOverlay();
   const { isEnabled: beginnerModeEnabled, showContextFor } = useBeginnerMode();
   const overlayHelp = getOverlayContext('dotPlot');
@@ -74,9 +71,11 @@ export function DotPlotOverlay({
   const sequenceCache = useRef<Map<number, string>>(new Map());
 
   // State
-  const [loading, setLoading] = useState(false);
+  const [sequenceLoading, setSequenceLoading] = useState(false);
+  const [computeLoading, setComputeLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [sequence, setSequence] = useState<string>('');
+  const loading = sequenceLoading || computeLoading;
 
   // Analysis results
   const [directValues, setDirectValues] = useState<Float32Array | null>(null);
@@ -115,10 +114,14 @@ export function DotPlotOverlay({
 
   // Fetch full genome when overlay opens
   useEffect(() => {
-    if (!isOpen('dotPlot')) return;
+    if (!isOpen('dotPlot')) {
+      setSequenceLoading(false);
+      return;
+    }
     if (!repository || !currentPhage) {
       setSequence('');
-      setLoading(false);
+      setSequenceLoading(false);
+      setComputeLoading(false);
       return;
     }
 
@@ -127,12 +130,12 @@ export function DotPlotOverlay({
     // Check cache
     if (sequenceCache.current.has(phageId)) {
       setSequence(sequenceCache.current.get(phageId) ?? '');
-      setLoading(false);
+      setSequenceLoading(false);
       return;
     }
 
     let cancelled = false;
-    setLoading(true);
+    setSequenceLoading(true);
 
     repository
       .getFullGenomeLength(phageId)
@@ -147,34 +150,44 @@ export function DotPlotOverlay({
         setSequence('');
       })
       .finally(() => {
-        if (!cancelled) setLoading(false);
+        if (!cancelled) setSequenceLoading(false);
       });
 
     return () => {
       cancelled = true;
+      setSequenceLoading(false);
     };
   }, [isOpen, repository, currentPhage]);
 
   // Run dot plot analysis when sequence or resolution changes
   useEffect(() => {
-    if (!isOpen('dotPlot')) return;
+    if (!isOpen('dotPlot')) {
+      setComputeLoading(false);
+      return;
+    }
     if (!sequence || sequence.length < 100) {
       setDirectValues(null);
       setInvertedValues(null);
+      setComputeLoading(false);
       return;
     }
 
     const worker = workerRef.current;
-    if (!worker) return;
+    if (!worker) {
+      setComputeLoading(false);
+      return;
+    }
 
     const phageId = currentPhage?.id;
 
-    setLoading(true);
+    let cancelled = false;
+    setComputeLoading(true);
     setError(null);
 
     const handleMessage = (event: MessageEvent<DotPlotWorkerResponse>) => {
       const response = event.data;
-      setLoading(false);
+      if (cancelled) return;
+      setComputeLoading(false);
 
       if (!response.ok) {
         setError(response.error ?? 'Dot plot computation failed');
@@ -200,7 +213,9 @@ export function DotPlotOverlay({
     }
 
     return () => {
+      cancelled = true;
       worker.onmessage = null;
+      setComputeLoading(false);
     };
   }, [isOpen, sequence, resolution, currentPhage?.id]);
 

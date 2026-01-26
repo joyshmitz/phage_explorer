@@ -247,7 +247,12 @@ export const ActionRegistry: Record<ActionId, ActionDefinition> = {
     title: 'Command palette',
     category: 'Overlays',
     description: 'Open the command palette',
-    defaultShortcut: { key: ':' },
+    // Platform standard: Cmd+K (mac) / Ctrl+K (win/linux), plus ':' for vim-style users
+    defaultShortcut: [
+      { key: 'k', modifiers: { meta: true } },
+      { key: 'k', modifiers: { ctrl: true } },
+      { key: ':' },
+    ],
     scope: 'global',
     surfaces: ['web'],
     overlayId: 'commandPalette',
@@ -258,7 +263,11 @@ export const ActionRegistry: Record<ActionId, ActionDefinition> = {
     title: 'Settings overlay',
     category: 'Overlays',
     description: 'Open settings',
-    defaultShortcut: { key: ',', modifiers: { ctrl: true } },
+    // Platform standard: Cmd+, (mac) / Ctrl+, (win/linux)
+    defaultShortcut: [
+      { key: ',', modifiers: { meta: true } },
+      { key: ',', modifiers: { ctrl: true } },
+    ],
     scope: 'global',
     surfaces: ['web'],
     overlayId: 'settings',

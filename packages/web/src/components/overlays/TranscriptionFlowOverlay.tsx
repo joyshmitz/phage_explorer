@@ -6,6 +6,8 @@
  */
 
 import React, { useEffect, useRef, useState } from 'react';
+import type { PhageFull } from '@phage-explorer/core';
+import type { PhageRepository } from '../../db';
 import { useTheme } from '../../hooks/useTheme';
 import { useHotkey } from '../../hooks';
 import { ActionIds } from '../../keyboard';
@@ -14,41 +16,111 @@ import { useOverlay } from './OverlayProvider';
 import { getOrchestrator } from '../../workers/ComputeOrchestrator';
 import type { TranscriptionFlowResult } from '../../workers/types';
 import { AnalysisPanelSkeleton } from '../ui/Skeleton';
+import {
+  OverlayLoadingState,
+  OverlayErrorState,
+} from './primitives';
 
 interface TranscriptionFlowOverlayProps {
-  sequence?: string;
-  genomeLength?: number;
+  repository: PhageRepository | null;
+  currentPhage: PhageFull | null;
 }
 
-export function TranscriptionFlowOverlay({ sequence = '', genomeLength = 0 }: TranscriptionFlowOverlayProps): React.ReactElement | null {
+export function TranscriptionFlowOverlay({
+  repository,
+  currentPhage,
+}: TranscriptionFlowOverlayProps): React.ReactElement | null {
   const { theme } = useTheme();
   const colors = theme.colors;
   const { isOpen, toggle } = useOverlay();
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const sequenceCache = useRef<Map<number, string>>(new Map());
+  const activePhageIdRef = useRef<number | null>(null);
+  const [sequence, setSequence] = useState<string>('');
   const [data, setData] = useState<{ values: number[]; peaks: Array<{ start: number; end: number; flux: number }> }>({ values: [], peaks: [] });
-  const [loading, setLoading] = useState(false);
+  const [sequenceLoading, setSequenceLoading] = useState(false);
+  const [analysisLoading, setAnalysisLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Calculate transcription flow data via worker
+  // Fetch sequence when overlay opens
   useEffect(() => {
-    if (!isOpen('transcriptionFlow') || !sequence) {
+    if (!isOpen('transcriptionFlow')) return;
+    if (!repository || !currentPhage) {
+      setSequence('');
+      setSequenceLoading(false);
       setData({ values: [], peaks: [] });
-      setLoading(false);
+      setAnalysisLoading(false);
       setError(null);
       return;
     }
 
+    const phageId = currentPhage.id;
+    if (activePhageIdRef.current !== phageId) {
+      activePhageIdRef.current = phageId;
+      setSequence('');
+      setData({ values: [], peaks: [] });
+      setAnalysisLoading(false);
+      setError(null);
+    }
+
+    if (sequenceCache.current.has(phageId)) {
+      setSequence(sequenceCache.current.get(phageId) ?? '');
+      setSequenceLoading(false);
+      return;
+    }
+
     let cancelled = false;
-    setLoading(true);
+    setSequenceLoading(true);
+
+    repository
+      .getFullGenomeLength(phageId)
+      .then((length: number) => repository.getSequenceWindow(phageId, 0, length))
+      .then((seq: string) => {
+        if (cancelled) return;
+        sequenceCache.current.set(phageId, seq);
+        setSequence(seq);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setSequence('');
+      })
+      .finally(() => {
+        if (cancelled) return;
+        setSequenceLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen, repository, currentPhage]);
+
+  // Calculate transcription flow data via worker
+  useEffect(() => {
+    if (!isOpen('transcriptionFlow')) return;
+    if (!repository || !currentPhage) {
+      setData({ values: [], peaks: [] });
+      setAnalysisLoading(false);
+      setError(null);
+      return;
+    }
+
+    if (!sequence) {
+      setData({ values: [], peaks: [] });
+      setAnalysisLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    setAnalysisLoading(true);
     setError(null);
-    
+
     const runAnalysis = async () => {
       try {
-        const result = await getOrchestrator().runAnalysis({ 
-          type: 'transcription-flow', 
-          sequence 
+        const result = await getOrchestrator().runAnalysis({
+          type: 'transcription-flow',
+          sequence,
         }) as TranscriptionFlowResult;
-        
+
         if (!cancelled) {
           setData({ values: result.values, peaks: result.peaks });
         }
@@ -57,16 +129,16 @@ export function TranscriptionFlowOverlay({ sequence = '', genomeLength = 0 }: Tr
         setData({ values: [], peaks: [] });
         setError(err instanceof Error ? err.message : 'Transcription flow analysis failed');
       } finally {
-        if (!cancelled) setLoading(false);
+        if (!cancelled) setAnalysisLoading(false);
       }
     };
 
     runAnalysis();
-    
+
     return () => {
       cancelled = true;
     };
-  }, [isOpen, sequence]);
+  }, [currentPhage, isOpen, repository, sequence]);
 
   const { values, peaks } = data;
 
@@ -132,6 +204,11 @@ export function TranscriptionFlowOverlay({ sequence = '', genomeLength = 0 }: Tr
     return null;
   }
 
+  const genomeLengthLabel =
+    currentPhage?.genomeLength ? `${currentPhage.genomeLength.toLocaleString()} bp` : '—';
+  const loading = sequenceLoading || analysisLoading;
+  const loadingMessage = sequenceLoading ? 'Loading genome sequence…' : 'Computing transcription flow...';
+
   return (
     <Overlay
       id="transcriptionFlow"
@@ -159,7 +236,7 @@ export function TranscriptionFlowOverlay({ sequence = '', genomeLength = 0 }: Tr
         }}>
           <div style={{ textAlign: 'center', padding: '0.5rem', backgroundColor: colors.backgroundAlt, borderRadius: '4px' }}>
             <div style={{ color: colors.textMuted, fontSize: '0.75rem' }}>Genome Length</div>
-            <div style={{ color: colors.text, fontFamily: 'monospace' }}>{genomeLength.toLocaleString()} bp</div>
+            <div style={{ color: colors.text, fontFamily: 'monospace' }}>{genomeLengthLabel}</div>
           </div>
           <div style={{ textAlign: 'center', padding: '0.5rem', backgroundColor: colors.backgroundAlt, borderRadius: '4px' }}>
             <div style={{ color: colors.textMuted, fontSize: '0.75rem' }}>Flux Bins</div>
@@ -169,17 +246,20 @@ export function TranscriptionFlowOverlay({ sequence = '', genomeLength = 0 }: Tr
 
         {/* Canvas for graph */}
         {loading ? (
-          <AnalysisPanelSkeleton message="Computing transcription flow..." rows={3} />
+          <OverlayLoadingState message={loadingMessage}>
+            <AnalysisPanelSkeleton rows={3} />
+          </OverlayLoadingState>
         ) : error ? (
-          <div style={{ padding: '2rem', textAlign: 'center', color: colors.error }}>
-            Error: {error}
-          </div>
+          <OverlayErrorState
+            message="Transcription flow analysis failed"
+            details={error}
+          />
         ) : (
           <div style={{
             border: `1px solid ${colors.borderLight}`,
             borderRadius: '4px',
             overflow: 'hidden',
-            height: '200px', 
+            height: '200px',
             position: 'relative'
           }}>
             <canvas

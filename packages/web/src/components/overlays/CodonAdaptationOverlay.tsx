@@ -16,6 +16,10 @@ import { Overlay } from './Overlay';
 import { useOverlay } from './OverlayProvider';
 import { AnalysisPanelSkeleton } from '../ui/Skeleton';
 import { InfoButton } from '../ui';
+import {
+  OverlayLoadingState,
+  OverlayEmptyState,
+} from './primitives';
 
 // Color scale for adaptation scores
 function getAdaptationColor(score: number): string {
@@ -169,22 +173,26 @@ export function CodonAdaptationOverlay({
         </div>
 
         {loading ? (
-          <AnalysisPanelSkeleton />
+          <OverlayLoadingState message="Loading codon adaptation data...">
+            <AnalysisPanelSkeleton />
+          </OverlayLoadingState>
         ) : adaptations.length === 0 ? (
-          <div style={{ padding: '2rem', textAlign: 'center', color: colors.textMuted }}>
-            {!currentPhage ? (
-              'No phage selected'
-            ) : hostSummaries.length === 0 ? (
-              <>
-                <div>No pre-computed adaptation scores available.</div>
-                <div style={{ marginTop: '0.5rem', fontSize: '0.8rem' }}>
-                  Available host tRNA pools: {availableHosts.join(', ') || 'None'}
-                </div>
-              </>
-            ) : (
-              'No codon adaptation data available for this phage'
-            )}
-          </div>
+          <OverlayEmptyState
+            message={
+              !currentPhage
+                ? 'No phage selected'
+                : hostSummaries.length === 0
+                  ? 'No pre-computed adaptation scores available'
+                  : 'No codon adaptation data available for this phage'
+            }
+            hint={
+              !currentPhage
+                ? 'Select a phage to analyze.'
+                : hostSummaries.length === 0
+                  ? `Available host tRNA pools: ${availableHosts.join(', ') || 'None'}`
+                  : 'CAI/TAI scores are computed during the annotation pipeline.'
+            }
+          />
         ) : (
           <>
             {/* View toggle */}

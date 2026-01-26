@@ -16,6 +16,10 @@ import { useOverlay } from './OverlayProvider';
 import { AnalysisPanelSkeleton } from '../ui/Skeleton';
 import type { ThemePalette } from '../../theme/types';
 import {
+  OverlayLoadingState,
+  OverlayEmptyState,
+} from './primitives';
+import {
   analyzeRNAStructure,
   type RNAStructureAnalysis,
   type CodonStress,
@@ -541,15 +545,26 @@ export function RNAStructureOverlay({
         </div>
 
         {loading ? (
-          <AnalysisPanelSkeleton />
+          <OverlayLoadingState message="Analyzing RNA structure...">
+            <AnalysisPanelSkeleton />
+          </OverlayLoadingState>
         ) : !analysis || !summary ? (
-          <div style={{ padding: '2rem', textAlign: 'center', color: colors.textMuted }}>
-            {!sequence
-              ? 'No sequence loaded'
-              : viewMode === 'gene' && !selectedGene
-              ? 'Select a gene to analyze'
-              : 'Sequence too short for analysis'}
-          </div>
+          <OverlayEmptyState
+            message={
+              !sequence
+                ? 'No sequence loaded'
+                : viewMode === 'gene' && !selectedGene
+                  ? 'Select a gene to analyze'
+                  : 'Sequence too short for analysis'
+            }
+            hint={
+              !sequence
+                ? 'Select a phage to analyze.'
+                : viewMode === 'gene' && !selectedGene
+                  ? 'Choose a gene from the dropdown above.'
+                  : 'RNA structure analysis requires at least 300 bp.'
+            }
+          />
         ) : (
           <>
             {/* Summary metrics */}

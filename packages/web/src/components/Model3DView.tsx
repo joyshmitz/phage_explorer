@@ -32,9 +32,25 @@ import {
   type LoadedStructure,
 } from '../visualization/structure-loader';
 import { useStructureQuery, usePrefetchAdjacentStructures } from '../hooks/useStructureQuery';
+import { getKeyboardManager, type HotkeyDefinition } from '../keyboard';
+import { useOverlay } from './overlays/OverlayProvider';
 
 type LoadState = 'idle' | 'loading' | 'ready' | 'error';
 type RenderMode = 'ball' | 'ribbon' | 'surface';
+
+export const THREE_FULLSCREEN_CLASS = 'pe-three-fullscreen';
+
+export function applyThreeFullscreenClass(
+  root: { classList: { add: (name: string) => void; remove: (name: string) => void } } | null,
+  fullscreen: boolean
+): void {
+  if (!root) return;
+  if (fullscreen) {
+    root.classList.add(THREE_FULLSCREEN_CLASS);
+  } else {
+    root.classList.remove(THREE_FULLSCREEN_CLASS);
+  }
+}
 
 interface Model3DViewProps {
   phage: PhageFull | null;
@@ -93,6 +109,13 @@ function getStructureErrorMessage(error: Error | unknown): string {
     return 'The structure data appears to be corrupted.';
   }
   return error.message || 'An unexpected error occurred loading the structure.';
+}
+
+function getRcsbEntryUrl(idOrUrl: string): string | null {
+  if (idOrUrl.includes('://')) return idOrUrl;
+  const bareId = idOrUrl.replace(/\.(pdb|cif|mmcif)$/i, '');
+  if (!bareId) return null;
+  return `https://www.rcsb.org/structure/${encodeURIComponent(bareId)}`;
 }
 
 const QUALITY_PRESETS = {
@@ -256,6 +279,9 @@ function Model3DViewBase({ phage }: Model3DViewProps): React.ReactElement {
   const fullscreen = usePhageStore(s => s.model3DFullscreen);
   const toggleFullscreen = usePhageStore(s => s.toggle3DModelFullscreen);
   const togglePause = usePhageStore(s => s.toggle3DModelPause);
+
+  const { stack: overlayStack } = useOverlay();
+  const overlaysOpen = overlayStack.length > 0;
 
   // Auto-quality: start at 'high' and adapt based on performance
   const [autoQuality, setAutoQuality] = useState<QualityLevel>(() => (coarsePointer ? 'medium' : 'high'));
@@ -976,8 +1002,9 @@ function Model3DViewBase({ phage }: Model3DViewProps): React.ReactElement {
   useEffect(() => {
     if (!show3DModel) return;
     if (!pdbId) {
-      setLoadState('error');
-      setError('No structure available for this phage');
+      setLoadState('idle');
+      setError(null);
+      setProgress(0);
       setAtomCount(null);
       structureDataRef.current = null;
       if (structureRef.current && sceneRef.current) {
@@ -1095,13 +1122,9 @@ function Model3DViewBase({ phage }: Model3DViewProps): React.ReactElement {
   useEffect(() => {
     if (typeof document === 'undefined') return;
     const root = document.documentElement;
-    if (!fullscreen) {
-      root.classList.remove('pe-three-fullscreen');
-      return;
-    }
-
-    root.classList.add('pe-three-fullscreen');
-    return () => root.classList.remove('pe-three-fullscreen');
+    applyThreeFullscreenClass(root, fullscreen);
+    if (!fullscreen) return;
+    return () => applyThreeFullscreenClass(root, false);
   }, [fullscreen]);
 
   // When entering fullscreen, ensure rendering resumes and the renderer syncs to final dimensions.
@@ -1171,81 +1194,7 @@ function Model3DViewBase({ phage }: Model3DViewProps): React.ReactElement {
     };
   }, [fullscreen, toggleFullscreen]);
 
-  // Keyboard controls only in fullscreen: arrows rotate, +/- zoom, space toggles rotation
-  useEffect(() => {
-    if (!fullscreen) return;
-
-    const handleKey = (event: KeyboardEvent) => {
-      if (!sceneRef.current || !structureRef.current || !controlsRef.current) return;
-      switch (event.key) {
-        case 'ArrowLeft':
-          structureRef.current.rotation.y -= 0.05;
-          event.preventDefault();
-          break;
-        case 'ArrowRight':
-          structureRef.current.rotation.y += 0.05;
-          event.preventDefault();
-          break;
-        case 'ArrowUp':
-          structureRef.current.rotation.x -= 0.05;
-          event.preventDefault();
-          break;
-        case 'ArrowDown':
-          structureRef.current.rotation.x += 0.05;
-          event.preventDefault();
-          break;
-        case '+':
-        case '=':
-          // dollyIn/dollyOut are internal OrbitControls methods, not in public typings
-          (controlsRef.current as OrbitControls & { dollyIn?: (scale: number) => void }).dollyIn?.(1.1);
-          controlsRef.current.update();
-          event.preventDefault();
-          break;
-        case '-':
-        case '_':
-          (controlsRef.current as OrbitControls & { dollyOut?: (scale: number) => void }).dollyOut?.(1.1);
-          controlsRef.current.update();
-          event.preventDefault();
-          break;
-        case ' ':
-          togglePause();
-          event.preventDefault();
-          break;
-        case 'q':
-        case 'Q': {
-          // Cycle quality: auto -> low -> medium -> high -> ultra -> auto
-          const levels: (QualityLevel | null)[] = [null, 'low', 'medium', 'high', 'ultra'];
-          const currentIdx = levels.indexOf(manualQuality);
-          const nextIdx = (currentIdx + 1) % levels.length;
-          setManualQuality(levels[nextIdx]);
-          event.preventDefault();
-          break;
-        }
-        case 'h':
-        case 'H':
-          setShowKeyHints(v => !v);
-          event.preventDefault();
-          break;
-        case 'r':
-        case 'R':
-          handleResetView();
-          event.preventDefault();
-          break;
-        case 's':
-        case 'S':
-          handleScreenshot();
-          event.preventDefault();
-          break;
-        default:
-          break;
-      }
-    };
-
-    window.addEventListener('keydown', handleKey);
-    return () => window.removeEventListener('keydown', handleKey);
-  }, [fullscreen, manualQuality, togglePause]);
-
-  const handleScreenshot = () => {
+  const handleScreenshot = useCallback(() => {
     const renderer = rendererRef.current;
     if (!renderer) return;
     const dataUrl = renderer.domElement.toDataURL('image/png');
@@ -1253,9 +1202,9 @@ function Model3DViewBase({ phage }: Model3DViewProps): React.ReactElement {
     link.href = dataUrl;
     link.download = 'phage-explorer-3d.png';
     link.click();
-  };
+  }, []);
 
-  const handleResetView = () => {
+  const handleResetView = useCallback(() => {
     const data = structureDataRef.current;
     const camera = cameraRef.current;
     const controls = controlsRef.current;
@@ -1274,7 +1223,112 @@ function Model3DViewBase({ phage }: Model3DViewProps): React.ReactElement {
     controls.target.set(0, 0, 0);
     controls.update();
     rendererRef.current?.render(scene, camera);
-  };
+  }, []);
+
+  // Keyboard controls only in fullscreen: arrows rotate, +/- zoom, space toggles rotation
+  useEffect(() => {
+    if (!fullscreen) return;
+    if (!show3DModel) return;
+    if (overlaysOpen) return;
+    if (typeof window === 'undefined') return;
+
+    const manager = getKeyboardManager();
+
+    const getReadyRefs = () => {
+      const scene = sceneRef.current;
+      const structure = structureRef.current;
+      const controls = controlsRef.current;
+      if (!scene || !structure || !controls) return null;
+      return { structure, controls };
+    };
+
+    const rotateLeft = () => {
+      const refs = getReadyRefs();
+      if (!refs) return;
+      refs.structure.rotation.y -= 0.05;
+      requestRender();
+    };
+    const rotateRight = () => {
+      const refs = getReadyRefs();
+      if (!refs) return;
+      refs.structure.rotation.y += 0.05;
+      requestRender();
+    };
+    const rotateUp = () => {
+      const refs = getReadyRefs();
+      if (!refs) return;
+      refs.structure.rotation.x -= 0.05;
+      requestRender();
+    };
+    const rotateDown = () => {
+      const refs = getReadyRefs();
+      if (!refs) return;
+      refs.structure.rotation.x += 0.05;
+      requestRender();
+    };
+    const zoomIn = () => {
+      const refs = getReadyRefs();
+      if (!refs) return;
+      // dollyIn/dollyOut are internal OrbitControls methods, not in public typings
+      (refs.controls as OrbitControls & { dollyIn?: (scale: number) => void }).dollyIn?.(1.1);
+      refs.controls.update();
+      requestRender();
+    };
+    const zoomOut = () => {
+      const refs = getReadyRefs();
+      if (!refs) return;
+      (refs.controls as OrbitControls & { dollyOut?: (scale: number) => void }).dollyOut?.(1.1);
+      refs.controls.update();
+      requestRender();
+    };
+
+    const cycleQuality = () => {
+      // Cycle quality: auto -> low -> medium -> high -> ultra -> auto
+      const levels: (QualityLevel | null)[] = [null, 'low', 'medium', 'high', 'ultra'];
+      setManualQuality((prev) => {
+        const currentIdx = levels.indexOf(prev);
+        const nextIdx = (currentIdx + 1) % levels.length;
+        return levels[nextIdx];
+      });
+      requestRender();
+    };
+
+    const definitions: HotkeyDefinition[] = [
+      // Rotation
+      { combo: { key: 'ArrowLeft' }, description: '3D fullscreen: rotate left', action: rotateLeft, priority: 10 },
+      { combo: { key: 'ArrowRight' }, description: '3D fullscreen: rotate right', action: rotateRight, priority: 10 },
+      { combo: { key: 'ArrowUp' }, description: '3D fullscreen: rotate up', action: rotateUp, priority: 10 },
+      { combo: { key: 'ArrowDown' }, description: '3D fullscreen: rotate down', action: rotateDown, priority: 10 },
+
+      // Zoom
+      { combo: { key: '+' }, description: '3D fullscreen: zoom in', action: zoomIn, priority: 10 },
+      { combo: { key: '=' }, description: '3D fullscreen: zoom in', action: zoomIn, priority: 10 },
+      { combo: { key: '-' }, description: '3D fullscreen: zoom out', action: zoomOut, priority: 10 },
+      { combo: { key: '_' }, description: '3D fullscreen: zoom out', action: zoomOut, priority: 10 },
+
+      // Playback
+      { combo: { key: ' ' }, description: '3D fullscreen: toggle pause', action: togglePause, priority: 10 },
+
+      // Quality cycle (q / Q)
+      { combo: { key: 'q' }, description: '3D fullscreen: cycle quality', action: cycleQuality, priority: 10 },
+      { combo: { key: 'q', modifiers: { shift: true } }, description: '3D fullscreen: cycle quality', action: cycleQuality, priority: 10 },
+
+      // Key hints (h / H)
+      { combo: { key: 'h' }, description: '3D fullscreen: toggle key hints', action: () => setShowKeyHints((v) => !v), priority: 10 },
+      { combo: { key: 'h', modifiers: { shift: true } }, description: '3D fullscreen: toggle key hints', action: () => setShowKeyHints((v) => !v), priority: 10 },
+
+      // Reset view (r / R)
+      { combo: { key: 'r' }, description: '3D fullscreen: reset view', action: handleResetView, priority: 10 },
+      { combo: { key: 'r', modifiers: { shift: true } }, description: '3D fullscreen: reset view', action: handleResetView, priority: 10 },
+
+      // Screenshot (s / S)
+      { combo: { key: 's' }, description: '3D fullscreen: screenshot', action: handleScreenshot, priority: 10 },
+      { combo: { key: 's', modifiers: { shift: true } }, description: '3D fullscreen: screenshot', action: handleScreenshot, priority: 10 },
+    ];
+
+    const unregister = manager.registerMany(definitions);
+    return unregister;
+  }, [fullscreen, handleResetView, handleScreenshot, overlaysOpen, requestRender, show3DModel, togglePause]);
 
   const stateLabel = loadState === 'ready'
     ? (fromCache ? 'Cached' : 'Loaded')
@@ -1326,6 +1380,7 @@ function Model3DViewBase({ phage }: Model3DViewProps): React.ReactElement {
 
   // Show empty state if phage has no structure
   const hasNoStructure = !pdbId && loadState !== 'loading';
+  const rcsbEntryUrl = useMemo(() => (pdbId ? getRcsbEntryUrl(pdbId) : null), [pdbId]);
 
   return (
     <div className="panel" aria-label="3D structure viewer">
@@ -1530,6 +1585,16 @@ function Model3DViewBase({ phage }: Model3DViewProps): React.ReactElement {
         {loadState === 'loading' && (
           <div className="three-overlay" aria-busy="true" aria-label="Loading 3D structure">
             <Model3DSkeleton />
+            <div
+              className="progress-bar"
+              role="progressbar"
+              aria-valuenow={Math.round(progress)}
+              aria-valuemin={0}
+              aria-valuemax={100}
+              style={{ marginTop: '12px' }}
+            >
+              <div className="progress" style={{ width: `${Math.max(0, Math.min(100, progress))}%` }} />
+            </div>
             <p className="text-dim" style={{ marginTop: '16px' }}>
               {loadingStage === 'fetching' && 'Fetching from RCSB PDB…'}
               {loadingStage === 'parsing' && 'Parsing structure…'}
@@ -1569,13 +1634,30 @@ function Model3DViewBase({ phage }: Model3DViewProps): React.ReactElement {
             <div style={{ display: 'flex', gap: '12px', marginTop: '8px' }}>
               <button
                 type="button"
-                className="btn"
+                className="btn btn-primary"
                 onClick={handleRetry}
                 style={{ minWidth: '80px' }}
               >
                 Retry
               </button>
             </div>
+            {rcsbEntryUrl && (
+              <a
+                href={rcsbEntryUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-link"
+                style={{
+                  fontSize: '13px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                  color: 'var(--color-accent)',
+                }}
+              >
+                Open in RCSB PDB →
+              </a>
+            )}
           </div>
         )}
 

@@ -7,7 +7,7 @@
  * - Other host defense countermeasures
  */
 
-import React, { useMemo, useState, useEffect, useCallback } from 'react';
+import React, { useMemo, useState, useEffect, useCallback, useRef } from 'react';
 import type { PhageFull, GeneInfo } from '@phage-explorer/core';
 import type { PhageRepository, DefenseSystem } from '../../db';
 import { useTheme } from '../../hooks/useTheme';
@@ -20,6 +20,10 @@ import { AnalysisPanelSkeleton } from '../ui/Skeleton';
 import { InfoButton } from '../ui';
 import { GenomeTrack } from './primitives/GenomeTrack';
 import type { GenomeTrackSegment } from './primitives/types';
+import {
+  OverlayLoadingState,
+  OverlayEmptyState,
+} from './primitives';
 
 // Defense system type colors
 const DEFENSE_COLORS: Record<string, string> = {
@@ -85,6 +89,7 @@ export function DefenseArmsRaceOverlay({
   const [loading, setLoading] = useState(false);
   const [selectedSystem, setSelectedSystem] = useState<DefenseSystem | null>(null);
   const [filterType, setFilterType] = useState<string>('all');
+  const lastPhageIdRef = useRef<number | null>(null);
 
   // Hotkey (Alt+E for dEfense - Alt+Shift+R used by StructureConstraintOverlay)
   useHotkey(
@@ -109,6 +114,23 @@ export function DefenseArmsRaceOverlay({
       .catch(() => setDefenseSystems([]))
       .finally(() => setLoading(false));
   }, [isOpen, repository, currentPhage]);
+
+  // Reset selection/filter when the active phage changes while the overlay is open.
+  useEffect(() => {
+    const phageId = currentPhage?.id ?? null;
+    if (phageId === lastPhageIdRef.current) return;
+    lastPhageIdRef.current = phageId;
+    setSelectedSystem(null);
+    setFilterType('all');
+  }, [currentPhage?.id]);
+
+  // If the current filter doesn't exist in the latest dataset, fall back to "all".
+  useEffect(() => {
+    if (filterType === 'all') return;
+    if (defenseSystems.some((sys) => sys.systemType === filterType)) return;
+    setSelectedSystem(null);
+    setFilterType('all');
+  }, [defenseSystems, filterType]);
 
   // Filter systems
   const filteredSystems = useMemo(() => {
@@ -200,13 +222,16 @@ export function DefenseArmsRaceOverlay({
         </div>
 
         {loading ? (
-          <AnalysisPanelSkeleton />
+          <OverlayLoadingState message="Loading defense system data...">
+            <AnalysisPanelSkeleton />
+          </OverlayLoadingState>
         ) : defenseSystems.length === 0 ? (
-          <div style={{ padding: '2rem', textAlign: 'center', color: colors.textMuted }}>
-            {!currentPhage
+          <OverlayEmptyState
+            message={!currentPhage
               ? 'No phage selected'
               : 'No defense system annotations available for this phage'}
-          </div>
+            hint={!currentPhage ? 'Select a phage to analyze.' : 'Defense annotations are predicted from known anti-CRISPR and anti-RM genes.'}
+          />
         ) : (
           <>
             {/* Summary stats */}

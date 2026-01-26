@@ -15,6 +15,10 @@ import { Overlay } from './Overlay';
 import { useOverlay } from './OverlayProvider';
 import { AnalysisPanelSkeleton } from '../ui/Skeleton';
 import { GelCanvas } from './primitives/GelCanvas';
+import {
+  OverlayLoadingState,
+  OverlayEmptyState,
+} from './primitives';
 import type { GelLane, GelBand, GelInteraction } from './primitives/types';
 
 // Restriction enzyme database
@@ -312,11 +316,14 @@ export function GelOverlay({
         </div>
 
         {loading ? (
-          <AnalysisPanelSkeleton />
+          <OverlayLoadingState message="Loading sequence data...">
+            <AnalysisPanelSkeleton />
+          </OverlayLoadingState>
         ) : !sequence ? (
-          <div style={{ padding: '2rem', textAlign: 'center', color: colors.textMuted }}>
-            No sequence loaded
-          </div>
+          <OverlayEmptyState
+            message="No sequence loaded"
+            hint="Select a phage to simulate gel electrophoresis."
+          />
         ) : (
           <>
             {/* Enzyme selector */}

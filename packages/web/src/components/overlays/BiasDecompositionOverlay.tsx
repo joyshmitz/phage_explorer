@@ -17,6 +17,11 @@ import { useOverlay } from './OverlayProvider';
 import { AnalysisPanelSkeleton } from '../ui/Skeleton';
 import { ScatterCanvas } from './primitives/ScatterCanvas';
 import {
+  OverlayLoadingState,
+  OverlayEmptyState,
+  OverlayErrorState,
+} from './primitives';
+import {
   DINUCLEOTIDES,
 } from '@phage-explorer/core';
 import type { BiasProjection } from '@phage-explorer/core';
@@ -238,15 +243,19 @@ export function BiasDecompositionOverlay({
         </div>
 
         {loading || analysisLoading ? (
-          <AnalysisPanelSkeleton />
+          <OverlayLoadingState message={loading ? 'Loading sequence data...' : 'Computing PCA decomposition...'}>
+            <AnalysisPanelSkeleton />
+          </OverlayLoadingState>
         ) : analysisError ? (
-          <div style={{ padding: '2rem', textAlign: 'center', color: colors.error }}>
-            {analysisError}
-          </div>
+          <OverlayErrorState
+            message="Analysis failed"
+            details={analysisError}
+          />
         ) : !analysis ? (
-          <div style={{ padding: '2rem', textAlign: 'center', color: colors.textMuted }}>
-            {!sequence ? 'No sequence loaded' : 'Sequence too short for analysis'}
-          </div>
+          <OverlayEmptyState
+            message={!sequence ? 'No sequence loaded' : 'Sequence too short for analysis'}
+            hint={!sequence ? 'Select a phage to analyze.' : 'Bias decomposition requires sufficient sequence length for windowed analysis.'}
+          />
         ) : (
           <>
             {/* Controls */}

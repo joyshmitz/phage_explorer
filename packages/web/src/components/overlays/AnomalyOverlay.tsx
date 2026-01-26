@@ -63,10 +63,12 @@ export function AnomalyOverlay({
 
   const [sequence, setSequence] = useState<string>('');
   const [analysis, setAnalysis] = useState<AnomalyWorkerResult | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [sequenceLoading, setSequenceLoading] = useState(false);
+  const [analysisLoading, setAnalysisLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [threshold, setThreshold] = useState<number | null>(null);
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
+  const loading = sequenceLoading || analysisLoading;
 
   const scoreScale = useMemo(
     () => createLinearColorScale(['#16a34a', '#eab308', '#ef4444']),
@@ -107,10 +109,17 @@ export function AnomalyOverlay({
 
   // Load full sequence when overlay opens
   useEffect(() => {
-    if (!isOpen('anomaly')) return;
+    if (!isOpen('anomaly')) {
+      setSequenceLoading(false);
+      setAnalysisLoading(false);
+      return;
+    }
     if (!repository || !currentPhage) {
       setSequence('');
-      setLoading(false);
+      setAnalysis(null);
+      setSequenceLoading(false);
+      setAnalysisLoading(false);
+      setError(null);
       return;
     }
 
@@ -119,11 +128,11 @@ export function AnomalyOverlay({
     const cached = sequenceCache.current.get(phageId);
     if (cached) {
       setSequence(cached);
-      setLoading(false);
+      setSequenceLoading(false);
       return;
     }
 
-    setLoading(true);
+    setSequenceLoading(true);
     setError(null);
     void (async () => {
       try {
@@ -140,24 +149,30 @@ export function AnomalyOverlay({
           setSequence('');
         }
       } finally {
-        if (!cancelled) setLoading(false);
+        if (!cancelled) setSequenceLoading(false);
       }
     })();
 
     return () => {
       cancelled = true;
+      setSequenceLoading(false);
     };
   }, [currentPhage, isOpen, repository]);
 
   // Run analysis when sequence is available
   useEffect(() => {
-    if (!isOpen('anomaly')) return;
+    if (!isOpen('anomaly')) {
+      setAnalysis(null);
+      setAnalysisLoading(false);
+      return;
+    }
     if (!sequence) {
       setAnalysis(null);
+      setAnalysisLoading(false);
       return;
     }
     let cancelled = false;
-    setLoading(true);
+    setAnalysisLoading(true);
     setError(null);
     void (async () => {
       try {
@@ -183,12 +198,13 @@ export function AnomalyOverlay({
           setAnalysis(null);
         }
       } finally {
-        if (!cancelled) setLoading(false);
+        if (!cancelled) setAnalysisLoading(false);
       }
     })();
 
     return () => {
       cancelled = true;
+      setAnalysisLoading(false);
     };
   }, [isOpen, sequence]);
 

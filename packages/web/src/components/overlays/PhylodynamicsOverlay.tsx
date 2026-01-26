@@ -26,6 +26,11 @@ import {
 } from '@phage-explorer/core';
 import { AnalysisPanelSkeleton } from '../ui/Skeleton';
 import {
+  OverlayLoadingState,
+  OverlayEmptyState,
+  OverlayErrorState,
+} from './primitives';
+import {
   fetchDatedPhageSequences,
   getPhageSearchTerms,
   getCached,
@@ -698,13 +703,19 @@ export function PhylodynamicsOverlay({
 
         {/* Canvas area */}
         {loading ? (
-          <AnalysisPanelSkeleton />
+          <OverlayLoadingState message={apiMessage || 'Searching NCBI for dated sequences...'}>
+            <AnalysisPanelSkeleton />
+          </OverlayLoadingState>
         ) : error ? (
-          <div style={{ padding: '1rem', color: colors.error }}>{error}</div>
+          <OverlayErrorState
+            message="Phylodynamic analysis failed"
+            details={error}
+          />
         ) : !result ? (
-          <div style={{ padding: '2rem', textAlign: 'center', color: colors.textMuted }}>
-            No analysis data available.
-          </div>
+          <OverlayEmptyState
+            message="No analysis data available"
+            hint="Select a phage to analyze phylodynamic trajectories."
+          />
         ) : (
           <div
             style={{

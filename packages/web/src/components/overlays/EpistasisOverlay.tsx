@@ -19,6 +19,10 @@ import { Overlay } from './Overlay';
 import { useOverlay } from './OverlayProvider';
 import { AnalysisPanelSkeleton } from '../ui/Skeleton';
 import {
+  OverlayLoadingState,
+  OverlayEmptyState,
+} from './primitives';
+import {
   analyzeFitnessLandscape,
   classifyProteinType,
   translateSequence,
@@ -703,18 +707,24 @@ export function EpistasisOverlay({
           </button>
         </div>
 
-        {loading && <AnalysisPanelSkeleton />}
+        {loading && (
+          <OverlayLoadingState message="Loading sequence for epistasis analysis...">
+            <AnalysisPanelSkeleton />
+          </OverlayLoadingState>
+        )}
 
         {!loading && !currentPhage && (
-          <div style={{ color: colors.textMuted, fontStyle: 'italic' }}>
-            Select a phage to analyze
-          </div>
+          <OverlayEmptyState
+            message="No phage selected"
+            hint="Select a phage to analyze fitness landscapes and epistasis."
+          />
         )}
 
         {!loading && currentPhage && proteinCandidates.length === 0 && (
-          <div style={{ color: colors.textMuted, fontStyle: 'italic' }}>
-            No suitable proteins found (capsid, tail fiber, portal, polymerase)
-          </div>
+          <OverlayEmptyState
+            message="No suitable proteins found"
+            hint="Epistasis analysis requires capsid, tail fiber, portal, or polymerase proteins."
+          />
         )}
 
         {!loading && proteinCandidates.length > 0 && (

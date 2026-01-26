@@ -17,6 +17,11 @@ import { ActionIds } from '../../keyboard';
 import { Overlay } from './Overlay';
 import { useOverlay } from './OverlayProvider';
 import { AnalysisPanelSkeleton } from '../ui/Skeleton';
+import {
+  OverlayLoadingState,
+  OverlayEmptyState,
+  OverlayErrorState,
+} from './primitives';
 import { getWasmCompute } from '../../lib/wasm-loader';
 import type { CgrWorkerResult, HilbertWorkerAPI } from '../../workers/hilbert.worker';
 
@@ -336,16 +341,22 @@ export function CGROverlay({ repository, currentPhage }: CGROverlayProps): React
           horizontal transfer regions.
         </div>
 
-        {loading && <AnalysisPanelSkeleton />}
-        {!loading && statusMessage && (
-          <div style={{ color: colors.textDim }}>
-            {statusMessage}
-          </div>
+        {loading && (
+          <OverlayLoadingState message="Computing Chaos Game Representation...">
+            <AnalysisPanelSkeleton />
+          </OverlayLoadingState>
         )}
-        {error && (
-          <div style={{ color: colors.error }}>
-            {error}
-          </div>
+        {!loading && statusMessage && (
+          <OverlayEmptyState
+            message={statusMessage}
+            hint="The CGR visualization requires a loaded genome sequence."
+          />
+        )}
+        {!loading && error && (
+          <OverlayErrorState
+            message="CGR computation failed"
+            details={error}
+          />
         )}
 
         <div
