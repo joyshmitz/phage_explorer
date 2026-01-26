@@ -152,6 +152,69 @@ test('mobile: welcome sheet visible and Lenis disabled', async ({ page }, testIn
   await finalize();
 });
 
+test('desktop: welcome stepper navigation and keyboard', async ({ page }, testInfo) => {
+  test.skip(
+    /(^mobile-|^android-|^tablet-)/.test(testInfo.project.name),
+    'Desktop-only assertions'
+  );
+
+  const { pageErrors, consoleErrors, finalize } = setupTestHarness(page, testInfo);
+
+  await page.setViewportSize({ width: 1600, height: 900 });
+  // Clear localStorage to ensure first-run state
+  await page.goto('/', { waitUntil: 'domcontentloaded' });
+  await page.evaluate(() => localStorage.clear());
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await page.waitForSelector('#root > div', { timeout: 30000 });
+  await page.waitForTimeout(500);
+
+  const welcomeOverlay = page.locator('.overlay-welcome');
+  await expect(welcomeOverlay).toBeVisible();
+
+  // Step 1: Intro - verify step indicator format
+  const stepLabel = page.locator('.welcome-step-label');
+  await expect(stepLabel).toContainText('Step 1 of 3');
+
+  // Verify Next button is visible
+  const nextButton = welcomeOverlay.locator('.btn-primary', { hasText: 'Next' });
+  await expect(nextButton).toBeVisible();
+
+  // Verify Back button is NOT visible on step 1
+  const backButton = welcomeOverlay.locator('.btn-secondary', { hasText: 'Back' });
+  await expect(backButton).toHaveCount(0);
+
+  // Click Next to go to step 2
+  await nextButton.click();
+  await expect(stepLabel).toContainText('Step 2 of 3');
+
+  // Step 2: Level selection - Back button should now be visible
+  await expect(backButton).toBeVisible();
+
+  // Click Back to return to step 1
+  await backButton.click();
+  await expect(stepLabel).toContainText('Step 1 of 3');
+
+  // Use Enter key to advance (primary action)
+  await page.keyboard.press('Enter');
+  await expect(stepLabel).toContainText('Step 2 of 3');
+
+  // Continue to step 3
+  await page.keyboard.press('Enter');
+  await expect(stepLabel).toContainText('Step 3 of 3');
+
+  // Final step should show "Get Started" instead of "Next"
+  const getStartedButton = welcomeOverlay.locator('.btn-primary', { hasText: 'Get Started' });
+  await expect(getStartedButton).toBeVisible();
+
+  // Test Escape closes the overlay
+  await page.keyboard.press('Escape');
+  await expect(welcomeOverlay).toBeHidden({ timeout: 5000 });
+
+  expect(pageErrors).toEqual([]);
+  expect(consoleErrors).toEqual([]);
+  await finalize();
+});
+
 test('desktop: key overlays open and no console errors', async ({ page }, testInfo) => {
   test.skip(
     /(^mobile-|^android-|^tablet-)/.test(testInfo.project.name),

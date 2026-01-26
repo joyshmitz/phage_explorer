@@ -852,6 +852,46 @@ test.describe('Specific Bug Checks', () => {
     await finalize();
   });
 
+  test('mobile scroll does not trigger console errors', async ({ page }, testInfo) => {
+    const { pageErrors, consoleErrors, finalize } = setupTestHarness(page, testInfo);
+    if (!isMobileViewport(page)) {
+      test.skip();
+      await finalize();
+      return;
+    }
+
+    const canvas = page.locator('.sequence-grid-canvas');
+    await expect(canvas).toBeVisible({ timeout: 30000 });
+    await canvas.scrollIntoViewIfNeeded();
+
+    const description = page.locator('#sequence-view-description');
+    await expect(description).not.toContainText('not loaded yet', { timeout: 30000 });
+
+    // Mobile hides `.sequence-view__range`, so use the always-rendered jump status.
+    const jumpStatus = page.locator('.sequence-view__jump-status').first();
+    await expect(jumpStatus).toContainText('Pos:', { timeout: 30000 });
+    const initialPos = (await jumpStatus.textContent())?.trim() ?? '';
+    expect(initialPos.length).toBeGreaterThan(0);
+
+    // Scroll down a bit and ensure the visible range changes.
+    // Use the built-in jump scrubber to change the visible range (mobile-friendly and reliable in CI).
+    const scrubber = page.locator('[title="Tap or click to jump"]').first();
+    await expect(scrubber).toBeVisible({ timeout: 30000 });
+    const scrubBox = await scrubber.boundingBox();
+    if (!scrubBox) {
+      throw new Error('Expected jump scrubber bounding box, got null');
+    }
+    await page.mouse.click(scrubBox.x + scrubBox.width * 0.6, scrubBox.y + scrubBox.height / 2);
+    await expect(jumpStatus).not.toHaveText(initialPos, { timeout: 10000 });
+
+    // Give any async errors (workers, canvas pipeline) a moment to surface.
+    await page.waitForTimeout(250);
+    expect(pageErrors).toHaveLength(0);
+    expect(consoleErrors).toHaveLength(0);
+
+    await finalize();
+  });
+
   test('metrics grid readable on mobile', async ({ page }, testInfo) => {
     const { finalize } = setupTestHarness(page, testInfo);
     if (!isMobileViewport(page)) {
@@ -905,6 +945,152 @@ test.describe('Specific Bug Checks', () => {
     }
 
     await page.keyboard.press('Escape');
+    await finalize();
+  });
+});
+
+test.describe('FAB (Floating Action Button)', () => {
+  test.beforeEach(async ({ page }) => {
+    await gotoApp(page);
+  });
+
+  test('FAB is visible on mobile and tablet', async ({ page }, testInfo) => {
+    const { finalize } = setupTestHarness(page, testInfo);
+    const fab = page.locator('.fab');
+    const viewport = page.viewportSize();
+
+    if (viewport && viewport.width <= 900) {
+      await expect(fab).toBeVisible();
+
+      // FAB should meet touch target requirements
+      const { width, height } = await getElementDimensions(fab);
+      expect(width).toBeGreaterThanOrEqual(44);
+      expect(height).toBeGreaterThanOrEqual(44);
+    } else {
+      // Hidden on desktop
+      await expect(fab).not.toBeVisible();
+    }
+
+    await finalize();
+  });
+
+  test('FAB does not overlap control deck', async ({ page }, testInfo) => {
+    const { finalize } = setupTestHarness(page, testInfo);
+    if (!isPhoneViewport(page)) {
+      test.skip();
+      await finalize();
+      return;
+    }
+
+    const fab = page.locator('.fab');
+    const controlDeck = page.locator('.control-deck');
+
+    await expect(fab).toBeVisible();
+    await expect(controlDeck).toBeVisible();
+
+    const fabBox = await fab.boundingBox();
+    const deckBox = await controlDeck.boundingBox();
+
+    expect(fabBox).not.toBeNull();
+    expect(deckBox).not.toBeNull();
+
+    if (fabBox && deckBox) {
+      // FAB bottom should be above control deck top (no overlap)
+      expect(fabBox.y + fabBox.height).toBeLessThanOrEqual(deckBox.y + 2);
+    }
+
+    await finalize();
+  });
+
+  test('FAB does not overlap main content', async ({ page }, testInfo) => {
+    const { finalize } = setupTestHarness(page, testInfo);
+    const viewport = page.viewportSize();
+
+    if (!viewport || viewport.width > 900) {
+      test.skip();
+      await finalize();
+      return;
+    }
+
+    const fab = page.locator('.fab');
+    await expect(fab).toBeVisible();
+
+    const fabBox = await fab.boundingBox();
+    expect(fabBox).not.toBeNull();
+
+    if (fabBox) {
+      // FAB should be within viewport
+      expect(fabBox.x).toBeGreaterThanOrEqual(0);
+      expect(fabBox.y).toBeGreaterThanOrEqual(0);
+      expect(fabBox.x + fabBox.width).toBeLessThanOrEqual(viewport.width);
+      expect(fabBox.y + fabBox.height).toBeLessThanOrEqual(viewport.height);
+    }
+
+    await finalize();
+  });
+
+  test('FAB opens action drawer', async ({ page }, testInfo) => {
+    const { finalize } = setupTestHarness(page, testInfo);
+    const viewport = page.viewportSize();
+
+    if (!viewport || viewport.width > 900) {
+      test.skip();
+      await finalize();
+      return;
+    }
+
+    const fab = page.locator('.fab');
+    await expect(fab).toBeVisible();
+
+    // Click FAB to open action drawer
+    await fab.click();
+
+    const actionDrawer = page.locator('#action-drawer');
+    await expect(actionDrawer).toBeVisible();
+
+    // FAB should transform to close icon
+    await expect(fab).toHaveClass(/fab--open/);
+
+    // Close it
+    await fab.click();
+    await expect(actionDrawer).toBeHidden();
+
+    await finalize();
+  });
+
+  test('action drawer disabled items have visual indication', async ({ page }, testInfo) => {
+    const { finalize } = setupTestHarness(page, testInfo);
+    const viewport = page.viewportSize();
+
+    if (!viewport || viewport.width > 900) {
+      test.skip();
+      await finalize();
+      return;
+    }
+
+    const fab = page.locator('.fab');
+    await fab.click();
+
+    const actionDrawer = page.locator('#action-drawer');
+    await expect(actionDrawer).toBeVisible();
+
+    // Find a disabled item (may not exist if phage is selected)
+    const disabledItem = actionDrawer.locator('.action-drawer__item--disabled').first();
+
+    if (await disabledItem.count() > 0) {
+      // Disabled items should have cursor: not-allowed
+      const cursor = await disabledItem.evaluate((el) => {
+        return window.getComputedStyle(el).cursor;
+      });
+      expect(cursor).toBe('not-allowed');
+
+      // Should have reduced opacity
+      const opacity = await disabledItem.evaluate((el) => {
+        return parseFloat(window.getComputedStyle(el).opacity);
+      });
+      expect(opacity).toBeLessThan(1);
+    }
+
     await finalize();
   });
 });
