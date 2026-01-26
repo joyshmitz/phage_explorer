@@ -309,7 +309,9 @@ export class CanvasSequenceGridRenderer {
     this.rowHeight = this.cellHeight;
 
     // Get context
-    const ctx = this.canvas.getContext('2d', { alpha: false });
+    // Some browsers can return null if context attributes don't match a prior `getContext()` call.
+    // Fall back to default 2D context rather than failing hard (alpha=false is a perf hint only).
+    const ctx = this.canvas.getContext('2d', { alpha: false }) ?? this.canvas.getContext('2d');
     if (!ctx) throw new Error('Failed to get 2D context');
     this.ctx = ctx;
 
@@ -504,9 +506,9 @@ export class CanvasSequenceGridRenderer {
   private createBackBuffer(width: number, height: number): void {
     const safeWidth = Math.max(1, width);
     const safeHeight = Math.max(1, height);
-    const hasOffscreen = typeof OffscreenCanvas !== 'undefined';
-    const hasDom = typeof document !== 'undefined';
-    if (!hasOffscreen && !hasDom) {
+    const canUseDomCanvas = typeof document !== 'undefined';
+    const canUseOffscreen = typeof OffscreenCanvas !== 'undefined';
+    if (!canUseDomCanvas && !canUseOffscreen) {
       this.backBuffer = null;
       this.backCtx = null;
       return;
@@ -516,19 +518,17 @@ export class CanvasSequenceGridRenderer {
     const targetHeight = Math.max(1, Math.round(safeHeight * this.dpr));
 
     if (!this.backBuffer) {
-      this.backBuffer = hasOffscreen ? new OffscreenCanvas(targetWidth, targetHeight) : document.createElement('canvas');
-    } else if (this.backBuffer.width !== targetWidth || this.backBuffer.height !== targetHeight) {
+      // Prefer DOM canvas in the window context: OffscreenCanvas support (esp. iOS Safari)
+      // can be inconsistent when used as a `drawImage()` source for 2D contexts.
+      this.backBuffer = canUseDomCanvas ? document.createElement('canvas') : new OffscreenCanvas(targetWidth, targetHeight);
+    }
+
+    if (this.backBuffer.width !== targetWidth || this.backBuffer.height !== targetHeight) {
       this.backBuffer.width = targetWidth;
       this.backBuffer.height = targetHeight;
     }
 
-    // Ensure DOM canvas buffers are sized (OffscreenCanvas handled above).
-    if (this.backBuffer && !hasOffscreen) {
-      this.backBuffer.width = targetWidth;
-      this.backBuffer.height = targetHeight;
-    }
-
-    const ctx = this.backBuffer.getContext('2d', { alpha: false });
+    const ctx = this.backBuffer.getContext('2d', { alpha: false }) ?? this.backBuffer.getContext('2d');
     if (!ctx) {
       this.backCtx = null;
       return;
@@ -660,9 +660,9 @@ export class CanvasSequenceGridRenderer {
 
     // Create new tile
     const tileCanvas: RowTileCanvas =
-      typeof OffscreenCanvas !== 'undefined'
-        ? new OffscreenCanvas(expectedPixelWidth, expectedPixelHeight)
-        : document.createElement('canvas');
+      typeof document !== 'undefined'
+        ? document.createElement('canvas')
+        : new OffscreenCanvas(expectedPixelWidth, expectedPixelHeight);
 
     tileCanvas.width = expectedPixelWidth;
     tileCanvas.height = expectedPixelHeight;
@@ -675,7 +675,7 @@ export class CanvasSequenceGridRenderer {
     };
 
     // Render row to tile
-    const tileCtx = tile.canvas.getContext('2d', { alpha: false });
+    const tileCtx = tile.canvas.getContext('2d', { alpha: false }) ?? tile.canvas.getContext('2d');
     if (!tileCtx) return null;
 
     const scaleX = expectedPixelWidth / Math.max(1, tileWidth);
@@ -1387,9 +1387,11 @@ export class CanvasSequenceGridRenderer {
     // (or directly from backBuffer -> canvas), otherwise the back buffer copy would overwrite it.
     const postProcess =
       this.postProcess && !this.reducedMotion && !this.isScrolling ? this.postProcess : null;
+    let didApplyPostProcess = false;
     if (this.backBuffer && this.backCtx) {
       this.ctx.setTransform(1, 0, 0, 1, 0, 0);
       const postProcessed = postProcess?.process(this.backBuffer, this.canvas) ?? false;
+      didApplyPostProcess = postProcessed;
       if (!postProcessed) {
         this.ctx.drawImage(this.backBuffer, 0, 0);
       }
@@ -1397,7 +1399,7 @@ export class CanvasSequenceGridRenderer {
     } else if (postProcess) {
       // Ensure identity transform for the 2D context copy inside PostProcessPipeline.
       this.ctx.setTransform(1, 0, 0, 1, 0, 0);
-      postProcess.process(this.canvas, this.canvas);
+      didApplyPostProcess = postProcess.process(this.canvas, this.canvas);
       this.ctx.setTransform(this.canvasScaleX, 0, 0, this.canvasScaleY, 0, 0); // Restore render scaling
     }
 
@@ -1421,7 +1423,7 @@ export class CanvasSequenceGridRenderer {
     this.lastViewport = { width: clientWidth, height: clientHeight };
     this.lastRowHeight = rowHeight;
     // Track if this frame had post-processing so next scroll frame knows to skip blit
-    this.lastFrameHadPostProcess = shouldPostProcess;
+    this.lastFrameHadPostProcess = didApplyPostProcess;
     this.isRendering = false;
   }
 

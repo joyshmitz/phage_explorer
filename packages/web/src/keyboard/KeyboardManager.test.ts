@@ -6,7 +6,7 @@
 
 import { describe, expect, it, beforeEach, afterEach } from 'bun:test';
 import { KeyboardManager } from './KeyboardManager';
-import { ActionIds, getOverlayHotkeyActions, ActionRegistryList } from './actionRegistry';
+import { ActionIds, ActionRegistryList, getOverlayHotkeyActions } from './actionRegistry';
 import type { HotkeyDefinition } from './types';
 
 type GlobalSnapshot = {
@@ -210,19 +210,18 @@ describe('Overlay first-load hotkey behavior (s4qx.2.5)', () => {
     expect(overlayActions.length).toBeGreaterThan(30);
   });
 
-  it('overlay actions are all global scope', () => {
-    // Overlay toggle/open actions should be global (always available)
-    // This is verified in getOverlayHotkeyActions filter, but double-check
-    const overlayActions = getOverlayHotkeyActions();
+	  it('overlay actions are all global scope', () => {
+	    // Overlay toggle/open actions should be global (always available)
+	    // This is verified in getOverlayHotkeyActions filter, but double-check
+	    const overlayActions = getOverlayHotkeyActions();
 
-    // Every action should correspond to a global-scope action in registry
-    // ActionRegistryList imported at top of file
-    for (const action of overlayActions) {
-      const registryAction = ActionRegistryList.find(
-        (a: { id: string }) => a.id === action.actionId
-      );
+	    // Every action should correspond to a global-scope action in registry
+	    for (const action of overlayActions) {
+	      const registryAction = ActionRegistryList.find(
+	        (a: { id: string }) => a.id === action.actionId
+	      );
       expect(registryAction).toBeDefined();
-      expect(registryAction.scope).toBe('global');
+      expect(registryAction!.scope).toBe('global');
     }
   });
 

@@ -10,10 +10,17 @@
  * - TOOLS: Settings, help, search, command palette
  */
 
-import React, { useCallback } from 'react';
+import React, { useCallback, useMemo } from 'react';
 import { usePhageStore } from '@phage-explorer/state';
 import { BottomSheet } from '../mobile/BottomSheet';
 import { useOverlay, type OverlayId } from '../overlays/OverlayProvider';
+import { ActionIds, type ActionId } from '../../keyboard';
+import {
+  ACTION_DRAWER_SECTIONS,
+  detectShortcutPlatform,
+  formatActionShortcutForSurface,
+  getActionFromRegistry,
+} from '../../keyboard/actionSurfaces';
 import { haptics } from '../../utils/haptics';
 import {
   IconLayers,
@@ -33,30 +40,15 @@ import {
   IconRepeat,
   IconMagnet,
   IconShield,
+  IconAperture,
+  IconDiff,
+  IconZap,
+  IconBeaker,
 } from '../ui';
-
-// =============================================================================
-// Types
-// =============================================================================
 
 interface ActionDrawerProps {
   isOpen: boolean;
   onClose: () => void;
-}
-
-interface ActionItem {
-  id: string;
-  label: string;
-  icon: React.ReactNode;
-  action: () => void;
-  active?: boolean;
-  disabled?: boolean;
-}
-
-interface ActionCategory {
-  id: string;
-  label: string;
-  items: ActionItem[];
 }
 
 // =============================================================================
@@ -64,7 +56,17 @@ interface ActionCategory {
 // =============================================================================
 
 export function ActionDrawer({ isOpen, onClose }: ActionDrawerProps): React.ReactElement {
-  const { open: openOverlay } = useOverlay();
+  const { open: openOverlay, toggle: toggleOverlay } = useOverlay();
+  const shortcutPlatform = detectShortcutPlatform();
+  const initialSnapPoint = useMemo(() => {
+    if (typeof window === 'undefined') return 'half' as const;
+
+    // Very small phones benefit from opening the drawer fully so key actions (Analysis row 2+)
+    // are reachable without needing to scroll or expand the sheet first.
+    if (window.innerWidth <= 380) return 'full' as const;
+
+    return 'half' as const;
+  }, []);
 
   // Store state
   const viewMode = usePhageStore((s) => s.viewMode);
@@ -74,195 +76,143 @@ export function ActionDrawer({ isOpen, onClose }: ActionDrawerProps): React.Reac
   const zoomScale = usePhageStore((s) => s.zoomScale) ?? 1.0;
   const zoomIn = usePhageStore((s) => s.zoomIn);
   const zoomOut = usePhageStore((s) => s.zoomOut);
-
-  // Handlers with haptic feedback
-  const handleAction = useCallback(
-    (action: () => void) => {
-      haptics.selection();
-      action();
-      onClose();
-    },
-    [onClose]
-  );
-
-  const handleOverlay = useCallback(
-    (overlayId: OverlayId) => {
-      haptics.selection();
-      openOverlay(overlayId);
-      onClose();
-    },
-    [openOverlay, onClose]
-  );
-
-  const handleZoomIn = useCallback(() => {
-    haptics.selection();
-    zoomIn();
-  }, [zoomIn]);
-
-  const handleZoomOut = useCallback(() => {
-    haptics.selection();
-    zoomOut();
-  }, [zoomOut]);
+  const hasPhage = usePhageStore((s) => s.currentPhage !== null);
 
   // View mode label - use full "Amino Acids" for clarity
   const viewModeLabel = viewMode === 'dna' ? 'DNA' : viewMode === 'aa' ? 'Amino Acids' : 'Dual';
 
-  // Action categories
-  const categories: ActionCategory[] = [
-    {
-      id: 'view',
-      label: 'View',
-      items: [
-        {
-          id: 'viewMode',
-          label: `Mode: ${viewModeLabel}`,
-          icon: <IconLayers size={20} />,
-          action: () => handleAction(toggleViewMode),
-        },
-        {
-          id: '3d',
-          label: '3D Model',
-          icon: <IconCube size={20} />,
-          action: () => handleAction(toggle3DModel),
-          active: show3DModel,
-        },
-        {
-          id: 'zoomIn',
-          label: 'Zoom In',
-          icon: <IconZoomIn size={20} />,
-          action: handleZoomIn,
-          disabled: zoomScale >= 4.0,
-        },
-        {
-          id: 'zoomOut',
-          label: 'Zoom Out',
-          icon: <IconZoomOut size={20} />,
-          action: handleZoomOut,
-          disabled: zoomScale <= 0.1,
-        },
-      ],
-    },
-    {
-      id: 'analysis',
-      label: 'Analysis',
-      items: [
-        {
-          id: 'complexity',
-          label: 'Complexity',
-          icon: <IconChartBar size={20} />,
-          action: () => handleOverlay('complexity'),
-        },
-        {
-          id: 'gcSkew',
-          label: 'GC Skew',
-          icon: <IconDna size={20} />,
-          action: () => handleOverlay('gcSkew'),
-        },
-        {
-          id: 'pressure',
-          label: 'Packaging Pressure',
-          icon: <IconTrendingUp size={20} />,
-          action: () => handleOverlay('pressure'),
-        },
-        {
-          id: 'repeats',
-          label: 'Repeats',
-          icon: <IconRepeat size={20} />,
-          action: () => handleOverlay('repeats'),
-        },
-        {
-          id: 'synteny',
-          label: 'Synteny',
-          icon: <IconGitCompare size={20} />,
-          action: () => handleOverlay('synteny'),
-        },
-        {
-          id: 'crispr',
-          label: 'CRISPR',
-          icon: <IconTarget size={20} />,
-          action: () => handleOverlay('crispr'),
-        },
-        {
-          id: 'hgt',
-          label: 'HGT',
-          icon: <IconMagnet size={20} />,
-          action: () => handleOverlay('hgt'),
-        },
-        {
-          id: 'defenseArms',
-          label: 'Defense',
-          icon: <IconShield size={20} />,
-          action: () => handleOverlay('defenseArmsRace'),
-        },
-      ],
-    },
-    {
-      id: 'tools',
-      label: 'Tools',
-      items: [
-        {
-          id: 'search',
-          label: 'Search',
-          icon: <IconSearch size={20} />,
-          action: () => handleOverlay('search'),
-        },
-        {
-          id: 'commands',
-          label: 'Commands',
-          icon: <IconCommand size={20} />,
-          action: () => handleOverlay('commandPalette'),
-        },
-        {
-          id: 'analysisMenu',
-          label: 'All Analysis',
-          icon: <IconFlask size={20} />,
-          action: () => handleOverlay('analysisMenu'),
-        },
-        {
-          id: 'settings',
-          label: 'Settings',
-          icon: <IconSettings size={20} />,
-          action: () => handleOverlay('settings'),
-        },
-        {
-          id: 'help',
-          label: 'Help',
-          icon: <IconHelp size={20} />,
-          action: () => handleOverlay('help'),
-        },
-      ],
-    },
-  ];
+  const actionIcons = useMemo(() => {
+    const icons: Partial<Record<ActionId, React.ReactNode>> = {
+      // View controls
+      [ActionIds.ViewCycleMode]: <IconLayers size={20} />,
+      [ActionIds.ViewToggle3DModel]: <IconCube size={20} />,
+      [ActionIds.ViewZoomIn]: <IconZoomIn size={20} />,
+      [ActionIds.ViewZoomOut]: <IconZoomOut size={20} />,
+      // Sequence analysis
+      [ActionIds.OverlayGCSkew]: <IconDna size={20} />,
+      [ActionIds.OverlayComplexity]: <IconChartBar size={20} />,
+      [ActionIds.OverlayBendability]: <IconAperture size={20} />,
+      [ActionIds.OverlayRepeats]: <IconRepeat size={20} />,
+      [ActionIds.OverlayPromoter]: <IconTarget size={20} />,
+      [ActionIds.OverlayHilbert]: <IconAperture size={20} />,
+      [ActionIds.OverlayCGR]: <IconDna size={20} />,
+      [ActionIds.OverlayDotPlot]: <IconDiff size={20} />,
+      // Analysis tools
+      [ActionIds.OverlayPackagingPressure]: <IconTrendingUp size={20} />,
+      [ActionIds.OverlaySynteny]: <IconGitCompare size={20} />,
+      [ActionIds.OverlayCRISPR]: <IconTarget size={20} />,
+      [ActionIds.OverlayHGT]: <IconMagnet size={20} />,
+      [ActionIds.OverlayDefenseArmsRace]: <IconShield size={20} />,
+      [ActionIds.OverlayGel]: <IconBeaker size={20} />,
+      [ActionIds.OverlaySimulationHub]: <IconZap size={20} />,
+      [ActionIds.OverlayAnalysisMenu]: <IconFlask size={20} />,
+      // Tools
+      [ActionIds.OverlaySearch]: <IconSearch size={20} />,
+      [ActionIds.OverlayCommandPalette]: <IconCommand size={20} />,
+      [ActionIds.OverlaySettings]: <IconSettings size={20} />,
+      [ActionIds.OverlayHelp]: <IconHelp size={20} />,
+    };
+
+    return icons;
+  }, []);
+
+  const invokeAction = useCallback((actionId: ActionId, options?: { closeAfter?: boolean }) => {
+    const closeAfter = options?.closeAfter ?? true;
+    haptics.selection();
+
+    const action = getActionFromRegistry(actionId);
+    if (action?.overlayId && action.overlayAction) {
+      const overlayId = action.overlayId as OverlayId;
+      if (action.overlayAction === 'open') {
+        openOverlay(overlayId);
+      } else {
+        toggleOverlay(overlayId);
+      }
+
+      if (closeAfter) onClose();
+      return;
+    }
+
+    switch (actionId) {
+      case ActionIds.ViewCycleMode:
+        toggleViewMode();
+        break;
+      case ActionIds.ViewToggle3DModel:
+        toggle3DModel();
+        break;
+      case ActionIds.ViewZoomIn:
+        zoomIn();
+        break;
+      case ActionIds.ViewZoomOut:
+        zoomOut();
+        break;
+      default:
+        break;
+    }
+
+    if (closeAfter) onClose();
+  }, [onClose, openOverlay, toggle3DModel, toggleOverlay, toggleViewMode, zoomIn, zoomOut]);
 
   return (
     <BottomSheet
       isOpen={isOpen}
       onClose={onClose}
+      title="Quick actions"
       showHandle={true}
       closeOnBackdropTap={true}
       swipeToDismiss={true}
-      initialSnapPoint="half"
+      initialSnapPoint={initialSnapPoint}
       minHeight={35}
       maxHeight={85}
     >
       <div className="action-drawer" id="action-drawer">
-        {categories.map((category) => (
+        {ACTION_DRAWER_SECTIONS.map((category) => (
           <div key={category.id} className="action-drawer__category">
             <h3 className="action-drawer__category-label">{category.label}</h3>
             <div className="action-drawer__grid">
-              {category.items.map((item) => (
-                <button
-                  key={item.id}
-                  type="button"
-                  className={`action-drawer__item ${item.active ? 'action-drawer__item--active' : ''} ${item.disabled ? 'action-drawer__item--disabled' : ''}`}
-                  onClick={item.action}
-                  disabled={item.disabled}
-                  aria-pressed={item.active}
-                >
-                  <span className="action-drawer__item-icon">{item.icon}</span>
-                  <span className="action-drawer__item-label">{item.label}</span>
-                </button>
-              ))}
+              {category.items.map((item) => {
+                const action = getActionFromRegistry(item.actionId);
+                if (!action) return null;
+
+                const shortcut = formatActionShortcutForSurface(item.actionId, shortcutPlatform);
+                const icon = actionIcons[item.actionId] ?? <IconCommand size={20} />;
+
+                const label = item.labelStrategy === 'viewMode'
+                  ? `Mode: ${viewModeLabel}`
+                  : action.title;
+
+                const closeAfter = item.closeAfter ?? true;
+
+                const active = item.actionId === ActionIds.ViewToggle3DModel ? show3DModel : false;
+                const disabled = !hasPhage && category.id !== 'tools';
+                const zoomDisabled = item.actionId === ActionIds.ViewZoomIn
+                  ? zoomScale >= 4.0
+                  : item.actionId === ActionIds.ViewZoomOut
+                    ? zoomScale <= 0.1
+                    : false;
+
+                const isDisabled = disabled || zoomDisabled;
+
+                return (
+                  <button
+                    key={item.actionId}
+                    type="button"
+                    className={`action-drawer__item ${active ? 'action-drawer__item--active' : ''} ${isDisabled ? 'action-drawer__item--disabled' : ''}`}
+                    onClick={() => invokeAction(item.actionId, { closeAfter })}
+                    disabled={isDisabled}
+                    aria-pressed={active}
+                    data-action-id={item.actionId}
+                  >
+                    <span className="action-drawer__item-icon">{icon}</span>
+                    <span className="action-drawer__item-label">{label}</span>
+                    {shortcut && (
+                      <kbd className="action-drawer__item-shortcut" aria-hidden="true">
+                        {shortcut}
+                      </kbd>
+                    )}
+                  </button>
+                );
+              })}
             </div>
           </div>
         ))}

@@ -9,6 +9,13 @@ import React, { useState } from 'react';
 import { usePhageStore } from '@phage-explorer/state';
 import { useOverlay, type OverlayId } from './overlays/OverlayProvider';
 import {
+  ANALYSIS_SIDEBAR_CATEGORIES,
+  detectShortcutPlatform,
+  formatPrimaryActionShortcut,
+  getActionFromRegistry,
+} from '../keyboard/actionSurfaces';
+import type { ActionId } from '../keyboard/actionRegistry';
+import {
   IconChevronDown,
   IconChevronRight,
   IconDna,
@@ -21,99 +28,15 @@ import {
   IconZap,
 } from './ui';
 
-interface AnalysisTool {
-  id: OverlayId;
-  name: string;
-  shortcut?: string;
-  description: string;
-}
-
-interface AnalysisCategory {
-  id: string;
-  name: string;
-  icon: React.ReactNode;
-  tools: AnalysisTool[];
-  level?: 'novice' | 'intermediate' | 'power';
-}
-
-const ANALYSIS_CATEGORIES: AnalysisCategory[] = [
-  {
-    id: 'sequence',
-    name: 'Sequence Analysis',
-    icon: <IconDna size={16} />,
-    tools: [
-      { id: 'gcSkew', name: 'GC Skew', shortcut: 'g', description: 'Origin/terminus detection' },
-      { id: 'complexity', name: 'Complexity', shortcut: 'x', description: 'Shannon entropy analysis' },
-      { id: 'bendability', name: 'Bendability', shortcut: 'b', description: 'DNA curvature prediction' },
-      { id: 'hilbert', name: 'Hilbert Curve', shortcut: 'H', description: 'Space-filling visualization' },
-      { id: 'cgr', name: 'Chaos Game', description: 'Fractal genome view' },
-      { id: 'dotPlot', name: 'Dotplot', shortcut: '.', description: 'Self-similarity matrix' },
-    ],
-  },
-  {
-    id: 'genes',
-    name: 'Gene Features',
-    icon: <IconFlask size={16} />,
-    tools: [
-      { id: 'promoter', name: 'Promoters & RBS', shortcut: 'p', description: 'Regulatory elements' },
-      { id: 'repeats', name: 'Repeats', shortcut: 'r', description: 'Direct, inverted, palindromic' },
-      { id: 'gel', name: 'Virtual Gel', shortcut: 'G', description: 'Restriction digest simulation' },
-    ],
-  },
-  {
-    id: 'codon',
-    name: 'Codon Analysis',
-    icon: <IconChartBar size={16} />,
-    level: 'intermediate',
-    tools: [
-      { id: 'biasDecomposition', name: 'Codon Bias', shortcut: 'J', description: 'PCA of codon usage' },
-      { id: 'phasePortrait', name: 'Phase Portrait', shortcut: 'P', description: 'Codon phase space' },
-    ],
-  },
-  {
-    id: 'structural',
-    name: 'Structural',
-    icon: <IconCpu size={16} />,
-    level: 'intermediate',
-    tools: [
-      { id: 'pressure', name: 'Packaging', shortcut: 'v', description: 'Capsid fill & pressure' },
-      { id: 'stability', name: 'Stability', description: 'Capsid robustness' },
-      { id: 'nonBDNA', name: 'Non-B DNA', description: 'Z-DNA, G-quadruplexes' },
-      { id: 'structureConstraint', name: 'Structure Constraints', description: 'RNA signals + capsid/tail fragility scan' },
-    ],
-  },
-  {
-    id: 'evolution',
-    name: 'Evolutionary',
-    icon: <IconGlobe size={16} />,
-    level: 'power',
-    tools: [
-      { id: 'kmerAnomaly', name: 'K-mer Anomaly', shortcut: 'V', description: 'Unusual composition' },
-      { id: 'anomaly', name: 'Composite Anomaly', shortcut: 'A', description: 'Multi-metric detection' },
-      { id: 'hgt', name: 'HGT Analysis', shortcut: 'Y', description: 'Horizontal gene transfer' },
-      { id: 'synteny', name: 'Synteny', description: 'Gene order conservation' },
-    ],
-  },
-  {
-    id: 'host',
-    name: 'Host Interaction',
-    icon: <IconShield size={16} />,
-    level: 'power',
-    tools: [
-      { id: 'tropism', name: 'Tropism & Receptors', shortcut: '0', description: 'Host binding predictions' },
-      { id: 'crispr', name: 'CRISPR Spacers', shortcut: 'C', description: 'Spacer matches' },
-      { id: 'defenseArmsRace', name: 'Defense Arms Race', description: 'Host-phage coevolution' },
-    ],
-  },
-  {
-    id: 'simulations',
-    name: 'Simulations',
-    icon: <IconZap size={16} />,
-    tools: [
-      { id: 'simulationHub', name: 'Simulation Hub', shortcut: 'S', description: 'All simulations' },
-    ],
-  },
-];
+const CATEGORY_ICON: Record<string, React.ReactNode> = {
+  sequence: <IconDna size={16} />,
+  genes: <IconFlask size={16} />,
+  codon: <IconChartBar size={16} />,
+  structural: <IconCpu size={16} />,
+  evolution: <IconGlobe size={16} />,
+  host: <IconShield size={16} />,
+  simulations: <IconZap size={16} />,
+};
 
 interface AnalysisSidebarProps {
   className?: string;
@@ -130,7 +53,8 @@ export function AnalysisSidebar({
     new Set(['sequence', 'genes']) // Default expanded
   );
   const currentPhage = usePhageStore((s) => s.currentPhage);
-  const { open: openOverlay } = useOverlay();
+  const { open: openOverlay, toggle: toggleOverlay } = useOverlay();
+  const shortcutPlatform = detectShortcutPlatform();
 
   const hasPhage = currentPhage !== null;
 
@@ -146,8 +70,17 @@ export function AnalysisSidebar({
     });
   };
 
-  const handleToolClick = (toolId: OverlayId) => {
-    openOverlay(toolId);
+  const handleToolClick = (toolActionId: ActionId) => {
+    const action = getActionFromRegistry(toolActionId);
+    if (!action?.overlayId) return;
+
+    const overlayId = action.overlayId as OverlayId;
+    if (action.overlayAction === 'open') {
+      openOverlay(overlayId);
+      return;
+    }
+
+    toggleOverlay(overlayId);
   };
 
   if (collapsed) {
@@ -163,7 +96,7 @@ export function AnalysisSidebar({
           <IconChevronRight size={20} />
         </button>
         <div className="sidebar-icons">
-          {ANALYSIS_CATEGORIES.slice(0, 6).map((cat) => (
+          {ANALYSIS_SIDEBAR_CATEGORIES.slice(0, 6).map((cat) => (
             <button
               key={cat.id}
               type="button"
@@ -175,7 +108,7 @@ export function AnalysisSidebar({
               title={cat.name}
               aria-label={cat.name}
             >
-              {cat.icon}
+              {CATEGORY_ICON[cat.id]}
             </button>
           ))}
         </div>
@@ -212,7 +145,7 @@ export function AnalysisSidebar({
       )}
 
       <div className="sidebar-categories">
-        {ANALYSIS_CATEGORIES.map((category) => {
+        {ANALYSIS_SIDEBAR_CATEGORIES.map((category) => {
           const isExpanded = expandedCategories.has(category.id);
           return (
             <div key={category.id} className="sidebar-category">
@@ -223,7 +156,7 @@ export function AnalysisSidebar({
                 aria-expanded={isExpanded}
                 aria-controls={`category-${category.id}`}
               >
-                <span className="category-icon">{category.icon}</span>
+                <span className="category-icon">{CATEGORY_ICON[category.id]}</span>
                 <span className="category-name">{category.name}</span>
                 {category.level && (
                   <span className={`category-level category-level--${category.level}`}>
@@ -241,22 +174,27 @@ export function AnalysisSidebar({
                   role="group"
                   aria-label={`${category.name} tools`}
                 >
-                  {category.tools.map((tool) => (
-                    <li key={tool.id}>
-                      <button
-                        type="button"
-                        className="tool-btn"
-                        onClick={() => handleToolClick(tool.id)}
-                        disabled={!hasPhage}
-                        title={tool.description}
-                      >
-                        <span className="tool-name">{tool.name}</span>
-                        {tool.shortcut && (
-                          <kbd className="tool-shortcut">{tool.shortcut}</kbd>
-                        )}
-                      </button>
-                    </li>
-                  ))}
+                  {category.tools.map((tool) => {
+                    const action = getActionFromRegistry(tool.actionId);
+                    if (!action) return null;
+
+                    const shortcut = formatPrimaryActionShortcut(action, shortcutPlatform);
+
+                    return (
+                      <li key={tool.actionId}>
+                        <button
+                          type="button"
+                          className="tool-btn"
+                          onClick={() => handleToolClick(tool.actionId)}
+                          disabled={!hasPhage}
+                          title={tool.description}
+                        >
+                          <span className="tool-name">{action.title}</span>
+                          {shortcut && <kbd className="tool-shortcut">{shortcut}</kbd>}
+                        </button>
+                      </li>
+                    );
+                  })}
                 </ul>
               )}
             </div>

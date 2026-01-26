@@ -24,12 +24,20 @@ import {
   useBlockedHotkeyNotification,
 } from './hooks';
 import { ActionIds, getOverlayHotkeyActions } from './keyboard';
+import {
+  APP_SHELL_FOOTER_HINTS,
+  detectShortcutPlatform,
+  formatActionShortcutForSurface,
+  formatHintKeys,
+} from './keyboard/actionSurfaces';
 import { useTheme } from './hooks/useTheme';
 import { useReducedMotion } from './hooks';
 import { BlockedHotkeyToast } from './components/BlockedHotkeyToast';
 import type { PhageRepository } from './db';
 import {
-  initializeStorePersistence,
+  detectCoarsePointerDevice,
+  get3DViewerDisabledDescription,
+  getEffectiveBackgroundEffects,
   usePhageStore,
   useWebPreferences,
 } from './store';
@@ -136,6 +144,7 @@ export default function App(): React.ReactElement {
   const storeCloseOverlay = usePhageStore((s) => s.closeOverlay);
   const show3DModel = usePhageStore((s) => s.show3DModel);
   const toggle3DModel = usePhageStore((s) => s.toggle3DModel);
+  const viewerDisabledDescription = useMemo(() => get3DViewerDisabledDescription(), []);
   const { open: openOverlayCtx, close: closeOverlayCtx, toggle: toggleOverlayCtx, hasBlockingOverlay } = useOverlay();
   const { mode } = useKeyboardMode();
   const pendingSequence = usePendingSequence();
@@ -180,7 +189,7 @@ export default function App(): React.ReactElement {
   }, [currentPhage?.id]);
   const getLayoutSnapshot = useCallback(() => {
     if (typeof window === 'undefined') {
-      return { isNarrow: false, isMobile: false, isLandscape: false, isWide: false };
+      return { isNarrow: false, isMobile: false, isLandscape: false, isWide: false, isCoarsePointer: false };
     }
     const width = window.innerWidth;
     const height = window.innerHeight || 1;
@@ -189,13 +198,19 @@ export default function App(): React.ReactElement {
       isMobile: width <= BREAKPOINT_PHONE_PX,
       isLandscape: width > height,
       isWide: width >= BREAKPOINT_WIDE_PX,
+      isCoarsePointer: detectCoarsePointerDevice(),
     };
   }, []);
 
-  const [{ isNarrow, isMobile, isLandscape, isWide }, setLayout] = useState(() => getLayoutSnapshot());
+  const [{ isNarrow, isMobile, isLandscape, isWide, isCoarsePointer }, setLayout] = useState(() => getLayoutSnapshot());
   const enableBackgroundEffects = useMemo(
-    () => backgroundEffects && !reducedMotion && !isNarrow,
-    [backgroundEffects, reducedMotion, isNarrow]
+    () =>
+      getEffectiveBackgroundEffects(backgroundEffects, {
+        reducedMotion,
+        coarsePointer: isCoarsePointer,
+        narrowViewport: isNarrow,
+      }),
+    [backgroundEffects, reducedMotion, isCoarsePointer, isNarrow]
   );
 
 
@@ -217,6 +232,8 @@ export default function App(): React.ReactElement {
     const narrowMql = window.matchMedia(`(max-width: ${BREAKPOINT_NARROW_PX}px)`);
     const wideMql = window.matchMedia(`(min-width: ${BREAKPOINT_WIDE_PX}px)`);
     const landscapeMql = window.matchMedia('(orientation: landscape)');
+    const coarsePointerMql = window.matchMedia('(pointer: coarse)');
+    const hoverNoneMql = window.matchMedia('(hover: none)');
 
     const updateLayout = () => {
       setLayout({
@@ -224,6 +241,7 @@ export default function App(): React.ReactElement {
         isMobile: mobileMql.matches,
         isLandscape: landscapeMql.matches,
         isWide: wideMql.matches,
+        isCoarsePointer: detectCoarsePointerDevice(),
       });
     };
 
@@ -234,6 +252,8 @@ export default function App(): React.ReactElement {
       subscribeMediaQuery(narrowMql, updateLayout),
       subscribeMediaQuery(wideMql, updateLayout),
       subscribeMediaQuery(landscapeMql, updateLayout),
+      subscribeMediaQuery(coarsePointerMql, updateLayout),
+      subscribeMediaQuery(hoverNoneMql, updateLayout),
     ];
     window.addEventListener('resize', updateLayout);
 
@@ -359,11 +379,6 @@ export default function App(): React.ReactElement {
       root.classList.remove('high-contrast');
     }
   }, [highContrast]);
-
-  useEffect(() => {
-    const cleanup = initializeStorePersistence();
-    return cleanup;
-  }, []);
 
   useEffect(() => {
     if (!webPrefsHydrated) return;
@@ -577,7 +592,7 @@ export default function App(): React.ReactElement {
       if (!(target instanceof HTMLElement)) return true;
       return Boolean(
         target.closest(
-          'input, textarea, select, button, a, .phage-list, .sequence-view, .three-container, .control-deck, .overlay, .glossary-shell'
+          'input, textarea, select, button, a, .phage-list, .sequence-view, .three-container, .control-deck, .overlay, .glossary-shell, .quick-stats, .db-status-bar'
         )
       );
     };
@@ -803,6 +818,7 @@ export default function App(): React.ReactElement {
     { actionId: ActionIds.NavNextPhage, action: handleNextPhage, modes: ['NORMAL'] as const, priority: 2 },
     { actionId: ActionIds.NavPrevPhage, action: handlePrevPhage, modes: ['NORMAL'] as const, priority: 2 },
     { actionId: ActionIds.ViewCycleTheme, action: nextTheme, modes: ['NORMAL'] as const, priority: 2 },
+    { actionId: ActionIds.ViewToggle3DModel, action: toggle3DModel, modes: ['NORMAL'] as const, priority: 2 },
     {
       actionId: ActionIds.EducationToggleBeginnerMode,
       action: handleToggleBeginnerMode,
@@ -831,22 +847,30 @@ export default function App(): React.ReactElement {
     isGlossaryOpen,
     nextTheme,
     storeCloseOverlay,
+    toggle3DModel,
   ]);
 
   useHotkeys(globalHotkeys);
 
-  const footerHints = useMemo(() => ([
-    { key: 'j/k', label: 'navigate', description: 'Next/previous phage' },
-    { key: '/', label: 'search', description: 'Search phages' },
-    { key: ':', label: 'command', description: 'Open command palette' },
-    { key: 't', label: 'theme', description: 'Cycle theme' },
-    { key: '?', label: 'help', description: 'Show keyboard shortcuts' },
-    { key: 'v/f', label: 'view/frame', description: 'Toggle DNA/Amino Acids view and reading frame' },
-    { key: 'Home/End', label: 'jump', description: 'Jump to start/end of sequence' },
-    { key: 'Esc', label: 'close', description: 'Close overlays or glossary' },
-    { key: 'Ctrl+,', label: 'settings', description: 'Open settings' },
-    { key: 'Ctrl+B', label: 'beginner', description: 'Toggle beginner mode' },
-  ]), []);
+  const shortcutPlatform = useMemo(() => detectShortcutPlatform(), []);
+
+  const footerHints = useMemo(
+    () => APP_SHELL_FOOTER_HINTS.map((hint) => ({
+      key: formatHintKeys(hint, shortcutPlatform),
+      label: hint.label,
+      description: hint.description,
+    })),
+    [shortcutPlatform]
+  );
+
+  const commandPaletteShortcut = useMemo(
+    () => formatActionShortcutForSurface(ActionIds.OverlayCommandPalette, shortcutPlatform),
+    [shortcutPlatform]
+  );
+  const settingsShortcut = useMemo(
+    () => formatActionShortcutForSurface(ActionIds.OverlaySettings, shortcutPlatform),
+    [shortcutPlatform]
+  );
 
   const documentTitle = currentPhage
     ? `${currentPhage.name} - Phage Explorer`
@@ -901,22 +925,27 @@ export default function App(): React.ReactElement {
           children: (
             <>
               <button
-                className="btn"
+                className="btn btn-ghost header-action"
                 type="button"
                 onClick={() => openOverlayCtx('commandPalette')}
                 aria-label="Open command palette"
-                title="Command Palette (Cmd+K)"
+                title={commandPaletteShortcut ? `Command Palette (${commandPaletteShortcut})` : 'Command Palette'}
               >
-                <IconCommand size={14} />
+                <IconCommand size={16} />
+                <span className="header-action__label">Palette</span>
+                {commandPaletteShortcut && (
+                  <kbd className="header-action__shortcut">{commandPaletteShortcut}</kbd>
+                )}
               </button>
               <button
-                className="btn"
+                className="btn btn-ghost header-action"
                 type="button"
                 onClick={() => openOverlayCtx('settings')}
                 aria-label="Open settings"
+                title={settingsShortcut ? `Settings (${settingsShortcut})` : 'Settings'}
               >
-                <IconSettings size={14} />
-                Settings
+                <IconSettings size={16} />
+                <span className="header-action__label">Settings</span>
               </button>
               <LearnMenu />
             </>
@@ -1147,7 +1176,7 @@ export default function App(): React.ReactElement {
                             </svg>
                             <div className="viewer-placeholder__title">3D Structure Viewer</div>
                             <div className="viewer-placeholder__description">
-                              Explore protein structures in interactive 3D. Disabled by default to conserve battery.
+                              {viewerDisabledDescription}
                             </div>
                             <button
                               type="button"

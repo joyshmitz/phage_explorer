@@ -208,7 +208,6 @@ describe('HelpOverlay integration', () => {
 
   it('formatKeyCombo produces valid display strings', () => {
     // formatKeyCombo imported at top of file
-
     for (const action of ActionRegistryList) {
       const shortcuts = Array.isArray(action.defaultShortcut)
         ? action.defaultShortcut
@@ -310,7 +309,7 @@ describe('Overlay-scoped hotkey behavior', () => {
     );
 
     expect(helpDetailAction).toBeDefined();
-    expect(helpDetailAction!.scope).toBe('contextual');
+    expect(helpDetailAction?.scope).toBe('contextual');
   });
 
   it('escape key is not registered as a regular hotkey', () => {
@@ -333,7 +332,7 @@ describe('Overlay-scoped hotkey behavior', () => {
 
     // Valid categories for overlay actions (based on actual registry)
     const validCategories = new Set([
-      'Overlays', 'Search', 'Simulation', 'Analysis', 'Comparison', 'Dev',
+      'Overlays', 'Search', 'Simulation', 'Analysis', 'Comparison', 'Navigation', 'Dev',
     ]);
 
     for (const action of overlayActions) {

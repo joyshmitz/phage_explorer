@@ -101,6 +101,7 @@ export function analyzeBiologicalMetrics(
   const lengthB = sequenceB.length;
 
   const maxLength = Math.max(lengthA, lengthB);
+  const maxGc = Math.max(gcA, gcB);
 
   return {
     aniScore: ani,
@@ -108,7 +109,7 @@ export function analyzeBiologicalMetrics(
     gcContentA: gcA,
     gcContentB: gcB,
     gcDifference: Math.abs(gcA - gcB),
-    gcRatio: Math.min(gcA, gcB) / Math.max(gcA, gcB) || 0,
+    gcRatio: maxGc > 0 ? Math.min(gcA, gcB) / maxGc : 1,
     lengthA,
     lengthB,
     lengthRatio: maxLength > 0 ? Math.min(lengthA, lengthB) / maxLength : 1,

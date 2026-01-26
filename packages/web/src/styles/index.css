@@ -168,7 +168,9 @@ body {
 
 .panel:focus-within {
   border-color: var(--color-border-focus);
-  box-shadow: var(--shadow-glow);
+  /* Use a crisp focus ring instead of a heavy glow (better accessibility + less visual noise). */
+  outline: var(--focus-ring-width) solid var(--focus-ring-color-soft);
+  outline-offset: var(--focus-ring-offset);
 }
 
 /* === BUTTON STYLES === */
@@ -201,12 +203,8 @@ body {
   outline: none;
   border-color: var(--color-primary);
   background: var(--color-background-alt);
-  /* Premium multi-layer glow: primary ring + soft secondary halo */
-  box-shadow:
-    0 0 0 3px var(--color-glow-soft),
-    0 0 12px -2px var(--color-glow),
-    0 0 20px -4px var(--color-glow-secondary),
-    inset 0 1px 2px rgba(0, 0, 0, 0.1);
+  /* Stripe-style focus ring: clear and consistent (no distracting bloom). */
+  box-shadow: var(--shadow-focus-ring), inset 0 1px 2px rgba(0, 0, 0, 0.18);
 }
 
 .input::placeholder {
@@ -427,6 +425,8 @@ body {
 .three-overlay {
   position: absolute;
   inset: 0;
+  /* Ensure full-surface overlays (loading/error/empty) always sit above HUD panels. */
+  z-index: 3;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -437,6 +437,12 @@ body {
 
 .three-overlay.error {
   background: rgba(239, 68, 68, 0.08);
+}
+
+.three-hud {
+  position: absolute;
+  z-index: 2;
+  pointer-events: auto;
 }
 
 .spinner {

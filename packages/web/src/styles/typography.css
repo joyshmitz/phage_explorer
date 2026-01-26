@@ -91,6 +91,16 @@
   }
 }
 
+/* Tablet + mobile: keep UI chrome comfortably readable without changing the root font-size.
+   This intentionally overrides a subset of tokens (xs/sm/base) while preserving the rest of the scale. */
+@media (max-width: 900px) {
+  :root {
+    --text-xs: 12px;
+    --text-sm: 14px;
+    --text-base: 16px;
+  }
+}
+
 /* Base typography */
 html {
   font-family: var(--font-sans);

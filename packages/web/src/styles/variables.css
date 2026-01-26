@@ -25,6 +25,8 @@
   --color-background-active: #1e1e2a;    /* Active/selected states */
   --color-background-glass: rgba(10, 10, 15, 0.85); /* Glass morphism */
   --color-background-gradient-start: rgba(34, 211, 238, 0.08); /* Subtle glow */
+  --color-header-action-bg: rgba(255, 255, 255, 0.02);
+  --color-header-action-bg-hover: rgba(255, 255, 255, 0.04);
 
   /* === TEXT HIERARCHY === */
   --color-text: #f0f0f8;           /* Brighter primary text */
@@ -244,7 +246,7 @@
   /* === OVERLAY CHROME === */
   /* Semantic tokens for consistent overlay styling */
   --overlay-border-radius: var(--radius-lg);
-  --overlay-border-radius-mobile: 16px 16px 0 0; /* Bottom sheet corners */
+  --overlay-border-radius-mobile: var(--radius-2xl) var(--radius-2xl) 0 0; /* Bottom sheet corners */
   --overlay-header-padding-x: var(--space-4);
   --overlay-header-padding-y: var(--space-3);
   --overlay-content-padding: var(--space-4);
@@ -252,7 +254,9 @@
   --overlay-footer-padding-y: var(--space-3);
   --overlay-section-gap: var(--space-4);
   --overlay-title-gap: var(--space-2);
-  --overlay-border: 2px solid var(--color-border-focus);
+  /* Keep overlays premium but not "neon outlined" by default (Stripe-style subtle chrome). */
+  --overlay-border: 1px solid var(--color-border-subtle);
+  --overlay-divider-border: 1px solid var(--color-border-light);
   --overlay-shadow: var(--shadow-floating);
 
   /* === COMPONENT CHROME === */
@@ -275,7 +279,7 @@
   --hotkey-padding-x: 0.4rem;
   --hotkey-padding-y: 0.1rem;
   --hotkey-radius: var(--radius-sm);
-  --hotkey-font-size: 0.85rem;
+  --hotkey-font-size: var(--text-sm);
 }
 
 /* Utility classes for spacing */

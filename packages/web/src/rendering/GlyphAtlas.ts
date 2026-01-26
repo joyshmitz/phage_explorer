@@ -151,25 +151,9 @@ export class GlyphAtlas {
     this.atlasWidth = this.options.cellWidth * this.COLS * this.dpr;
     this.atlasHeight = this.options.cellHeight * rows * this.dpr;
 
-    // Create canvas (prefer OffscreenCanvas, but fall back if 2D context is unavailable)
-    if (typeof OffscreenCanvas !== 'undefined') {
-      const offscreen = new OffscreenCanvas(this.atlasWidth, this.atlasHeight);
-      const offscreenCtx = offscreen.getContext('2d');
-      if (offscreenCtx) {
-        this.canvas = offscreen;
-        this.ctx = offscreenCtx;
-      } else if (typeof document !== 'undefined') {
-        const domCanvas = document.createElement('canvas');
-        domCanvas.width = this.atlasWidth;
-        domCanvas.height = this.atlasHeight;
-        const domCtx = domCanvas.getContext('2d');
-        if (!domCtx) throw new Error('Failed to get 2D context');
-        this.canvas = domCanvas;
-        this.ctx = domCtx;
-      } else {
-        throw new Error('Failed to get 2D context');
-      }
-    } else {
+    // Prefer DOM canvas in the window context: OffscreenCanvas support on iOS Safari is still
+    // inconsistent (notably when used as a `drawImage()` source in 2D contexts).
+    if (typeof document !== 'undefined') {
       const domCanvas = document.createElement('canvas');
       domCanvas.width = this.atlasWidth;
       domCanvas.height = this.atlasHeight;
@@ -177,6 +161,14 @@ export class GlyphAtlas {
       if (!domCtx) throw new Error('Failed to get 2D context');
       this.canvas = domCanvas;
       this.ctx = domCtx;
+    } else if (typeof OffscreenCanvas !== 'undefined') {
+      const offscreen = new OffscreenCanvas(this.atlasWidth, this.atlasHeight);
+      const offscreenCtx = offscreen.getContext('2d');
+      if (!offscreenCtx) throw new Error('Failed to get 2D context');
+      this.canvas = offscreen;
+      this.ctx = offscreenCtx;
+    } else {
+      throw new Error('Failed to get 2D context');
     }
 
     // Calculate metrics

@@ -22,7 +22,7 @@ import React, {
   type ReactNode,
 } from 'react';
 import { createPortal } from 'react-dom';
-import { useSpring, animated, config } from '@react-spring/web';
+import { useSpringValue, animated, config } from '@react-spring/web';
 import { useDrag } from '@use-gesture/react';
 import { haptics } from '../../utils/haptics';
 import { useReducedMotion } from '../../hooks/useReducedMotion';
@@ -109,6 +109,7 @@ export function BottomSheet({
 }: BottomSheetProps): React.ReactElement | null {
   const containerRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
+  const snapPointRef = useRef<SnapPoint>(initialSnapPoint);
   const reducedMotion = useReducedMotion();
   const reactId = useId();
   const titleId = `bottom-sheet-title-${reactId}`;
@@ -153,19 +154,17 @@ export function BottomSheet({
 
   const initialBackdropOpacity = isOpen ? 0.5 : 0;
 
-  // Spring animation for the sheet
-  const [spring, api] = useSpring(() => ({
-    y: initialTranslateY,
-    config: reducedMotion
-      ? { duration: 0 }
-      : { ...config.stiff, clamp: false },
-  }));
-
-  // Backdrop spring
-  const [backdropSpring, backdropApi] = useSpring(() => ({
-    opacity: initialBackdropOpacity,
+  // Spring values (SpringValue) for the sheet + backdrop.
+  // IMPORTANT: avoid `useSpring` here. With React 19 + react-spring v10, the
+  // hook-level controller can re-apply the initial update on re-render (even when
+  // we drive it imperatively), which fights open/close animations. SpringValue
+  // gives us fully imperative control without render-time auto-start.
+  const y = useSpringValue(initialTranslateY, {
+    config: reducedMotion ? { duration: 0 } : { ...config.stiff, clamp: false },
+  });
+  const backdropOpacity = useSpringValue(initialBackdropOpacity, {
     config: reducedMotion ? { duration: 0 } : { tension: 300, friction: 30 },
-  }));
+  });
 
   // Animate sheet position based on snap point
   const animateToSnapPoint = useCallback(
@@ -180,19 +179,14 @@ export function BottomSheet({
       }
 
       if (immediate || reducedMotion) {
-        api.set({ y: targetY });
+        y.set(targetY);
+        backdropOpacity.set(point === 'closed' ? 0 : 0.5);
       } else {
-        api.start({
-          y: targetY,
-          config: { tension: 400, friction: 35 },
-        });
+        y.start({ to: targetY, config: { tension: 400, friction: 35 } });
+        backdropOpacity.start({ to: point === 'closed' ? 0 : 0.5 });
       }
 
-      // Update backdrop
-      backdropApi.start({
-        opacity: point === 'closed' ? 0 : 0.5,
-      });
-
+      snapPointRef.current = point;
       setSnapPoint(point);
       onSnapPointChange?.(point);
 
@@ -206,12 +200,16 @@ export function BottomSheet({
         }, immediate || reducedMotion ? 0 : 220);
       }
     },
-    [api, backdropApi, getTranslatePercentForSnapPoint, onClose, onSnapPointChange, reducedMotion]
+    [backdropOpacity, getTranslatePercentForSnapPoint, onClose, onSnapPointChange, reducedMotion, y]
   );
 
   useEffect(() => {
     isOpenRef.current = isOpen;
   }, [isOpen]);
+
+  useEffect(() => {
+    snapPointRef.current = snapPoint;
+  }, [snapPoint]);
 
   useEffect(() => {
     return () => {
@@ -275,7 +273,7 @@ export function BottomSheet({
       memo,
     }) => {
       if (shouldIgnoreDragTarget(event)) {
-        return memo ?? spring.y.get();
+        return memo ?? y.get();
       }
       if (!swipeToDismiss && dy > 0) {
         // If swipe to dismiss is disabled, don't allow downward drag
@@ -285,14 +283,20 @@ export function BottomSheet({
       // On first touch, store initial y position
       if (first) {
         setIsDragging(true);
-        return spring.y.get();
+        return y.get();
       }
 
-      const initialY = memo ?? spring.y.get();
-      const windowHeight = window.visualViewport?.height ?? window.innerHeight;
+      const initialY = memo ?? y.get();
+      const vvHeight = window.visualViewport?.height;
+      // iOS Safari can transiently report `visualViewport.height === 0` during load/rotation.
+      // Never allow that to poison drag math (would yield Infinity/NaN and break snapping).
+      const windowHeight =
+        typeof vvHeight === 'number' && Number.isFinite(vvHeight) && vvHeight > 0
+          ? vvHeight
+          : window.innerHeight;
 
       // Calculate new Y position (as percentage)
-      // spring.y is a percentage of the sheet height (translateY(%)).
+      // `y` is a percentage of the sheet height (translateY(%)).
       // Convert viewport drag distance into sheet-% using maxHeight (viewport-% of sheet).
       const deltaPercent = ((my / windowHeight) * 100 * 100) / Math.max(1, maxHeight);
       let newY = initialY + deltaPercent;
@@ -313,18 +317,12 @@ export function BottomSheet({
 
       if (active) {
         // During drag, update position immediately
-        api.start({
-          y: newY,
-          immediate: true,
-        });
+        y.set(newY);
 
         // Update backdrop opacity based on position
         const visibleViewportPercent = (maxHeight * (100 - newY)) / 100;
         const progress = Math.max(0, Math.min(1, visibleViewportPercent / getSnapHeight('half')));
-        backdropApi.start({
-          opacity: progress * 0.5,
-          immediate: true,
-        });
+        backdropOpacity.set(progress * 0.5);
 
         // Haptic feedback when crossing thresholds
         const halfThreshold = getTranslatePercentForSnapPoint('half');
@@ -366,7 +364,6 @@ export function BottomSheet({
         unmountTimeoutRef.current = null;
       }
       setShouldRender(true);
-      animateToSnapPoint(initialSnapPoint);
       return;
     }
 
@@ -380,7 +377,17 @@ export function BottomSheet({
       unmountTimeoutRef.current = null;
       setShouldRender(false);
     }, reducedMotion ? 0 : 200);
-  }, [animateToSnapPoint, initialSnapPoint, isOpen, reducedMotion]);
+  }, [animateToSnapPoint, isOpen, reducedMotion]);
+
+  // Important: react-spring may not animate reliably if we start a spring while the
+  // animated elements are not mounted (e.g., long-lived sheets rendered `null` while closed).
+  // Trigger the open animation only after the portal content is actually rendered.
+  useEffect(() => {
+    if (!shouldRender) return;
+    if (!isOpen) return;
+
+    animateToSnapPoint(initialSnapPoint);
+  }, [animateToSnapPoint, initialSnapPoint, isOpen, shouldRender]);
 
   // Keep snap position aligned with visual viewport changes (mobile address bar, keyboard)
   useEffect(() => {
@@ -393,7 +400,7 @@ export function BottomSheet({
       }
       rafId = requestAnimationFrame(() => {
         rafId = 0;
-        animateToSnapPoint(snapPoint, true, false);
+        animateToSnapPoint(snapPointRef.current, true, false);
       });
     };
 
@@ -416,7 +423,7 @@ export function BottomSheet({
         window.removeEventListener('resize', handleViewportChange);
       }
     };
-  }, [animateToSnapPoint, shouldRender, snapPoint]);
+  }, [animateToSnapPoint, shouldRender]);
 
   // Lock body scroll when open
   useEffect(() => {
@@ -557,7 +564,7 @@ export function BottomSheet({
         className="bottom-sheet__backdrop"
         onClick={handleBackdropClick}
         aria-hidden="true"
-        style={{ opacity: backdropSpring.opacity }}
+        style={{ opacity: backdropOpacity }}
       />
 
       {/* Animated Sheet container */}
@@ -566,7 +573,7 @@ export function BottomSheet({
         className="bottom-sheet__container"
         style={
           {
-            transform: spring.y.to((y) => `translateY(${y}%)`),
+            transform: y.to((v) => `translateY(${v}%)`),
             // Drive sizing via CSS vars so we can prefer `dvh` but fall back to `vh`.
             ['--bottom-sheet-min-height-vh' as string]: `${minHeight}vh`,
             ['--bottom-sheet-min-height-dvh' as string]: `${minHeight}dvh`,

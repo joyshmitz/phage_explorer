@@ -23,13 +23,92 @@ export type { PhageExplorerStore, PhageExplorerState, PhageExplorerActions } fro
 // Version for migration logic
 const STORE_VERSION = 8;
 
+type Show3DModelDefaultPolicy = {
+  defaultEnabled: boolean;
+  reason: 'coarse-pointer' | 'fine-pointer';
+};
+
+export function inferDefaultShow3DModel(options: { coarsePointer: boolean }): boolean {
+  // Policy: enable by default on desktop-class input, disable by default on coarse-pointer devices
+  // to reduce battery/GPU usage and avoid first-run jank.
+  return !options.coarsePointer;
+}
+
+export function detectCoarsePointerDevice(): boolean {
+  if (typeof window === 'undefined') return false;
+  try {
+    const coarsePointer = window.matchMedia?.('(pointer: coarse)')?.matches ?? false;
+    const hoverNone = window.matchMedia?.('(hover: none)')?.matches ?? false;
+    const maxTouchPoints = typeof navigator !== 'undefined' ? (navigator.maxTouchPoints ?? 0) : 0;
+
+    // Primary policy signal is a coarse pointer, but we also treat "hover: none" devices with touch points
+    // as coarse-pointer (Playwright device emulation reliably sets maxTouchPoints).
+    return coarsePointer || (hoverNone && maxTouchPoints > 0);
+  } catch {
+    return false;
+  }
+}
+
+export function getShow3DModelDefaultPolicy(overrides?: { coarsePointer?: boolean }): Show3DModelDefaultPolicy {
+  const coarsePointer = overrides?.coarsePointer ?? detectCoarsePointerDevice();
+  return {
+    defaultEnabled: inferDefaultShow3DModel({ coarsePointer }),
+    reason: coarsePointer ? 'coarse-pointer' : 'fine-pointer',
+  };
+}
+
+export function get3DViewerDisabledDescriptionForPolicy(policy: Show3DModelDefaultPolicy): string {
+  if (!policy.defaultEnabled) {
+    return 'Explore protein structures in interactive 3D. Disabled by default on touch devices to conserve battery.';
+  }
+  return 'Explore protein structures in interactive 3D. Enable it anytime for deep structural context.';
+}
+
+export function get3DViewerDisabledDescription(overrides?: { coarsePointer?: boolean }): string {
+  return get3DViewerDisabledDescriptionForPolicy(getShow3DModelDefaultPolicy(overrides));
+}
+
+export type HeavyFxRuntimeConstraints = {
+  reducedMotion: boolean;
+  coarsePointer: boolean;
+};
+
+export function allowHeavyFx(constraints: HeavyFxRuntimeConstraints): boolean {
+  // Motion/FX policy: docs/motion-policy.md
+  // Heavy FX are suppressed on reduced-motion and coarse-pointer devices.
+  return !constraints.reducedMotion && !constraints.coarsePointer;
+}
+
+export type BackgroundFxRuntimeConstraints = HeavyFxRuntimeConstraints & {
+  narrowViewport: boolean;
+};
+
+export function getEffectiveBackgroundEffects(
+  preferenceEnabled: boolean,
+  constraints: BackgroundFxRuntimeConstraints
+): boolean {
+  // Motion/FX policy: docs/motion-policy.md
+  // Background FX are also suppressed on narrow viewports to preserve scroll smoothness and avoid visual clutter.
+  return preferenceEnabled && allowHeavyFx(constraints) && !constraints.narrowViewport;
+}
+
+export function getEffectiveScanlines(preferenceEnabled: boolean, constraints: HeavyFxRuntimeConstraints): boolean {
+  return preferenceEnabled && allowHeavyFx(constraints);
+}
+
+export function getEffectiveGlow(preferenceEnabled: boolean, constraints: HeavyFxRuntimeConstraints): boolean {
+  return preferenceEnabled && allowHeavyFx(constraints);
+}
+
 function getDefaultBackgroundEffects(): boolean {
+  // Motion/FX policy: docs/motion-policy.md
   // Default off: background FX compete with the sequence canvas for GPU time and can cause visible jank.
   // Users can opt-in in Settings if they want the aesthetic over raw smoothness.
   return false;
 }
 
 function getDefaultGlow(): boolean {
+  // Motion/FX policy: docs/motion-policy.md
   // Default off: bloom/post-processing can be expensive and can flicker on some GPU/browser combos.
   // Users can opt-in in Settings if they want it.
   return false;
@@ -270,39 +349,55 @@ export const useWebPreferences = create<WebPreferencesStore>()(
 export function hydrateMainStoreFromStorage(): void {
   const STORAGE_KEY = 'phage-explorer-main-prefs';
 
-  try {
-    const stored = localStorage.getItem(STORAGE_KEY);
-    if (!stored) return;
+  let parsed: Partial<PersistedMainState> | null = null;
+  let stored: string | null = null;
 
-    const parsed = JSON.parse(stored) as Partial<PersistedMainState>;
+  try {
+    stored = localStorage.getItem(STORAGE_KEY);
+    if (stored) {
+      parsed = JSON.parse(stored) as Partial<PersistedMainState>;
+    }
+
     const store = usePhageStore.getState();
 
-    // Apply persisted preferences to main store
-    if (parsed.themeId) {
-      store.setTheme(parsed.themeId);
-    } else if (parsed.currentTheme?.id) {
-      store.setTheme(parsed.currentTheme.id);
-    }
-    if (parsed.viewMode) {
-      store.setViewMode(parsed.viewMode);
-    }
-    if (typeof parsed.readingFrame === 'number') {
-      store.setReadingFrame(parsed.readingFrame);
-    }
-    if (typeof parsed.show3DModel === 'boolean') {
-      usePhageStore.setState({ show3DModel: parsed.show3DModel });
-    }
-    if (parsed.helpDetail) {
-      store.setHelpDetail(parsed.helpDetail);
-    }
-    if (parsed.experienceLevel) {
-      store.setExperienceLevel(parsed.experienceLevel);
+    if (parsed) {
+      // Apply persisted preferences to main store
+      if (parsed.themeId) {
+        store.setTheme(parsed.themeId);
+      } else if (parsed.currentTheme?.id) {
+        store.setTheme(parsed.currentTheme.id);
+      }
+      if (parsed.viewMode) {
+        store.setViewMode(parsed.viewMode);
+      }
+      if (typeof parsed.readingFrame === 'number') {
+        store.setReadingFrame(parsed.readingFrame);
+      }
+      if (typeof parsed.show3DModel === 'boolean') {
+        usePhageStore.setState({ show3DModel: parsed.show3DModel });
+      }
+      if (parsed.helpDetail) {
+        store.setHelpDetail(parsed.helpDetail);
+      }
+      if (parsed.experienceLevel) {
+        store.setExperienceLevel(parsed.experienceLevel);
+      }
     }
     // model3DQuality doesn't have a setter in main store, handled internally
 
   } catch (error) {
     if (import.meta.env.DEV) {
       console.warn('[Store] Failed to hydrate main store:', error);
+    }
+  }
+
+  // Apply environment default if there is no persisted explicit preference.
+  // This keeps the UI copy honest and avoids expensive first-run 3D initialization on touch devices.
+  if (typeof parsed?.show3DModel !== 'boolean') {
+    const { defaultEnabled } = getShow3DModelDefaultPolicy();
+    const current = usePhageStore.getState().show3DModel;
+    if (current !== defaultEnabled) {
+      usePhageStore.setState({ show3DModel: defaultEnabled });
     }
   }
 }

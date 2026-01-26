@@ -2,9 +2,15 @@
  * Footer Component
  *
  * Bottom bar with version info and keyboard hints.
+ * Hints are derived from ActionRegistry via APP_SHELL_FOOTER_HINTS for consistency.
  */
 
-import React from 'react';
+import React, { useMemo } from 'react';
+import {
+  APP_SHELL_FOOTER_HINTS,
+  formatHintKeys,
+  detectShortcutPlatform,
+} from '../../keyboard/actionSurfaces';
 
 export interface KeyHint {
   key: string;
@@ -18,18 +24,23 @@ export interface FooterProps {
   children?: React.ReactNode;
 }
 
-const defaultHints: KeyHint[] = [
-  { key: '?', label: 'help' },
-  { key: 't', label: 'theme' },
-  { key: '/', label: 'search' },
-  { key: ':', label: 'command' },
-];
-
 export const Footer: React.FC<FooterProps> = ({
   version,
-  hints = defaultHints,
+  hints: customHints,
   children,
 }) => {
+  // Build hints from ActionRegistry via APP_SHELL_FOOTER_HINTS
+  const platform = detectShortcutPlatform();
+  const registryHints = useMemo<KeyHint[]>(() => {
+    return APP_SHELL_FOOTER_HINTS.map((hint) => ({
+      key: formatHintKeys(hint, platform),
+      label: hint.label,
+      description: hint.description,
+    })).filter((h) => h.key); // Skip hints without shortcuts
+  }, [platform]);
+
+  const hints = customHints ?? registryHints;
+
   // Only show version when explicitly provided (not placeholder)
   const showVersion = version && version !== '0.0.0';
 

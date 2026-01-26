@@ -25,9 +25,9 @@ export class PostProcessPipeline {
   constructor(opts: PostProcessOptions = {}) {
     this.opts = {
       reducedMotion: false,
-      enableScanlines: true,
-      enableBloom: true,
-      enableChromaticAberration: true,
+      enableScanlines: false,
+      enableBloom: false,
+      enableChromaticAberration: false,
       scanlineIntensity: 0.06,
       bloomIntensity: 0.4,
       aberrationOffset: 1.5,
@@ -51,7 +51,18 @@ export class PostProcessPipeline {
       let canvas: OffscreenCanvas | HTMLCanvasElement | null = null;
       let gl: WebGL2RenderingContext | null = null;
 
-      if (typeof OffscreenCanvas !== 'undefined') {
+      // Prefer DOM canvas when `document` exists (window context). OffscreenCanvas support on
+      // iOS Safari is still inconsistent, especially when used as a `drawImage()` source.
+      if (typeof document !== 'undefined') {
+        const domCanvas = document.createElement('canvas');
+        const domGl = domCanvas.getContext('webgl2', contextOptions) as WebGL2RenderingContext | null;
+        if (domGl) {
+          canvas = domCanvas;
+          gl = domGl;
+        }
+      }
+
+      if (!gl && typeof OffscreenCanvas !== 'undefined') {
         try {
           const offscreen = new OffscreenCanvas(1, 1);
           const offscreenGl = offscreen.getContext('webgl2', contextOptions) as WebGL2RenderingContext | null;
@@ -60,16 +71,7 @@ export class PostProcessPipeline {
             gl = offscreenGl;
           }
         } catch {
-          // Fall back to DOM canvas if OffscreenCanvas is present but unsupported.
-        }
-      }
-
-      if (!gl && typeof document !== 'undefined') {
-        const domCanvas = document.createElement('canvas');
-        const domGl = domCanvas.getContext('webgl2', contextOptions) as WebGL2RenderingContext | null;
-        if (domGl) {
-          canvas = domCanvas;
-          gl = domGl;
+          // Ignore: we'll treat this as unsupported below.
         }
       }
 
@@ -81,16 +83,20 @@ export class PostProcessPipeline {
       this.gl = gl;
 
       // Compile Shaders
-      const vert = this.compileShader(this.gl.VERTEX_SHADER, VERTEX_SHADER);
-      const frag = this.compileShader(this.gl.FRAGMENT_SHADER, CRT_FRAGMENT_SHADER);
-      
-      this.program = this.gl.createProgram()!;
-      this.gl.attachShader(this.program, vert);
-      this.gl.attachShader(this.program, frag);
-      this.gl.linkProgram(this.program);
+      const vert = this.compileShader(gl, gl.VERTEX_SHADER, VERTEX_SHADER);
+      const frag = this.compileShader(gl, gl.FRAGMENT_SHADER, CRT_FRAGMENT_SHADER);
 
-      if (!this.gl.getProgramParameter(this.program, this.gl.LINK_STATUS)) {
-        throw new Error('Program link failed: ' + this.gl.getProgramInfoLog(this.program));
+      this.program = gl.createProgram();
+      if (!this.program) {
+        throw new Error('Failed to create WebGL program');
+      }
+
+      gl.attachShader(this.program, vert);
+      gl.attachShader(this.program, frag);
+      gl.linkProgram(this.program);
+
+      if (!gl.getProgramParameter(this.program, gl.LINK_STATUS)) {
+        throw new Error('Program link failed: ' + gl.getProgramInfoLog(this.program));
       }
 
       // Setup Geometry (Full-screen quad)
@@ -103,30 +109,42 @@ export class PostProcessPipeline {
         1,  1,
       ]);
 
-      this.positionBuffer = this.gl.createBuffer();
-      this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.positionBuffer);
-      this.gl.bufferData(this.gl.ARRAY_BUFFER, positions, this.gl.STATIC_DRAW);
+      this.positionBuffer = gl.createBuffer();
+      if (!this.positionBuffer) {
+        throw new Error('Failed to create position buffer');
+      }
 
-      this.vao = this.gl.createVertexArray();
-      this.gl.bindVertexArray(this.vao);
-      
-      const positionLoc = this.gl.getAttribLocation(this.program, 'a_position');
-      this.gl.enableVertexAttribArray(positionLoc);
-      this.gl.vertexAttribPointer(positionLoc, 2, this.gl.FLOAT, false, 0, 0);
+      gl.bindBuffer(gl.ARRAY_BUFFER, this.positionBuffer);
+      gl.bufferData(gl.ARRAY_BUFFER, positions, gl.STATIC_DRAW);
+
+      this.vao = gl.createVertexArray();
+      if (!this.vao) {
+        throw new Error('Failed to create vertex array');
+      }
+
+      gl.bindVertexArray(this.vao);
+
+      const positionLoc = gl.getAttribLocation(this.program, 'a_position');
+      gl.enableVertexAttribArray(positionLoc);
+      gl.vertexAttribPointer(positionLoc, 2, gl.FLOAT, false, 0, 0);
 
       // Create Texture
-      this.texture = this.gl.createTexture();
-      this.gl.bindTexture(this.gl.TEXTURE_2D, this.texture);
-      this.gl.texParameteri(this.gl.TEXTURE_2D, this.gl.TEXTURE_WRAP_S, this.gl.CLAMP_TO_EDGE);
-      this.gl.texParameteri(this.gl.TEXTURE_2D, this.gl.TEXTURE_WRAP_T, this.gl.CLAMP_TO_EDGE);
-      this.gl.texParameteri(this.gl.TEXTURE_2D, this.gl.TEXTURE_MIN_FILTER, this.gl.LINEAR);
-      this.gl.texParameteri(this.gl.TEXTURE_2D, this.gl.TEXTURE_MAG_FILTER, this.gl.LINEAR);
+      this.texture = gl.createTexture();
+      if (!this.texture) {
+        throw new Error('Failed to create texture');
+      }
+
+      gl.bindTexture(gl.TEXTURE_2D, this.texture);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
 
       // Bind texture sampler explicitly to unit 0 (some drivers are picky about defaults).
-      this.gl.useProgram(this.program);
-      this.textureUniform = this.gl.getUniformLocation(this.program, 'u_texture');
+      gl.useProgram(this.program);
+      this.textureUniform = gl.getUniformLocation(this.program, 'u_texture');
       if (this.textureUniform) {
-        this.gl.uniform1i(this.textureUniform, 0);
+        gl.uniform1i(this.textureUniform, 0);
       }
 
     } catch (e) {
@@ -136,13 +154,16 @@ export class PostProcessPipeline {
     }
   }
 
-  private compileShader(type: number, source: string): WebGLShader {
-    const shader = this.gl!.createShader(type)!;
-    this.gl!.shaderSource(shader, source);
-    this.gl!.compileShader(shader);
-    if (!this.gl!.getShaderParameter(shader, this.gl!.COMPILE_STATUS)) {
-      const log = this.gl!.getShaderInfoLog(shader);
-      this.gl!.deleteShader(shader);
+  private compileShader(gl: WebGL2RenderingContext, type: number, source: string): WebGLShader {
+    const shader = gl.createShader(type);
+    if (!shader) {
+      throw new Error('Failed to create shader');
+    }
+    gl.shaderSource(shader, source);
+    gl.compileShader(shader);
+    if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+      const log = gl.getShaderInfoLog(shader);
+      gl.deleteShader(shader);
       throw new Error('Shader compile failed: ' + log);
     }
     return shader;
@@ -202,7 +223,7 @@ export class PostProcessPipeline {
     gl.uniform1f(gl.getUniformLocation(this.program, 'u_time'), this.uTime);
     gl.uniform1f(
       gl.getUniformLocation(this.program, 'u_scanlineIntensity'),
-      this.opts.enableScanlines ? (this.opts.scanlineIntensity ?? 0.15) : 0.0
+      this.opts.enableScanlines ? (this.opts.scanlineIntensity ?? 0.06) : 0.0
     );
     gl.uniform1f(
       gl.getUniformLocation(this.program, 'u_aberrationOffset'),
