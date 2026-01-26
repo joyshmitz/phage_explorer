@@ -9,8 +9,8 @@ import { describe, expect, it } from 'bun:test';
 import {
   validateHotkeyConflicts,
   assertNoHotkeyConflicts,
-  type ValidationResult,
 } from './validateConflicts';
+import { formatKeyCombo } from './types';
 import { ActionRegistryList } from './actionRegistry';
 
 describe('validateHotkeyConflicts', () => {
@@ -207,8 +207,7 @@ describe('HelpOverlay integration', () => {
   });
 
   it('formatKeyCombo produces valid display strings', () => {
-    // Import the actual formatter used by HelpOverlay
-    const { formatKeyCombo } = require('./types');
+    // formatKeyCombo imported at top of file
 
     for (const action of ActionRegistryList) {
       const shortcuts = Array.isArray(action.defaultShortcut)

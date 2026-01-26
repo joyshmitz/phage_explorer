@@ -6,7 +6,7 @@
 
 import { describe, expect, it, beforeEach, afterEach } from 'bun:test';
 import { KeyboardManager } from './KeyboardManager';
-import { ActionIds, getOverlayHotkeyActions } from './actionRegistry';
+import { ActionIds, getOverlayHotkeyActions, ActionRegistryList } from './actionRegistry';
 import type { HotkeyDefinition } from './types';
 
 type GlobalSnapshot = {
@@ -216,7 +216,7 @@ describe('Overlay first-load hotkey behavior (s4qx.2.5)', () => {
     const overlayActions = getOverlayHotkeyActions();
 
     // Every action should correspond to a global-scope action in registry
-    const { ActionRegistryList } = require('./actionRegistry');
+    // ActionRegistryList imported at top of file
     for (const action of overlayActions) {
       const registryAction = ActionRegistryList.find(
         (a: { id: string }) => a.id === action.actionId

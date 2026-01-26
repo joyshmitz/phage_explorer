@@ -154,7 +154,7 @@ const ScrollContext = createContext<ScrollContextValue | null>(null);
 
 export function ScrollProvider({
   children,
-  enabled = true,
+  enabled: _enabled = true,
   options = EMPTY_OPTIONS,
 }: ScrollProviderProps): React.ReactElement {
   const lenisRef = useRef<Lenis | null>(null);
@@ -166,7 +166,7 @@ export function ScrollProvider({
   const [isScrolling, setIsScrolling] = useState(false);
 
   // Detect touch devices - Lenis conflicts with native -webkit-overflow-scrolling
-  const [isTouchDevice, setIsTouchDevice] = useState(() => isLikelyTouchDevice());
+  const [_isTouchDevice, setIsTouchDevice] = useState(() => isLikelyTouchDevice());
   useEffect(() => {
     const checkTouch = () => {
       setIsTouchDevice(isLikelyTouchDevice());

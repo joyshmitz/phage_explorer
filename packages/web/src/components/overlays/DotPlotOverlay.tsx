@@ -27,8 +27,6 @@ import {
   OverlayLoadingState,
   OverlayEmptyState,
   OverlayErrorState,
-  OverlayLegend,
-  OverlayLegendItem,
 } from './primitives';
 import { AnalysisPanelSkeleton } from '../ui/Skeleton';
 import { InfoButton } from '../ui';
@@ -68,7 +66,7 @@ export function DotPlotOverlay({
   currentPhage,
 }: DotPlotOverlayProps): React.ReactElement | null {
   const { theme } = useTheme();
-  const colors = theme.colors;
+  const _colors = theme.colors;
   const { isOpen, toggle } = useOverlay();
   const { isEnabled: beginnerModeEnabled, showContextFor } = useBeginnerMode();
   const overlayHelp = getOverlayContext('dotPlot');
