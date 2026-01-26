@@ -22,6 +22,8 @@
 :root {
   --mobile-header-height: 56px;
   --mobile-tab-bar-height: 56px;
+  /* Used by popovers/toasts to stay above the mobile control deck (safe-area handled separately). */
+  --control-deck-reserved-height: var(--mobile-tab-bar-height);
   --mobile-safe-bottom: env(safe-area-inset-bottom, 0px);
   --mobile-safe-top: env(safe-area-inset-top, 0px);
   --mobile-safe-left: env(safe-area-inset-left, 0px);
@@ -33,12 +35,7 @@
    ============================================================================= */
 
 @media (max-width: 900px) {
-  /* Adjust typography for better mobile readability */
-  :root {
-    --text-xs: 12px;
-    --text-sm: 14px;
-    --text-base: 16px;
-  }
+  /* Typography token overrides live in typography.css for a single source of truth. */
 
   /* App Shell - Single column */
   .app-shell {

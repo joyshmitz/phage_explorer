@@ -78,12 +78,13 @@
   font-weight: var(--font-bold);
   letter-spacing: var(--tracking-tight);
   color: var(--color-primary);
-  text-shadow: 0 0 20px var(--color-glow);
+  /* Keep the title crisp; use a restrained glow for depth (avoid "neon sign" look). */
+  text-shadow: 0 0 12px var(--color-glow-soft);
   transition: text-shadow var(--duration-normal) var(--ease-out);
 }
 
 .app-title:hover {
-  text-shadow: 0 0 30px var(--color-glow), 0 0 60px var(--color-glow);
+  text-shadow: 0 0 16px var(--color-glow-soft);
 }
 
 .app-subtitle {
@@ -96,23 +97,74 @@
   border: 1px solid var(--color-border-subtle);
 }
 
+/* =============================================================================
+   HEADER ACTIONS - Unified, responsive button styling
+   ============================================================================= */
+
+.header-action {
+  /* Header buttons should feel lighter than content buttons. */
+  background: var(--color-header-action-bg);
+  border-color: var(--color-border-subtle);
+  padding: var(--space-2) var(--space-3);
+  min-height: 36px;
+  gap: var(--space-2);
+}
+
+.header-action::before,
+.header-action::after {
+  /* Avoid heavy "button chrome" in the header; keep interactions minimal. */
+  display: none;
+}
+
+.header-action:hover {
+  background: var(--color-header-action-bg-hover);
+  border-color: var(--color-border-light);
+  box-shadow: var(--shadow-sm);
+}
+
+.header-action:active {
+  box-shadow: var(--shadow-xs), inset 0 1px 2px rgba(0, 0, 0, 0.15);
+}
+
+.header-action__label {
+  font-size: var(--text-sm);
+  font-weight: var(--font-medium);
+}
+
+.header-action__shortcut {
+  /* Keep shortcuts readable but visually secondary. */
+  font-size: var(--text-2xs);
+  padding: 1px 6px;
+  border-radius: 5px;
+  opacity: 0.85;
+  background: rgba(0, 0, 0, 0.18);
+  border-color: var(--color-border-subtle);
+  color: var(--color-text-dim);
+}
+
 /* Tablet header adjustments */
 @media (max-width: 1024px) {
-  .header-right .btn {
+  .header-action {
     padding: var(--space-1) var(--space-2);
     font-size: var(--text-xs);
-    min-height: 28px;
+    min-height: 32px;
+  }
+
+  /* Hide shortcuts before space gets tight. */
+  .header-action__shortcut {
+    display: none;
   }
 }
 
 /* Mobile header adjustments */
 @media (max-width: 640px) {
   .app-header {
-    padding: 0 var(--space-3);
+    padding-left: calc(var(--space-3) + env(safe-area-inset-left, 0px));
+    padding-right: calc(var(--space-3) + env(safe-area-inset-right, 0px));
     flex-wrap: nowrap;
     gap: var(--space-2);
-    min-height: auto;
-    padding-top: var(--space-2);
+    min-height: calc(var(--mobile-header-height, 56px) + env(safe-area-inset-top, 0px));
+    padding-top: calc(var(--space-2) + env(safe-area-inset-top, 0px));
     padding-bottom: var(--space-2);
   }
 
@@ -150,10 +202,15 @@
   }
 
   /* Compact buttons on mobile */
-  .header-right .btn {
-    padding: var(--space-2) var(--space-3);
-    font-size: var(--text-sm);
+  .header-action {
+    padding: var(--space-2);
+    min-width: 44px;
     min-height: 44px;
+  }
+
+  .header-action__label,
+  .header-action__shortcut {
+    display: none;
   }
 }
 
@@ -1448,29 +1505,6 @@ textarea:focus {
 
 .panel:hover {
   border-color: var(--color-border-light);
-}
-
-/* Kbd/shortcut keys with hover */
-kbd, .kbd {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 1.5em;
-  padding: 2px 6px;
-  font-family: var(--font-mono, monospace);
-  font-size: 0.8rem;
-  background: var(--color-background-elevated);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
-  color: var(--color-text-dim);
-  box-shadow: 0 1px 0 var(--color-border-light);
-  transition:
-    background-color var(--duration-fast) var(--ease-out),
-    transform var(--duration-fast) var(--ease-out);
-}
-
-kbd:hover, .kbd:hover {
-  background: var(--color-background-hover);
 }
 
 /* Icon buttons with scale effect */

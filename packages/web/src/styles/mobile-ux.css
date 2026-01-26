@@ -247,14 +247,6 @@ html {
   pointer-events: auto;
 }
 
-.bottom-sheet.is-open .bottom-sheet__backdrop {
-  opacity: 1;
-}
-
-.bottom-sheet.is-open .bottom-sheet__container {
-  transform: translateY(0);
-}
-
 /* Semi-transparent backdrop */
 .bottom-sheet__backdrop {
   position: absolute;
@@ -262,7 +254,6 @@ html {
   background: rgba(0, 0, 0, 0.6); /* Slightly darker to compensate for no blur */
   /* backdrop-filter removed - causes severe flickering on mobile during scroll */
   opacity: 0;
-  transition: opacity var(--duration-normal) var(--ease-out);
   will-change: opacity; /* Hint for GPU layer optimization */
 }
 
@@ -278,7 +269,6 @@ html {
   border-top-right-radius: var(--radius-2xl);
   box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.3); /* Reduced blur for mobile perf */
   transform: translateY(100%);
-  transition: transform var(--duration-normal) var(--ease-out);
   padding-bottom: env(safe-area-inset-bottom);
   display: flex;
   flex-direction: column;
@@ -1074,6 +1064,12 @@ html {
     /* Prevent fixed children from breaking out of flow */
     -webkit-transform: translate3d(0, 0, 0);
     transform: translate3d(0, 0, 0);
+  }
+
+  /* 3D fullscreen (CSS fallback) uses position: fixed; disable the shell transform while active. */
+  html.pe-three-fullscreen .app-shell {
+    -webkit-transform: none !important;
+    transform: none !important;
   }
 
   /* Fix: iOS form elements have default styling that can't be overridden without this */

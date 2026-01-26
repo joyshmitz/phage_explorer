@@ -14,7 +14,7 @@
     bottom: 0;
     left: 0;
     right: 0;
-    height: calc(56px + env(safe-area-inset-bottom, 0px));
+    height: calc(var(--mobile-tab-bar-height, 56px) + env(safe-area-inset-bottom, 0px));
     padding-bottom: env(safe-area-inset-bottom, 0px);
     background: var(--color-background-elevated);
     border-top: 1px solid var(--color-border);
@@ -44,13 +44,14 @@
   align-items: center;
   justify-content: center;
   gap: 2px;
+  position: relative; /* Anchor ripples/indicators to each tab */
   background: transparent;
   border: none;
   color: var(--color-text-muted);
-  font-size: 10px;
-  font-weight: 500;
-  text-transform: uppercase;
-  letter-spacing: 0.3px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: none;
+  letter-spacing: 0.01em;
   padding: 8px 4px;
   min-width: 0;
   cursor: pointer;
@@ -131,18 +132,12 @@
   height: 2px;
   background: linear-gradient(90deg, transparent, var(--color-primary), transparent);
   border-radius: var(--radius-full);
-  box-shadow: 0 0 6px var(--color-glow);
-  animation: tab-glow-pulse 2s ease-in-out infinite;
-}
-
-@keyframes tab-glow-pulse {
-  0%, 100% { opacity: 0.7; }
-  50% { opacity: 1; }
+  box-shadow: 0 0 8px var(--color-glow-soft);
 }
 
 /* Icon glow on active */
 .tab-btn.active .tab-icon {
-  filter: drop-shadow(0 0 4px var(--color-glow));
+  filter: drop-shadow(0 0 3px var(--color-glow-soft));
 }
 
 /* Press ripple overlay */

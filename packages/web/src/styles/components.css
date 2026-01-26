@@ -1436,6 +1436,50 @@ textarea:focus-visible,
   justify-content: flex-end;
 }
 
+/* Mobile: keep controls usable without stealing vertical space.
+   - Stack header content
+   - Make controls horizontally scrollable (no multi-line wrap)
+   - Hide redundant range (mobile already shows sticky progress badge) */
+@media (max-width: 640px) {
+  .sequence-view__header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .sequence-view__controls {
+    justify-content: flex-start;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding: 2px 0;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+    /* Let content reach the edges while keeping the scroll affordance */
+    margin: 0 calc(-1 * var(--space-2));
+    padding-left: var(--space-2);
+    padding-right: var(--space-2);
+    /* Hint that the row scrolls horizontally (discoverability on mobile). */
+    -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 14px, #000 calc(100% - 14px), transparent 100%);
+    mask-image: linear-gradient(90deg, transparent 0, #000 14px, #000 calc(100% - 14px), transparent 100%);
+    -webkit-mask-repeat: no-repeat;
+    mask-repeat: no-repeat;
+    -webkit-mask-size: 100% 100%;
+    mask-size: 100% 100%;
+  }
+
+  .sequence-view__controls::-webkit-scrollbar {
+    display: none;
+  }
+
+  .sequence-view__zoom {
+    flex-wrap: nowrap;
+  }
+
+  .sequence-view__range {
+    display: none;
+  }
+}
+
 .sequence-view__zoom {
   display: flex;
   gap: var(--space-1);
@@ -1661,6 +1705,61 @@ textarea:focus-visible,
   color: var(--color-primary);
 }
 
+/* Command palette: experience filter + footer hints */
+.command-palette__experience {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.command-palette__experience-label {
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+  font-weight: var(--font-medium);
+}
+
+.command-palette__experience-btn {
+  padding: 0.5rem 0.875rem;
+  min-height: 36px;
+  border-radius: var(--radius-md);
+  background: var(--color-background);
+  border-color: var(--color-border);
+  text-transform: capitalize;
+}
+
+.command-palette__experience-btn::before,
+.command-palette__experience-btn::after {
+  display: none;
+}
+
+.command-palette__experience-btn:hover {
+  background: var(--color-background-hover);
+  transform: none;
+}
+
+.command-palette__experience-btn.is-active {
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+  color: #000;
+  font-weight: var(--font-semibold);
+}
+
+.command-palette__experience-hint {
+  color: var(--color-text-muted);
+  font-size: var(--text-xs);
+}
+
+.command-palette__hints {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3) var(--space-4);
+  padding: var(--space-2);
+  border-top: 1px solid var(--color-border-light);
+  color: var(--color-text-muted);
+  font-size: var(--text-xs);
+}
+
 @media (max-width: 640px) {
   .view-mode-toggle {
     gap: var(--space-1);
@@ -1673,6 +1772,10 @@ textarea:focus-visible,
   }
 
   .view-mode-subtle {
+    display: none;
+  }
+
+  .command-palette__experience-hint {
     display: none;
   }
 }
@@ -1805,7 +1908,7 @@ textarea:focus-visible,
     position: fixed;
     left: var(--space-3);
     right: var(--space-3);
-    bottom: calc(var(--control-deck-reserved-height, 140px) + var(--space-3) + env(safe-area-inset-bottom));
+    bottom: calc(var(--control-deck-reserved-height, 140px) + var(--space-3) + env(safe-area-inset-bottom, 0px));
     top: auto;
     min-width: 0;
     max-width: none;
@@ -2326,7 +2429,7 @@ textarea:focus-visible,
   position: fixed;
   left: 50%;
   transform: translateX(-50%);
-  bottom: calc(var(--space-4) + env(safe-area-inset-bottom));
+  bottom: calc(var(--space-4) + env(safe-area-inset-bottom, 0px));
   z-index: var(--z-toast, 600);
   padding: var(--space-3) var(--space-4);
   background: var(--color-background-elevated);
@@ -2369,10 +2472,57 @@ textarea:focus-visible,
   background: linear-gradient(135deg, var(--color-background-elevated), rgba(239, 68, 68, 0.05));
 }
 
+.blocked-hotkey-toast {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-4);
+}
+
+.blocked-hotkey-toast__body {
+  flex: 1;
+  min-width: 0;
+}
+
+.blocked-hotkey-toast__title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-weight: var(--font-semibold);
+  color: var(--color-warning);
+  margin-bottom: var(--space-1);
+}
+
+.blocked-hotkey-toast__text {
+  color: var(--color-text);
+  font-size: var(--text-sm);
+}
+
+.blocked-hotkey-toast__subtext {
+  color: var(--color-text-muted);
+  font-size: var(--text-xs);
+  margin-top: var(--space-1);
+}
+
+.blocked-hotkey-toast__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-shrink: 0;
+}
+
 /* Mobile: position toast above control deck */
 @media (max-width: 640px) {
   .toast {
-    bottom: calc(var(--control-deck-reserved-height, 140px) + var(--space-4) + env(safe-area-inset-bottom));
+    bottom: calc(var(--control-deck-reserved-height, 140px) + var(--space-4) + env(safe-area-inset-bottom, 0px));
+  }
+
+  .blocked-hotkey-toast {
+    align-items: stretch;
+    gap: var(--space-3);
+  }
+
+  .blocked-hotkey-toast__actions {
+    justify-content: flex-end;
   }
 }
 
@@ -2442,19 +2592,31 @@ textarea:focus-visible,
    KEYBOARD HINTS (kbd element)
    ============================================================================= */
 
-kbd {
-  display: inline-block;
+kbd,
+.kbd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.5em;
   padding: 2px 6px;
-  font-family: var(--font-mono);
+  font-family: var(--font-mono, monospace);
   /* Avoid unreadably small keycaps when nested under tiny labels on mobile. */
   font-size: max(0.85em, 10px);
   line-height: 1.2;
-  color: var(--color-text);
-  background: var(--color-background);
+  background: var(--color-background-elevated);
   border: 1px solid var(--color-border);
-  border-radius: 3px;
-  box-shadow: inset 0 -1px 0 rgba(0, 0, 0, 0.25);
+  border-radius: var(--radius-sm);
+  color: var(--color-text-dim);
+  box-shadow: 0 1px 0 var(--color-border-light);
   white-space: nowrap;
+  transition:
+    background-color var(--duration-fast) var(--ease-out),
+    transform var(--duration-fast) var(--ease-out);
+}
+
+kbd:hover,
+.kbd:hover {
+  background: var(--color-background-hover);
 }
 
 @media (max-width: 640px) {
@@ -3037,7 +3199,7 @@ kbd {
   align-items: flex-end;
   justify-content: center;
   padding: var(--space-4);
-  padding-bottom: calc(var(--space-4) + env(safe-area-inset-bottom));
+  padding-bottom: calc(var(--space-4) + env(safe-area-inset-bottom, 0px));
   animation: fade-in 300ms var(--ease-out) forwards;
 }
 
