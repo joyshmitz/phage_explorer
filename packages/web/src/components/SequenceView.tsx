@@ -374,15 +374,15 @@ function SequenceViewBase({
     onZoomChange: handleZoomChange,
   });
 
+  // CRITICAL: These refs must be updated synchronously during render, NOT in useEffect.
+  // Updating in useEffect creates a timing gap where wheel events can fire before the
+  // effect runs, causing the handler to see stale/null values and early-return.
+  // This was the root cause of the "scroll snaps back instantly" bug.
   const latestVisibleRangeRef = useRef(visibleRange);
-  useEffect(() => {
-    latestVisibleRangeRef.current = visibleRange;
-  }, [visibleRange]);
+  latestVisibleRangeRef.current = visibleRange;
 
   const sequenceLengthRef = useRef(sequence.length);
-  useEffect(() => {
-    sequenceLengthRef.current = sequence.length;
-  }, [sequence]);
+  sequenceLengthRef.current = sequence.length;
 
   // Desktop wheel/trackpad scroll: attach ONLY to the canvas wrapper so page scroll
   // works when pointer is over header controls. This fixes mousewheel page scroll.
@@ -702,7 +702,6 @@ function SequenceViewBase({
 
   useHotkeys(hotkeys);
 
-  const viewModeLabel = viewMode === 'dna' ? 'DNA' : viewMode === 'aa' ? 'Amino Acids' : 'Dual';
   const frameLabel = readingFrame === 0 ? '+1' : readingFrame > 0 ? `+${readingFrame + 1}` : `${readingFrame}`;
   const zoomLabel = zoomPreset?.label ?? `${Math.round(zoomScale * 100)}%`;
   const seqLength = sequence?.length ?? 0;
@@ -734,8 +733,11 @@ function SequenceViewBase({
       role="region"
       aria-label="Sequence viewer"
       aria-describedby={descriptionId}
-      aria-live="polite"
     >
+      <p id={descriptionId} className="sr-only">
+        Canvas-based sequence viewer. Use the controls to change view mode, reading frame, and zoom. Use the position bar or jump input to navigate.
+        Use scroll or touch gestures to navigate the sequence.
+      </p>
       {/* Header */}
       <div className="sequence-view__header">
         <span className="sequence-view__title">Sequence</span>
@@ -786,7 +788,7 @@ function SequenceViewBase({
           {/* Position indicator - hide on mobile to save space if needed, or wrap */}
           {visibleRange && (
             <span className="sequence-view__range">
-              {visibleRange.startIndex.toLocaleString()} - {visibleRange.endIndex.toLocaleString()}
+              {visibleRange.startIndex.toLocaleString()} - {Math.max(0, visibleRange.endIndex - 1).toLocaleString()}
             </span>
           )}
         </div>
@@ -964,12 +966,6 @@ function SequenceViewBase({
           {viewMode === 'aa' ? 'long-press for info · ' : ''}scroll to navigate
         </span>
       </div>
-      <div id={descriptionId} className="sr-only">
-        Sequence view in {viewModeLabel} mode, reading frame {frameLabel}. Showing positions
-        {visibleRange ? ` ${visibleRange.startIndex} to ${visibleRange.endIndex}` : ' not loaded yet'}.
-        Use v to toggle DNA or amino acid view and f to change frame, Home or End to jump to sequence edges, and scroll to navigate.
-      </div>
-
       {/* Amino Acid HUD - shown on long press in AA mode */}
       <AminoAcidHUD
         aminoAcid={hudAminoAcid}

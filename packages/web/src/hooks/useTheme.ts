@@ -12,6 +12,7 @@ import { THEMES, DEFAULT_THEME, getThemeById, getNextTheme } from '../theme/them
 const STORAGE_KEY = 'phage-explorer-theme';
 const TRANSITION_CLASS = 'theme-transitioning';
 const TRANSITION_DURATION = 300;
+let transitionTimeoutId: number | null = null;
 
 /**
  * Apply theme CSS custom properties to the document
@@ -104,8 +105,13 @@ function applyThemeToDocument(theme: Theme, animate = true): void {
 
   // Remove transition class after animation completes
   if (animate) {
-    setTimeout(() => {
+    if (transitionTimeoutId !== null) {
+      window.clearTimeout(transitionTimeoutId);
+      transitionTimeoutId = null;
+    }
+    transitionTimeoutId = window.setTimeout(() => {
       root.classList.remove(TRANSITION_CLASS);
+      transitionTimeoutId = null;
     }, TRANSITION_DURATION);
   }
 }
@@ -116,9 +122,13 @@ function applyThemeToDocument(theme: Theme, animate = true): void {
 function getInitialTheme(): Theme {
   // Check localStorage first
   if (typeof window !== 'undefined') {
-    const stored = localStorage.getItem(STORAGE_KEY);
-    if (stored) {
-      return getThemeById(stored);
+    try {
+      const stored = localStorage.getItem(STORAGE_KEY);
+      if (stored) {
+        return getThemeById(stored);
+      }
+    } catch {
+      // Ignore storage failures (private mode, quota, disabled storage).
     }
 
     // Check system preference for light/dark
@@ -156,7 +166,11 @@ export function useTheme(): ThemeContextValue {
     const newTheme = getThemeById(id);
     setThemeState(newTheme);
     applyThemeToDocument(newTheme, true);
-    localStorage.setItem(STORAGE_KEY, id);
+    try {
+      localStorage.setItem(STORAGE_KEY, id);
+    } catch {
+      // Ignore storage failures (private mode, quota, disabled storage).
+    }
   }, []);
 
   // Cycle to next theme
@@ -164,7 +178,11 @@ export function useTheme(): ThemeContextValue {
     const newTheme = getNextTheme(theme.id);
     setThemeState(newTheme);
     applyThemeToDocument(newTheme, true);
-    localStorage.setItem(STORAGE_KEY, newTheme.id);
+    try {
+      localStorage.setItem(STORAGE_KEY, newTheme.id);
+    } catch {
+      // Ignore storage failures (private mode, quota, disabled storage).
+    }
   }, [theme.id]);
 
   // Memoized context value

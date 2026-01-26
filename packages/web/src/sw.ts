@@ -119,13 +119,14 @@ registerRoute(
 // PDB Structure Caching (NEW - Critical for 3D viewer)
 // =============================================================================
 
-// Cache PDB structure files from RCSB
-// These are immutable (PDB IDs don't change), so CacheFirst is optimal
+// Cache PDB/mmCIF structure files from RCSB.
+// Keep this route tightly scoped to avoid caching unintended third-party origins.
+// Structures are immutable (PDB IDs don't change), so CacheFirst is optimal.
 registerRoute(
-  ({ url }) =>
-    url.origin === 'https://files.rcsb.org' ||
-    url.origin === 'https://data.rcsb.org' ||
-    (url.origin.includes('rcsb.org') && url.pathname.includes('/pdb/')),
+  ({ url, request }) =>
+    request.method === 'GET' &&
+    url.origin === 'https://files.rcsb.org' &&
+    url.pathname.startsWith('/download/'),
   new CacheFirst({
     cacheName: CACHE_NAMES.pdb,
     plugins: [

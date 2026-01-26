@@ -2,6 +2,7 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { OverlayProvider } from './components/overlays/OverlayProvider';
+import ErrorBoundary from './components/layout/ErrorBoundary';
 import { ScrollProvider } from './providers';
 import App from './App';
 import './styles.css';
@@ -63,6 +64,10 @@ function installViewportVariables(): () => void {
   const vv = window.visualViewport;
   if (vv) {
     vv.addEventListener('resize', schedule);
+    // Some iOS Safari versions fire `visualViewport.scroll` more reliably than `resize`
+    // when browser chrome shows/hides. `schedule` is RAF-throttled and `update()` is
+    // no-op when dimensions are unchanged, so this is safe.
+    vv.addEventListener('scroll', schedule);
   }
 
   return () => {
@@ -74,6 +79,7 @@ function installViewportVariables(): () => void {
     window.removeEventListener('orientationchange', schedule);
     if (vv) {
       vv.removeEventListener('resize', schedule);
+      vv.removeEventListener('scroll', schedule);
     }
   };
 }
@@ -111,13 +117,15 @@ if (container) {
   const root = ReactDOM.createRoot(container);
   root.render(
     <React.StrictMode>
-      <QueryClientProvider client={queryClient}>
-        <ScrollProvider>
-          <OverlayProvider>
-            <App />
-          </OverlayProvider>
-        </ScrollProvider>
-      </QueryClientProvider>
+      <ErrorBoundary>
+        <QueryClientProvider client={queryClient}>
+          <ScrollProvider>
+            <OverlayProvider>
+              <App />
+            </OverlayProvider>
+          </ScrollProvider>
+        </QueryClientProvider>
+      </ErrorBoundary>
     </React.StrictMode>,
   );
 }

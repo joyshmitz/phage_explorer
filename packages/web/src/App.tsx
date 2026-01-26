@@ -38,6 +38,8 @@ import {
   detectCoarsePointerDevice,
   get3DViewerDisabledDescription,
   getEffectiveBackgroundEffects,
+  getEffectiveGlow,
+  getEffectiveScanlines,
   usePhageStore,
   useWebPreferences,
 } from './store';
@@ -66,6 +68,7 @@ import {
   IconCommand,
 } from './components/ui/icons';
 import { Model3DSkeleton, SequenceViewSkeleton } from './components/ui/Skeleton';
+import { FeatureErrorBoundary } from './components/layout/FeatureErrorBoundary';
 
 // Desktop UI components for surfacing hidden functionality
 import { ActionToolbar } from './components/ActionToolbar';
@@ -77,6 +80,16 @@ const BREAKPOINT_PHONE_PX = 640;
 const BREAKPOINT_NARROW_PX = 1100;
 const BREAKPOINT_WIDE_PX = 1400; // Show analysis sidebar on wide screens
 
+export function shouldIgnoreMobileSwipeTarget(target: EventTarget | null): boolean {
+  const maybeElement = target as unknown as { closest?: (selector: string) => unknown };
+  if (!maybeElement || typeof maybeElement.closest !== 'function') return true;
+  return Boolean(
+    maybeElement.closest(
+      'input, textarea, select, button, a, .phage-list, .sequence-view, .three-container, .control-deck, .overlay, .glossary-shell, .quick-stats, .db-status-bar'
+    )
+  );
+}
+
 const LazyModel3DView = lazy(async () => {
   const mod = await import('./components/Model3DView');
   return { default: mod.Model3DView };
@@ -87,6 +100,10 @@ export default function App(): React.ReactElement {
   const reducedMotion = useReducedMotion();
   const highContrast = useWebPreferences((s) => s.highContrast);
   const backgroundEffects = useWebPreferences((s) => s.backgroundEffects);
+  const scanlines = useWebPreferences((s) => s.scanlines);
+  const glow = useWebPreferences((s) => s.glow);
+  const fxSafeMode = useWebPreferences((s) => s.fxSafeMode);
+  const setFxSafeMode = useWebPreferences((s) => s.setFxSafeMode);
   const webPrefsHydrated = useWebPreferences((s) => s._hasHydrated);
   const hasSeenWelcome = useWebPreferences((s) => s.hasSeenWelcome);
   const hasLearnedMobileSwipe = useWebPreferences((s) => s.hasLearnedMobileSwipe);
@@ -208,10 +225,106 @@ export default function App(): React.ReactElement {
       getEffectiveBackgroundEffects(backgroundEffects, {
         reducedMotion,
         coarsePointer: isCoarsePointer,
+        safeMode: fxSafeMode,
         narrowViewport: isNarrow,
       }),
-    [backgroundEffects, reducedMotion, isCoarsePointer, isNarrow]
+    [backgroundEffects, reducedMotion, isCoarsePointer, fxSafeMode, isNarrow]
   );
+
+  const effectiveScanlines = useMemo(
+    () =>
+      getEffectiveScanlines(scanlines, {
+        reducedMotion,
+        coarsePointer: isCoarsePointer,
+        safeMode: fxSafeMode,
+      }),
+    [scanlines, reducedMotion, isCoarsePointer, fxSafeMode]
+  );
+
+  const effectiveGlow = useMemo(
+    () =>
+      getEffectiveGlow(glow, {
+        reducedMotion,
+        coarsePointer: isCoarsePointer,
+        safeMode: fxSafeMode,
+      }),
+    [glow, reducedMotion, isCoarsePointer, fxSafeMode]
+  );
+
+  const heavyFxActive = enableBackgroundEffects || effectiveScanlines || effectiveGlow;
+  const [fxSafeModeToast, setFxSafeModeToast] = useState(false);
+  const safeModeCooldownUntilRef = useRef(0);
+  const lastScrollActivityAtRef = useRef(0);
+
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+
+    const markWheel = (event: WheelEvent) => {
+      if (event.ctrlKey) return;
+      lastScrollActivityAtRef.current = performance.now();
+    };
+
+    const markTouch = () => {
+      lastScrollActivityAtRef.current = performance.now();
+    };
+
+    document.addEventListener('wheel', markWheel, { passive: true, capture: true });
+    document.addEventListener('touchmove', markTouch, { passive: true, capture: true });
+    return () => {
+      document.removeEventListener('wheel', markWheel, { capture: true } as AddEventListenerOptions);
+      document.removeEventListener('touchmove', markTouch, { capture: true } as AddEventListenerOptions);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!heavyFxActive) return;
+    if (fxSafeMode) return;
+
+    let rafId: number | null = null;
+    let last = performance.now();
+    let windowStart = last;
+    let slowFrames = 0;
+    let scrollingFrames = 0;
+
+    const tick = (now: number) => {
+      const dt = now - last;
+      last = now;
+
+      // Ignore tab-switch / background hitches so we don't trigger safe mode spuriously.
+      if (dt > 250) {
+        windowStart = now;
+        slowFrames = 0;
+        scrollingFrames = 0;
+      } else {
+        const scrolling = now - lastScrollActivityAtRef.current < 700;
+        if (scrolling) {
+          scrollingFrames += 1;
+          if (dt > 40) slowFrames += 1;
+        }
+
+        if (now - windowStart > 2000) {
+          if (now > safeModeCooldownUntilRef.current && scrollingFrames >= 30 && slowFrames >= 6) {
+            safeModeCooldownUntilRef.current = now + 30_000;
+            setFxSafeMode(true);
+            setFxSafeModeToast(true);
+            return;
+          }
+          windowStart = now;
+          slowFrames = 0;
+          scrollingFrames = 0;
+        }
+      }
+
+      rafId = window.requestAnimationFrame(tick);
+    };
+
+    rafId = window.requestAnimationFrame(tick);
+    return () => {
+      if (rafId !== null) {
+        window.cancelAnimationFrame(rafId);
+      }
+    };
+  }, [heavyFxActive, fxSafeMode, setFxSafeMode]);
 
 
   useLayoutEffect(() => {
@@ -588,18 +701,9 @@ export default function App(): React.ReactElement {
     const SWIPE_FAST_VELOCITY_PX_PER_MS = 0.5;
     const SWIPE_HORIZONTAL_DOMINANCE_RATIO = 1.6;
 
-    const shouldIgnoreTarget = (target: EventTarget | null) => {
-      if (!(target instanceof HTMLElement)) return true;
-      return Boolean(
-        target.closest(
-          'input, textarea, select, button, a, .phage-list, .sequence-view, .three-container, .control-deck, .overlay, .glossary-shell, .quick-stats, .db-status-bar'
-        )
-      );
-    };
-
     const onTouchStart = (event: TouchEvent) => {
       if (event.touches.length !== 1) return;
-      if (shouldIgnoreTarget(event.target)) return;
+      if (shouldIgnoreMobileSwipeTarget(event.target)) return;
       const t = event.touches[0];
       swipeStartRef.current = { x: t.clientX, y: t.clientY, time: performance.now() };
     };
@@ -930,6 +1034,7 @@ export default function App(): React.ReactElement {
                 onClick={() => openOverlayCtx('commandPalette')}
                 aria-label="Open command palette"
                 title={commandPaletteShortcut ? `Command Palette (${commandPaletteShortcut})` : 'Command Palette'}
+                data-testid="header-command-palette-btn"
               >
                 <IconCommand size={16} />
                 <span className="header-action__label">Palette</span>
@@ -943,6 +1048,7 @@ export default function App(): React.ReactElement {
                 onClick={() => openOverlayCtx('settings')}
                 aria-label="Open settings"
                 title={settingsShortcut ? `Settings (${settingsShortcut})` : 'Settings'}
+                data-testid="header-settings-btn"
               >
                 <IconSettings size={16} />
                 <span className="header-action__label">Settings</span>
@@ -1151,10 +1257,12 @@ export default function App(): React.ReactElement {
                         </div>
                       )}
                       {fullSequence ? (
-                        <SequenceView
-                          sequence={fullSequence}
-                          height={sequenceHeight}
-                        />
+                        <FeatureErrorBoundary name="Sequence View">
+                          <SequenceView
+                            sequence={fullSequence}
+                            height={sequenceHeight}
+                          />
+                        </FeatureErrorBoundary>
                       ) : (
                         <SequenceViewSkeleton rows={15} className="mt-2" />
                       )}
@@ -1162,11 +1270,13 @@ export default function App(): React.ReactElement {
                     {show3DInLayout && (
                       <div className="viewer-panel">
                         {show3DModel ? (
-                          <Suspense
-                            fallback={<Model3DSkeleton />}
-                          >
-                            <LazyModel3DView phage={currentPhage} />
-                          </Suspense>
+                          <FeatureErrorBoundary name="3D Viewer">
+                            <Suspense
+                              fallback={<Model3DSkeleton />}
+                            >
+                              <LazyModel3DView phage={currentPhage} />
+                            </Suspense>
+                          </FeatureErrorBoundary>
                         ) : (
                           <div className="viewer-placeholder" aria-label="3D structure viewer disabled">
                             <svg className="viewer-placeholder__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
@@ -1283,6 +1393,44 @@ export default function App(): React.ReactElement {
       {beginnerToast && (
         <div className="toast toast-info" role="status" aria-live="polite">
           {beginnerToast}
+        </div>
+      )}
+      {fxSafeModeToast && fxSafeMode && (
+        <div role="alert" aria-live="polite" className="toast toast-warning fx-safe-mode-toast">
+          <div className="fx-safe-mode-toast__body">
+            <div className="fx-safe-mode-toast__title">
+              <span aria-hidden="true">!</span>
+              <span>Safe mode enabled</span>
+            </div>
+            <div className="fx-safe-mode-toast__text">
+              Heavy visual effects were paused to keep scrolling smooth.
+            </div>
+            <div className="fx-safe-mode-toast__subtext">
+              Your settings are unchanged. Disable safe mode to restore effects.
+            </div>
+          </div>
+          <div className="fx-safe-mode-toast__actions">
+            <button
+              type="button"
+              onClick={() => {
+                safeModeCooldownUntilRef.current = performance.now() + 30_000;
+                setFxSafeMode(false);
+                setFxSafeModeToast(false);
+              }}
+              className="btn btn-sm btn-primary"
+              aria-label="Disable safe mode and restore effects"
+            >
+              Resume FX
+            </button>
+            <button
+              type="button"
+              onClick={() => setFxSafeModeToast(false)}
+              className="btn btn-sm btn-ghost"
+              aria-label="Dismiss notification"
+            >
+              Dismiss
+            </button>
+          </div>
         </div>
       )}
       <BlockedHotkeyToast info={blockedHotkey} onDismiss={dismissBlockedHotkey} />

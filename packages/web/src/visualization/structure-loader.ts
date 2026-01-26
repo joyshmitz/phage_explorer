@@ -100,6 +100,7 @@ class StructureWorkerPool {
   private maxWorkers: number;
   private idleTimeout: number;
   private cleanupInterval: ReturnType<typeof setInterval> | null = null;
+  private waiters: Array<{ resolve: (worker: PooledWorker) => void; reject: (error: Error) => void }> = [];
   private workerCtorPromise: Promise<StructureWorkerCtor> | null = null;
 
   private constructor(maxWorkers = 2, idleTimeout = 60000) {
@@ -145,17 +146,9 @@ class StructureWorkerPool {
       return pooledWorker;
     }
 
-    // At capacity - wait for one to become available
-    return new Promise((resolve) => {
-      const checkInterval = setInterval(() => {
-        const available = this.pool.find(pw => !pw.busy);
-        if (available) {
-          clearInterval(checkInterval);
-          available.busy = true;
-          available.lastUsed = Date.now();
-          resolve(available);
-        }
-      }, 10);
+    // At capacity - queue waiter (avoid busy-wait polling).
+    return new Promise((resolve, reject) => {
+      this.waiters.push({ resolve, reject });
     });
   }
 
@@ -163,11 +156,20 @@ class StructureWorkerPool {
    * Release a worker back to the pool.
    */
   release(pooledWorker: PooledWorker): void {
-    pooledWorker.busy = false;
     pooledWorker.lastUsed = Date.now();
     // Reset message handlers to clean up previous listeners
     pooledWorker.worker.onmessage = null;
     pooledWorker.worker.onerror = null;
+
+    const next = this.waiters.shift();
+    if (next) {
+      pooledWorker.busy = true;
+      pooledWorker.lastUsed = Date.now();
+      next.resolve(pooledWorker);
+      return;
+    }
+
+    pooledWorker.busy = false;
   }
 
   /**
@@ -203,6 +205,13 @@ class StructureWorkerPool {
     if (this.cleanupInterval) {
       clearInterval(this.cleanupInterval);
       this.cleanupInterval = null;
+    }
+    if (this.waiters.length > 0) {
+      const error = new Error('StructureWorkerPool disposed');
+      for (const waiter of this.waiters) {
+        waiter.reject(error);
+      }
+      this.waiters = [];
     }
     for (const pw of this.pool) {
       pw.worker.terminate();

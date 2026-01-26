@@ -11,7 +11,7 @@
  * ```
  */
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
 export interface AnimatedNumberOptions {
   /** Animation duration in milliseconds (default: 400) */
@@ -76,7 +76,10 @@ export function useAnimatedNumber(
     format,
   } = options;
 
-  const formatFn = format ?? ((v: number) => defaultFormat(v, decimals));
+  const formatFn = useMemo(
+    () => format ?? ((v: number) => defaultFormat(v, decimals)),
+    [format, decimals]
+  );
 
   // Track the displayed value
   const [displayValue, setDisplayValue] = useState<string>(() =>
@@ -86,18 +89,26 @@ export function useAnimatedNumber(
   // Track animation state
   const startValueRef = useRef(value);
   const targetValueRef = useRef(value);
+  const currentNumericRef = useRef(value); // Track numeric value to avoid locale parsing issues
+  const formatFnRef = useRef(formatFn);
   const frameRef = useRef<number | null>(null);
   const startTimeRef = useRef<number | null>(null);
   const isFirstRender = useRef(true);
+
+  useEffect(() => {
+    formatFnRef.current = formatFn;
+    setDisplayValue(formatFn(currentNumericRef.current));
+  }, [formatFn]);
 
   useEffect(() => {
     // Skip animation on first render if configured
     if (isFirstRender.current) {
       isFirstRender.current = false;
       if (skipInitial) {
-        setDisplayValue(formatFn(value));
+        setDisplayValue(formatFnRef.current(value));
         startValueRef.current = value;
         targetValueRef.current = value;
+        currentNumericRef.current = value;
         return;
       }
     }
@@ -107,8 +118,8 @@ export function useAnimatedNumber(
       return;
     }
 
-    // Store animation parameters
-    startValueRef.current = parseFloat(displayValue.replace(/[^0-9.-]/g, '')) || 0;
+    // Store animation parameters - use tracked numeric value instead of parsing locale string
+    startValueRef.current = currentNumericRef.current;
     targetValueRef.current = value;
     startTimeRef.current = null;
 
@@ -127,7 +138,8 @@ export function useAnimatedNumber(
         startValueRef.current +
         (targetValueRef.current - startValueRef.current) * easedProgress;
 
-      setDisplayValue(formatFn(currentValue));
+      currentNumericRef.current = currentValue; // Track numeric value for next animation
+      setDisplayValue(formatFnRef.current(currentValue));
 
       // Continue animation if not complete
       if (progress < 1) {
@@ -149,7 +161,7 @@ export function useAnimatedNumber(
         cancelAnimationFrame(frameRef.current);
       }
     };
-  }, [value, duration, decimals, easing, skipInitial, format, displayValue, formatFn]);
+  }, [value, duration, easing, skipInitial]);
 
   return displayValue;
 }
@@ -172,6 +184,7 @@ export function useAnimatedNumberRaw(
 
   const startValueRef = useRef(value);
   const targetValueRef = useRef(value);
+  const currentNumericRef = useRef(value);
   const frameRef = useRef<number | null>(null);
   const startTimeRef = useRef<number | null>(null);
   const isFirstRender = useRef(true);
@@ -183,6 +196,7 @@ export function useAnimatedNumberRaw(
         setDisplayValue(value);
         startValueRef.current = value;
         targetValueRef.current = value;
+        currentNumericRef.current = value;
         return;
       }
     }
@@ -191,7 +205,7 @@ export function useAnimatedNumberRaw(
       return;
     }
 
-    startValueRef.current = displayValue;
+    startValueRef.current = currentNumericRef.current;
     targetValueRef.current = value;
     startTimeRef.current = null;
 
@@ -208,6 +222,7 @@ export function useAnimatedNumberRaw(
         startValueRef.current +
         (targetValueRef.current - startValueRef.current) * easedProgress;
 
+      currentNumericRef.current = currentValue;
       setDisplayValue(currentValue);
 
       if (progress < 1) {
@@ -226,7 +241,7 @@ export function useAnimatedNumberRaw(
         cancelAnimationFrame(frameRef.current);
       }
     };
-  }, [value, duration, easing, skipInitial, displayValue]);
+  }, [value, duration, easing, skipInitial]);
 
   return displayValue;
 }

@@ -193,49 +193,74 @@ async function deleteFromIndexedDB(key: string): Promise<void> {
 async function fetchManifestWithETag(
   manifestUrl: string
 ): Promise<{ manifest: DatabaseManifest | null; fromCache: boolean }> {
-  try {
-    // Get cached ETag and manifest
-    const cachedEtag = await getFromIndexedDB<string>(MANIFEST_ETAG_KEY);
-    const cachedManifest = await getFromIndexedDB<DatabaseManifest>(MANIFEST_CACHE_KEY);
+  let cachedEtag: string | null = null;
+  let cachedManifest: DatabaseManifest | null = null;
 
+  // Cache reads are best-effort; IDB may be unavailable (private mode / quota / permissions).
+  try {
+    cachedEtag = await getFromIndexedDB<string>(MANIFEST_ETAG_KEY);
+    cachedManifest = await getFromIndexedDB<DatabaseManifest>(MANIFEST_CACHE_KEY);
+  } catch {
+    cachedEtag = null;
+    cachedManifest = null;
+  }
+
+  const fetchWith = async (headers?: HeadersInit) =>
+    fetch(manifestUrl, { cache: 'no-cache', headers });
+
+  let response: Response;
+  try {
     const headers: HeadersInit = {};
     if (cachedEtag) {
       headers['If-None-Match'] = cachedEtag;
     }
+    response = await fetchWith(headers);
+  } catch {
+    return { manifest: cachedManifest, fromCache: !!cachedManifest };
+  }
 
-    const response = await fetch(manifestUrl, {
-      cache: 'no-cache', // Revalidate but allow conditional response
-      headers,
-    });
-
-    // 304 Not Modified - use cached manifest
-    if (response.status === 304 && cachedManifest) {
+  // 304 Not Modified - use cached manifest, but if the cache is missing fall back to a full fetch.
+  if (response.status === 304) {
+    if (cachedManifest) {
       return { manifest: cachedManifest, fromCache: true };
     }
-
-    if (!response.ok) {
-      // Offline or error - try to use cached manifest
-      if (cachedManifest) {
-        return { manifest: cachedManifest, fromCache: true };
-      }
+    try {
+      response = await fetchWith();
+    } catch {
       return { manifest: null, fromCache: false };
     }
+  }
 
-    const manifest: DatabaseManifest = await response.json();
+  if (!response.ok) {
+    // Offline or error - try to use cached manifest
+    if (cachedManifest) {
+      return { manifest: cachedManifest, fromCache: true };
+    }
+    return { manifest: null, fromCache: false };
+  }
 
-    // Cache the new manifest and ETag
+  let manifest: DatabaseManifest;
+  try {
+    manifest = await response.json();
+  } catch {
+    if (cachedManifest) {
+      return { manifest: cachedManifest, fromCache: true };
+    }
+    return { manifest: null, fromCache: false };
+  }
+
+  // Cache writes are best-effort; a quota/IDB failure should not block the app.
+  try {
     const newEtag = response.headers.get('ETag');
     if (newEtag) {
       await setInIndexedDB(MANIFEST_ETAG_KEY, newEtag);
     }
     await setInIndexedDB(MANIFEST_CACHE_KEY, manifest);
-
-    return { manifest, fromCache: false };
   } catch {
-    // Network error - try cached manifest
-    const cachedManifest = await getFromIndexedDB<DatabaseManifest>(MANIFEST_CACHE_KEY);
-    return { manifest: cachedManifest, fromCache: !!cachedManifest };
+    // Ignore caching failures.
   }
+
+  return { manifest, fromCache: false };
 }
 
 /**
@@ -531,9 +556,20 @@ export class DatabaseLoader {
   }
 
   private async fetchBytes(url: string, label: string): Promise<Uint8Array> {
-    const response = await fetch(url, { cache: 'no-store' });
+    let response: Response;
+    try {
+      response = await fetch(url, { cache: 'no-store' });
+    } catch (error) {
+      const offlineHint =
+        typeof navigator !== 'undefined' && navigator.onLine === false
+          ? ' (offline?)'
+          : '';
+      const message = error instanceof Error ? error.message : String(error);
+      throw new Error(`Network error while downloading database${offlineHint}: ${message}`);
+    }
     if (!response.ok) {
-      throw new Error(`Failed to download database: ${response.statusText}`);
+      const statusLabel = response.statusText ? `${response.status} ${response.statusText}` : `${response.status}`;
+      throw new Error(`Database download failed (${statusLabel}). URL: ${url}`);
     }
 
     const contentEncoding = response.headers.get('content-encoding');

@@ -23,24 +23,69 @@ export function DataLoadingOverlay({
 }: DataLoadingOverlayProps): React.ReactElement {
   const { theme } = useTheme();
   const colors = theme.colors;
+  const progressRef = useRef<DatabaseLoadProgress | null>(progress);
+  const [isOnline, setIsOnline] = useState(() => {
+    if (typeof navigator === 'undefined') return true;
+    return navigator.onLine;
+  });
 
   // Track if loading is taking longer than expected
   const [isSlowLoad, setIsSlowLoad] = useState(false);
+  const [retryAttempt, setRetryAttempt] = useState(0);
   const [estimatedRemainingSeconds, setEstimatedRemainingSeconds] = useState<number | null>(null);
   const progressSamplesRef = useRef<Array<{ timeMs: number; percent: number }>>([]);
   const lastStageRef = useRef<DatabaseLoadProgress['stage'] | null>(null);
   const lastPercentRef = useRef<number | null>(null);
 
   useEffect(() => {
-    // After 15 seconds without completion, show slow load message
-    const timer = setTimeout(() => {
-      if (!progress || progress.percent < 100) {
+    progressRef.current = progress;
+  }, [progress]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const handleOnline = () => setIsOnline(true);
+    const handleOffline = () => setIsOnline(false);
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
+
+  const handleRetry = (): void => {
+    if (!onRetry) return;
+    setIsSlowLoad(false);
+    setEstimatedRemainingSeconds(null);
+    progressSamplesRef.current = [];
+    lastStageRef.current = null;
+    lastPercentRef.current = null;
+    setRetryAttempt((prev) => prev + 1);
+    onRetry();
+  };
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (error) {
+      setIsSlowLoad(false);
+      return;
+    }
+
+    setIsSlowLoad(false);
+
+    // After 15 seconds without completion, show slow load message.
+    // Use refs so this timer doesn't reset on every progress update.
+    const timer = window.setTimeout(() => {
+      const current = progressRef.current;
+      if (!current || current.percent < 100) {
         setIsSlowLoad(true);
       }
     }, 15000);
 
-    return () => clearTimeout(timer);
-  }, [progress]);
+    return () => window.clearTimeout(timer);
+  }, [retryAttempt, error]);
 
   useEffect(() => {
     if (!progress || progress.percent <= 0 || progress.percent >= 100 || progress.stage === 'ready' || progress.stage === 'error') {
@@ -106,6 +151,36 @@ export function DataLoadingOverlay({
   }, [progress]);
 
   if (error) {
+    const offline = !isOnline;
+    const normalizedError = error.toLowerCase();
+    const isWasmUnsupported =
+      normalizedError.includes('webassembly not supported') ||
+      normalizedError.includes('wasm') && normalizedError.includes('not supported');
+    const isDownloadFailure =
+      normalizedError.includes('failed to download') ||
+      normalizedError.includes('network error') ||
+      normalizedError.includes('failed to fetch');
+
+    const headline = offline
+      ? 'You appear to be offline'
+      : isWasmUnsupported
+        ? 'This browser cannot run the database engine'
+        : isDownloadFailure
+          ? 'Could not download the database'
+          : 'Database load failed';
+
+    const helperText = offline
+      ? 'Phage Explorer needs to download the database on first load. Reconnect to the internet and retry.'
+      : isWasmUnsupported
+        ? 'Phage Explorer requires WebAssembly to run SQLite in your browser. Try a modern Chromium, Firefox, or Safari.'
+        : isDownloadFailure
+          ? 'This can happen due to a flaky network, a blocked asset request, or a transient CDN issue.'
+          : 'Please retry. If the issue persists, refresh the page or try another browser.';
+
+    const diagnostics = progress
+      ? `${progress.stage} (${progress.percent}%): ${progress.message}`
+      : error;
+
     return (
       <div
         role="alert"
@@ -128,26 +203,43 @@ export function DataLoadingOverlay({
             borderRadius: '8px',
             textAlign: 'center',
             backgroundColor: 'rgba(255, 0, 0, 0.1)',
+            maxWidth: '520px',
           }}
         >
           <div style={{ marginBottom: '1rem', color: colors.error }} aria-hidden="true">
             <IconAlertTriangle size={32} />
           </div>
-          <h2 style={{ color: colors.error, marginBottom: '1rem' }}>Database Load Failed</h2>
-          <p style={{ color: colors.text, marginBottom: '1.5rem' }}>{error}</p>
+          <h2 style={{ color: colors.error, marginBottom: '1rem' }}>{headline}</h2>
+          <p style={{ color: colors.text, marginBottom: '0.75rem' }}>{helperText}</p>
+          <details
+            style={{
+              margin: '0 auto 1.25rem',
+              textAlign: 'left',
+              color: colors.textMuted,
+              fontSize: '0.85rem',
+            }}
+          >
+            <summary style={{ cursor: 'pointer', color: colors.textDim }}>Details</summary>
+            <pre
+              style={{
+                marginTop: '0.5rem',
+                padding: '0.75rem',
+                backgroundColor: colors.backgroundAlt,
+                border: `1px solid ${colors.border}`,
+                borderRadius: '6px',
+                overflowX: 'auto',
+                whiteSpace: 'pre-wrap',
+                wordBreak: 'break-word',
+              }}
+            >
+              {diagnostics}
+            </pre>
+          </details>
           {onRetry && (
             <button
               type="button"
-              onClick={onRetry}
-              style={{
-                padding: '0.5rem 1rem',
-                backgroundColor: colors.primary,
-                color: '#000',
-                border: 'none',
-                borderRadius: '4px',
-                cursor: 'pointer',
-                fontWeight: 'bold',
-              }}
+              onClick={handleRetry}
+              className="btn btn-primary"
             >
               Retry
             </button>
@@ -267,17 +359,9 @@ export function DataLoadingOverlay({
             </div>
             {onRetry && (
               <button
-                onClick={onRetry}
-                style={{
-                  marginTop: '0.75rem',
-                  padding: '0.4rem 0.8rem',
-                  backgroundColor: 'transparent',
-                  color: colors.primary,
-                  border: `1px solid ${colors.primary}`,
-                  borderRadius: '4px',
-                  cursor: 'pointer',
-                  fontSize: '0.85rem',
-                }}
+                onClick={handleRetry}
+                type="button"
+                className="btn btn-ghost btn-sm"
               >
                 Retry
               </button>

@@ -10,6 +10,8 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTheme } from '../../hooks/useTheme';
 import { useReducedMotion } from '../../hooks/useReducedMotion';
+import { getKeyboardManager, type HotkeyDefinition } from '../../keyboard';
+import { useOverlay } from '../../components/overlays/OverlayProvider';
 import { useBeginnerMode } from '../hooks/useBeginnerMode';
 import type { Tour, TourId, TourStep } from '../types';
 
@@ -76,7 +78,9 @@ function resolveTargetRect(step: TourStep, behavior: ScrollBehavior): DOMRect | 
     el.scrollIntoView({ behavior, block: 'center' });
     return el.getBoundingClientRect();
   } catch (e) {
-    console.warn(`Invalid tour target selector: ${step.target}`, e);
+    if (import.meta.env.DEV) {
+      console.warn(`Invalid tour target selector: ${step.target}`, e);
+    }
     return null;
   }
 }
@@ -86,6 +90,8 @@ export function TourEngine(): React.ReactElement | null {
   const colors = theme.colors;
   const reducedMotion = useReducedMotion();
   const { activeTourId, cancelTour, completeTour, isEnabled } = useBeginnerMode();
+  const { stack } = useOverlay();
+  const overlaysOpen = stack.length > 0;
 
   const tourId = (activeTourId as TourId | null) ?? null;
   const tour = useMemo(() => (tourId ? getTour(tourId) : null), [tourId]);
@@ -165,21 +171,20 @@ export function TourEngine(): React.ReactElement | null {
   // Keyboard navigation
   useEffect(() => {
     if (!tour) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        e.preventDefault();
-        handleSkip();
-      } else if (e.key === 'ArrowRight' || e.key === 'Enter') {
-        e.preventDefault();
-        handleNext();
-      } else if (e.key === 'ArrowLeft') {
-        e.preventDefault();
-        handlePrev();
-      }
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [tour, handleSkip, handleNext, handlePrev]);
+    if (!isEnabled) return;
+    if (overlaysOpen) return;
+    if (typeof window === 'undefined') return;
+
+    const manager = getKeyboardManager();
+    const definitions: HotkeyDefinition[] = [
+      { combo: { key: 'Escape' }, description: 'Tour: skip', action: handleSkip, modes: ['NORMAL'], priority: 10 },
+      { combo: { key: 'ArrowRight' }, description: 'Tour: next step', action: handleNext, modes: ['NORMAL'], priority: 10 },
+      { combo: { key: 'Enter' }, description: 'Tour: next step', action: handleNext, modes: ['NORMAL'], priority: 10 },
+      { combo: { key: 'ArrowLeft' }, description: 'Tour: previous step', action: handlePrev, modes: ['NORMAL'], priority: 10 },
+    ];
+
+    return manager.registerMany(definitions);
+  }, [handleNext, handlePrev, handleSkip, isEnabled, overlaysOpen, tour]);
 
   if (!tour || !rect || !isEnabled) return null;
 

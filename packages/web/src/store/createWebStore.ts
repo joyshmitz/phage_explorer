@@ -8,7 +8,7 @@
  */
 
 import { create } from 'zustand';
-import { persist, createJSONStorage } from 'zustand/middleware';
+import { persist, createJSONStorage, type StateStorage } from 'zustand/middleware';
 import type { Theme, ViewMode, ReadingFrame } from '@phage-explorer/core';
 import {
   usePhageStore,
@@ -22,6 +22,31 @@ export type { PhageExplorerStore, PhageExplorerState, PhageExplorerActions } fro
 
 // Version for migration logic
 const STORE_VERSION = 8;
+
+const memoryStorage = new Map<string, string>();
+const safeLocalStorage: StateStorage = {
+  getItem: (name) => {
+    try {
+      return localStorage.getItem(name);
+    } catch {
+      return memoryStorage.get(name) ?? null;
+    }
+  },
+  setItem: (name, value) => {
+    try {
+      localStorage.setItem(name, value);
+    } catch {
+      memoryStorage.set(name, value);
+    }
+  },
+  removeItem: (name) => {
+    try {
+      localStorage.removeItem(name);
+    } catch {
+      memoryStorage.delete(name);
+    }
+  },
+};
 
 type Show3DModelDefaultPolicy = {
   defaultEnabled: boolean;
@@ -71,12 +96,13 @@ export function get3DViewerDisabledDescription(overrides?: { coarsePointer?: boo
 export type HeavyFxRuntimeConstraints = {
   reducedMotion: boolean;
   coarsePointer: boolean;
+  safeMode?: boolean;
 };
 
 export function allowHeavyFx(constraints: HeavyFxRuntimeConstraints): boolean {
   // Motion/FX policy: docs/motion-policy.md
   // Heavy FX are suppressed on reduced-motion and coarse-pointer devices.
-  return !constraints.reducedMotion && !constraints.coarsePointer;
+  return !constraints.reducedMotion && !constraints.coarsePointer && !constraints.safeMode;
 }
 
 export type BackgroundFxRuntimeConstraints = HeavyFxRuntimeConstraints & {
@@ -128,6 +154,8 @@ export interface WebPreferencesState {
   tuiMode: boolean;
   highContrast: boolean;
   backgroundEffects: boolean;
+  // Session-only runtime safety controls
+  fxSafeMode: boolean;
   // Control palette state
   controlDrawerOpen: boolean;
   // Command history (session only, not persisted)
@@ -145,6 +173,7 @@ export interface WebPreferencesActions {
   setTuiMode: (enabled: boolean) => void;
   setHighContrast: (enabled: boolean) => void;
   setBackgroundEffects: (enabled: boolean) => void;
+  setFxSafeMode: (enabled: boolean) => void;
   setControlDrawerOpen: (open: boolean) => void;
   toggleControlDrawer: () => void;
   pushCommand: (label: string) => void;
@@ -177,6 +206,7 @@ const defaultWebPreferences: WebPreferencesState = {
   tuiMode: false,
   highContrast: false,
   backgroundEffects: getDefaultBackgroundEffects(),
+  fxSafeMode: false,
   controlDrawerOpen: false,
   commandHistory: [],
   _hasHydrated: false,
@@ -303,6 +333,7 @@ export const useWebPreferences = create<WebPreferencesStore>()(
       setTuiMode: (enabled) => set({ tuiMode: enabled }),
       setHighContrast: (enabled) => set({ highContrast: enabled }),
       setBackgroundEffects: (enabled) => set({ backgroundEffects: enabled }),
+      setFxSafeMode: (enabled) => set({ fxSafeMode: enabled }),
       setControlDrawerOpen: (open) => set({ controlDrawerOpen: open }),
       toggleControlDrawer: () =>
         set((state) => ({ controlDrawerOpen: !state.controlDrawerOpen })),
@@ -319,7 +350,7 @@ export const useWebPreferences = create<WebPreferencesStore>()(
     {
       name: 'phage-explorer-web-prefs',
       version: STORE_VERSION,
-      storage: createJSONStorage(() => localStorage),
+      storage: createJSONStorage(() => safeLocalStorage),
       partialize: (state) => ({
         hasSeenWelcome: state.hasSeenWelcome,
         hasLearnedMobileSwipe: state.hasLearnedMobileSwipe,
