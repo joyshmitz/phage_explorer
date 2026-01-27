@@ -71,7 +71,10 @@ export function decodeSequence(view: Uint8Array, length?: number): string {
   const slice = length !== undefined && length < view.length ? view.subarray(0, length) : view;
 
   if (textDecoder) {
-    return textDecoder.decode(slice);
+    // TextDecoder.decode() rejects views over SharedArrayBuffer; copy to a regular buffer first
+    const safeBuf =
+      slice.buffer instanceof SharedArrayBuffer ? new Uint8Array(slice) : slice;
+    return textDecoder.decode(safeBuf);
   }
 
   // Manual ASCII decoding fallback.

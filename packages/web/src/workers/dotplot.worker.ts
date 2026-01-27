@@ -15,7 +15,14 @@ const textEncoder = typeof TextEncoder !== 'undefined' ? new TextEncoder() : nul
 const textDecoder = typeof TextDecoder !== 'undefined' ? new TextDecoder() : null;
 
 function decodeAsciiBytes(bytes: Uint8Array): string {
-  if (textDecoder) return textDecoder.decode(bytes);
+  if (textDecoder) {
+    // TextDecoder.decode() rejects views over SharedArrayBuffer; copy to a regular buffer first
+    const safeBuf =
+      bytes.buffer instanceof SharedArrayBuffer
+        ? new Uint8Array(bytes)
+        : bytes;
+    return textDecoder.decode(safeBuf);
+  }
 
   const CHUNK = 0x2000;
   let out = '';
