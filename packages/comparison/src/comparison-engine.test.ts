@@ -1,0 +1,322 @@
+/**
+ * Tests for Genome Comparison Engine Module
+ *
+ * Tests the main orchestration functions for comprehensive genome comparison,
+ * quick comparison, and utility functions.
+ */
+
+import { describe, test, expect } from 'bun:test';
+import {
+  compareGenomes,
+  quickCompare,
+  formatSimilarity,
+  getSimilarityColor,
+  createSimilarityBar,
+} from './comparison-engine';
+import type { GeneInfo } from '@phage-explorer/core';
+
+// Test sequences - real-ish phage-like DNA
+const SEQ_A = 'ATGCATGCATGCATGCATGCATGCATGCATGCATGCATGCATGCATGCATGCATGCATGCATGC';
+const SEQ_B = 'ATGCATGCATGCATGCATGCATGCATGCATGCATGCATGCATGCATGCATGCATGCATGCATGC';
+const SEQ_C = 'GCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTA';
+const LONGER_SEQ_A = SEQ_A.repeat(50); // ~3200bp
+const LONGER_SEQ_B = SEQ_B.repeat(50);
+const LONGER_SEQ_C = SEQ_C.repeat(50);
+
+let geneId = 0;
+const makeGene = (name: string, product: string, start: number, end: number): GeneInfo => ({
+  id: ++geneId,
+  name,
+  locusTag: `gene_${geneId}`,
+  startPos: start,
+  endPos: end,
+  strand: '+',
+  product,
+  type: 'CDS',
+});
+
+describe('compareGenomes', () => {
+  test('returns complete result structure for identical sequences', async () => {
+    const phageA = { id: 1, name: 'Phage A', accession: 'NC_001' };
+    const phageB = { id: 2, name: 'Phage B', accession: 'NC_002' };
+
+    const result = await compareGenomes(phageA, phageB, LONGER_SEQ_A, LONGER_SEQ_B);
+
+    // Check required top-level fields
+    expect(result).toHaveProperty('phageA');
+    expect(result).toHaveProperty('phageB');
+    expect(result).toHaveProperty('computedAt');
+    expect(result).toHaveProperty('computeTimeMs');
+    expect(result).toHaveProperty('summary');
+    expect(result).toHaveProperty('kmerAnalysis');
+    expect(result).toHaveProperty('informationTheory');
+    expect(result).toHaveProperty('rankCorrelation');
+    expect(result).toHaveProperty('editDistance');
+    expect(result).toHaveProperty('biological');
+    expect(result).toHaveProperty('codonUsage');
+    expect(result).toHaveProperty('aminoAcidUsage');
+    expect(result).toHaveProperty('geneContent');
+    expect(result).toHaveProperty('structuralVariants');
+
+    // Verify phage info is preserved
+    expect(result.phageA).toEqual(phageA);
+    expect(result.phageB).toEqual(phageB);
+  });
+
+  test('computes high similarity for identical sequences', async () => {
+    const phageA = { id: 1, name: 'Phage A', accession: 'NC_001' };
+    const phageB = { id: 2, name: 'Phage B', accession: 'NC_002' };
+
+    const result = await compareGenomes(phageA, phageB, LONGER_SEQ_A, LONGER_SEQ_B);
+
+    // Overall similarity is weighted from multiple metrics, so threshold is lower
+    expect(result.summary.overallSimilarity).toBeGreaterThan(80);
+    expect(result.summary.sequenceSimilarity).toBeGreaterThan(90);
+  });
+
+  test('computes lower similarity for different sequences', async () => {
+    const phageA = { id: 1, name: 'Phage A', accession: 'NC_001' };
+    const phageB = { id: 2, name: 'Phage B', accession: 'NC_002' };
+
+    const result = await compareGenomes(phageA, phageB, LONGER_SEQ_A, LONGER_SEQ_C);
+
+    // Different sequences should have lower similarity
+    expect(result.summary.overallSimilarity).toBeLessThan(90);
+  });
+
+  test('includes gene content comparison when genes provided', async () => {
+    const phageA = { id: 1, name: 'Phage A', accession: 'NC_001' };
+    const phageB = { id: 2, name: 'Phage B', accession: 'NC_002' };
+    const genesA = [
+      makeGene('terminase', 'terminase large subunit', 0, 1000),
+      makeGene('portal', 'portal protein', 1000, 2000),
+    ];
+    const genesB = [
+      makeGene('terminase', 'terminase large subunit', 0, 1000),
+      makeGene('capsid', 'major capsid protein', 1000, 2000),
+    ];
+
+    const result = await compareGenomes(
+      phageA,
+      phageB,
+      LONGER_SEQ_A,
+      LONGER_SEQ_B,
+      genesA,
+      genesB
+    );
+
+    expect(result.geneContent.genesA).toBe(2);
+    expect(result.geneContent.genesB).toBe(2);
+    expect(result.geneContent.sharedGeneNames).toBeGreaterThanOrEqual(0);
+  });
+
+  test('respects includeStructuralVariants config option', async () => {
+    const phageA = { id: 1, name: 'Phage A', accession: 'NC_001' };
+    const phageB = { id: 2, name: 'Phage B', accession: 'NC_002' };
+
+    const resultWith = await compareGenomes(
+      phageA,
+      phageB,
+      LONGER_SEQ_A,
+      LONGER_SEQ_B,
+      [],
+      [],
+      null,
+      null,
+      { includeStructuralVariants: true, kmerSizes: [7] }
+    );
+
+    const resultWithout = await compareGenomes(
+      phageA,
+      phageB,
+      LONGER_SEQ_A,
+      LONGER_SEQ_B,
+      [],
+      [],
+      null,
+      null,
+      { includeStructuralVariants: false, kmerSizes: [7] }
+    );
+
+    expect(resultWith.structuralVariants).not.toBeNull();
+    expect(resultWithout.structuralVariants).toBeNull();
+  });
+
+  test('records compute time', async () => {
+    const phageA = { id: 1, name: 'Phage A', accession: 'NC_001' };
+    const phageB = { id: 2, name: 'Phage B', accession: 'NC_002' };
+
+    const result = await compareGenomes(phageA, phageB, SEQ_A, SEQ_B);
+
+    expect(result.computeTimeMs).toBeGreaterThanOrEqual(0);
+    expect(typeof result.computedAt).toBe('number');
+  });
+
+  describe('summary computation', () => {
+    test('categorizes similarity correctly', async () => {
+      const phageA = { id: 1, name: 'Phage A', accession: 'NC_001' };
+      const phageB = { id: 2, name: 'Phage B', accession: 'NC_002' };
+
+      const identicalResult = await compareGenomes(
+        phageA,
+        phageB,
+        LONGER_SEQ_A,
+        LONGER_SEQ_A
+      );
+
+      // Identical sequences should have high category
+      expect(
+        ['identical', 'highly_similar', 'similar'].includes(
+          identicalResult.summary.similarityCategory
+        )
+      ).toBe(true);
+    });
+
+    test('includes insights array', async () => {
+      const phageA = { id: 1, name: 'Phage A', accession: 'NC_001' };
+      const phageB = { id: 2, name: 'Phage B', accession: 'NC_002' };
+
+      const result = await compareGenomes(phageA, phageB, LONGER_SEQ_A, LONGER_SEQ_B);
+
+      expect(Array.isArray(result.summary.insights)).toBe(true);
+      for (const insight of result.summary.insights) {
+        expect(insight).toHaveProperty('type');
+        expect(insight).toHaveProperty('category');
+        expect(insight).toHaveProperty('message');
+        expect(insight).toHaveProperty('value');
+        expect(insight).toHaveProperty('significance');
+      }
+    });
+
+    test('includes confidence level', async () => {
+      const phageA = { id: 1, name: 'Phage A', accession: 'NC_001' };
+      const phageB = { id: 2, name: 'Phage B', accession: 'NC_002' };
+
+      const result = await compareGenomes(phageA, phageB, LONGER_SEQ_A, LONGER_SEQ_B);
+
+      expect(['high', 'medium', 'low']).toContain(result.summary.confidenceLevel);
+    });
+  });
+});
+
+describe('quickCompare', () => {
+  test('returns high similarity for identical sequences', () => {
+    const result = quickCompare(LONGER_SEQ_A, LONGER_SEQ_A);
+
+    expect(result.similarity).toBeGreaterThan(90);
+    expect(result.estimateType).toBe('quick');
+  });
+
+  test('returns lower similarity for different sequences', () => {
+    const result = quickCompare(LONGER_SEQ_A, LONGER_SEQ_C);
+
+    expect(result.similarity).toBeLessThan(90);
+    expect(result.estimateType).toBe('quick');
+  });
+
+  test('returns similar values for similar sequences', () => {
+    const result = quickCompare(LONGER_SEQ_A, LONGER_SEQ_B);
+
+    expect(result.similarity).toBeGreaterThan(90);
+  });
+
+  test('similarity is between 0 and 100', () => {
+    const result1 = quickCompare(SEQ_A, SEQ_A);
+    const result2 = quickCompare(SEQ_A, SEQ_C);
+
+    expect(result1.similarity).toBeGreaterThanOrEqual(0);
+    expect(result1.similarity).toBeLessThanOrEqual(100);
+    expect(result2.similarity).toBeGreaterThanOrEqual(0);
+    expect(result2.similarity).toBeLessThanOrEqual(100);
+  });
+});
+
+describe('formatSimilarity', () => {
+  test('formats high scores correctly', () => {
+    expect(formatSimilarity(100)).toBe('Nearly Identical');
+    expect(formatSimilarity(99)).toBe('Nearly Identical');
+    expect(formatSimilarity(98)).toBe('Extremely Similar');
+    expect(formatSimilarity(95)).toBe('Extremely Similar');
+  });
+
+  test('formats medium scores correctly', () => {
+    expect(formatSimilarity(90)).toBe('Highly Similar');
+    expect(formatSimilarity(80)).toBe('Very Similar');
+    expect(formatSimilarity(70)).toBe('Similar');
+    expect(formatSimilarity(60)).toBe('Moderately Similar');
+    expect(formatSimilarity(50)).toBe('Somewhat Similar');
+  });
+
+  test('formats low scores correctly', () => {
+    expect(formatSimilarity(40)).toBe('Distantly Related');
+    expect(formatSimilarity(30)).toBe('Weakly Related');
+    expect(formatSimilarity(20)).toBe('Very Distant');
+    expect(formatSimilarity(10)).toBe('Unrelated');
+    expect(formatSimilarity(0)).toBe('Unrelated');
+  });
+
+  test('handles boundary values', () => {
+    expect(formatSimilarity(99.5)).toBe('Nearly Identical');
+    expect(formatSimilarity(89.9)).toBe('Very Similar');
+  });
+});
+
+describe('getSimilarityColor', () => {
+  test('returns green for high similarity', () => {
+    expect(getSimilarityColor(95)).toBe('#22c55e');
+    expect(getSimilarityColor(90)).toBe('#22c55e');
+  });
+
+  test('returns lime for good similarity', () => {
+    expect(getSimilarityColor(80)).toBe('#84cc16');
+    expect(getSimilarityColor(70)).toBe('#84cc16');
+  });
+
+  test('returns yellow for moderate similarity', () => {
+    expect(getSimilarityColor(60)).toBe('#eab308');
+    expect(getSimilarityColor(50)).toBe('#eab308');
+  });
+
+  test('returns orange for low similarity', () => {
+    expect(getSimilarityColor(40)).toBe('#f97316');
+    expect(getSimilarityColor(30)).toBe('#f97316');
+  });
+
+  test('returns red for very low similarity', () => {
+    expect(getSimilarityColor(20)).toBe('#ef4444');
+    expect(getSimilarityColor(10)).toBe('#ef4444');
+    expect(getSimilarityColor(0)).toBe('#ef4444');
+  });
+});
+
+describe('createSimilarityBar', () => {
+  test('creates correct bar for 100%', () => {
+    const bar = createSimilarityBar(100, 10);
+    expect(bar).toBe('██████████');
+  });
+
+  test('creates correct bar for 0%', () => {
+    const bar = createSimilarityBar(0, 10);
+    expect(bar).toBe('░░░░░░░░░░');
+  });
+
+  test('creates correct bar for 50%', () => {
+    const bar = createSimilarityBar(50, 10);
+    expect(bar).toBe('█████░░░░░');
+  });
+
+  test('uses custom width', () => {
+    const bar = createSimilarityBar(50, 20);
+    expect(bar.length).toBe(20);
+  });
+
+  test('uses custom fill and empty characters', () => {
+    const bar = createSimilarityBar(50, 10, '#', '-');
+    expect(bar).toBe('#####-----');
+  });
+
+  test('handles default width', () => {
+    const bar = createSimilarityBar(50);
+    expect(bar.length).toBe(20); // default width
+  });
+});
