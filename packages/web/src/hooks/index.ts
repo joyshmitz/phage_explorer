@@ -51,3 +51,19 @@ export {
   easings,
   type AnimatedNumberOptions,
 } from './useAnimatedNumber';
+export {
+  useContextMenu,
+  type ContextMenuState,
+  type UseContextMenuOptions,
+  type UseContextMenuResult,
+} from './useContextMenu';
+export {
+  useScrollRestoration,
+  type UseScrollRestorationOptions,
+} from './useScrollRestoration';
+export {
+  useLoadingChoreography,
+  type ChoreographyPhase,
+  type UseLoadingChoreographyOptions,
+  type UseLoadingChoreographyResult,
+} from './useLoadingChoreography';

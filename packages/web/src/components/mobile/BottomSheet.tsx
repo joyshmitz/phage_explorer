@@ -239,20 +239,26 @@ export function BottomSheet({
         }
       }
 
-      // Otherwise, find nearest snap point based on position
+      // Progressive dismiss: require 65% travel toward closed to dismiss,
+      // making it harder to accidentally dismiss while allowing intentional swipes.
       const currentPercent = currentY;
       const halfY = getTranslatePercentForSnapPoint('half');
       const fullY = getTranslatePercentForSnapPoint('full');
+      const closedY = 100;
 
-      // Distance to each snap point
-      const distToClosed = Math.abs(currentPercent - 100);
-      const distToHalf = Math.abs(currentPercent - halfY);
-      const distToFull = Math.abs(currentPercent - fullY);
+      // Range from current snap to closed
+      const fromY = snapPoint === 'full' ? fullY : halfY;
+      const range = closedY - fromY;
+      const progress = range > 0 ? (currentPercent - fromY) / range : 0;
 
-      // Find minimum
-      if (distToClosed <= distToHalf && distToClosed <= distToFull) {
+      // Need 65% progress toward closed to actually dismiss
+      if (progress >= 0.65) {
         return 'closed';
       }
+
+      // Otherwise snap to nearest non-closed point
+      const distToHalf = Math.abs(currentPercent - halfY);
+      const distToFull = Math.abs(currentPercent - fullY);
       if (distToFull <= distToHalf) {
         return 'full';
       }
@@ -307,13 +313,13 @@ export function BottomSheet({
       const maxY = 100;
 
       if (newY < minY) {
-        // Rubberband at top
+        // Tighter rubberband at top for premium feel
         const overshoot = minY - newY;
-        newY = minY - overshoot * 0.2;
+        newY = minY - overshoot * 0.12;
       } else if (newY > maxY) {
         // Rubberband at bottom
         const overshoot = newY - maxY;
-        newY = maxY + overshoot * 0.2;
+        newY = maxY + overshoot * 0.12;
       }
 
       if (active) {
@@ -325,12 +331,25 @@ export function BottomSheet({
         const progress = Math.max(0, Math.min(1, visibleViewportPercent / getSnapHeight('half')));
         backdropOpacity.set(progress * 0.5);
 
-        // Haptic feedback when crossing thresholds
+        // Haptic feedback when crossing snap thresholds
         const halfThreshold = getTranslatePercentForSnapPoint('half');
         const wasAboveHalf = (memo ?? initialY) < halfThreshold;
         const isAboveHalf = newY < halfThreshold;
         if (wasAboveHalf !== isAboveHalf) {
           haptics.selection();
+        }
+
+        // Additional haptic ticks at 25% and 75% drag progress
+        const fullY = getTranslatePercentForSnapPoint('full');
+        const range = 100 - fullY;
+        if (range > 0) {
+          const progress = (newY - fullY) / range;
+          const prevProgress = ((memo ?? initialY) - fullY) / range;
+          const crossed25 = (prevProgress < 0.25) !== (progress < 0.25);
+          const crossed75 = (prevProgress < 0.75) !== (progress < 0.75);
+          if (crossed25 || crossed75) {
+            haptics.light();
+          }
         }
       }
 
