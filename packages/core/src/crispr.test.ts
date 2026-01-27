@@ -12,7 +12,6 @@ import type { GeneInfo } from './types';
 // Test sequences containing known mock spacers (TGACGT, AACCGG, etc.)
 const SEQ_WITH_SPACERS = 'ATGCATGCTGACGTATGCATGCAACCGGATGCATGC';
 const SEQ_WITHOUT_SPACERS = 'ATGCATGCATGCATGCATGCATGCATGCATGCATGC';
-const SEQ_WITH_PAM = 'ATGCTGACGTNGGAAAAAAA'; // NGG PAM after spacer
 
 let geneId = 0;
 const makeGene = (

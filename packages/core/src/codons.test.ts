@@ -55,7 +55,7 @@ describe('AMINO_ACIDS', () => {
       expect(info).toHaveProperty('threeCode');
       expect(info).toHaveProperty('name');
       expect(info).toHaveProperty('property');
-      expect(info.letter).toBe(letter);
+      expect(info.letter).toBe(letter as typeof info.letter);
     }
   });
 
