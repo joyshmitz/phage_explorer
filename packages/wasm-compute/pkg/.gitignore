@@ -1,1 +1,10 @@
 *
+!.gitignore
+!package.json
+!wasm_compute.d.ts
+!wasm_compute.js
+!wasm_compute_bg.js
+!wasm_compute_bg.wasm
+!wasm_compute_bg.wasm.d.ts
+!snippets/
+!snippets/**

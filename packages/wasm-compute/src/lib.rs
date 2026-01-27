@@ -5100,6 +5100,278 @@ impl SequenceHandle {
     }
 }
 
+// ============================================================================
+// PDB Parser - Minimal prototype for structure parsing
+// ============================================================================
+
+/// Result of PDB parsing containing atom data.
+///
+/// Returns flat arrays suitable for direct use with detect_bonds_spatial.
+/// This parser is intentionally minimal (no external crates) to keep WASM size small.
+#[wasm_bindgen]
+pub struct PDBParseResult {
+    /// Flat positions array [x0, y0, z0, x1, y1, z1, ...]
+    positions: Vec<f32>,
+    /// Element symbols as single chars "CCCCNNO..."
+    elements: String,
+    /// Atom names (4 chars each, space-padded) "CA  CB  N   O   ..."
+    atom_names: String,
+    /// Chain IDs as single chars "AAABBBB..."
+    chain_ids: String,
+    /// Residue sequence numbers
+    res_seqs: Vec<i32>,
+    /// Residue names (3 chars each) "ALAGLYVAL..."
+    res_names: String,
+    /// Number of atoms parsed
+    atom_count: usize,
+    /// Parse errors or warnings (empty if clean)
+    error: String,
+}
+
+#[wasm_bindgen]
+impl PDBParseResult {
+    #[wasm_bindgen(getter)]
+    pub fn positions(&self) -> js_sys::Float32Array {
+        let arr = js_sys::Float32Array::new_with_length(self.positions.len() as u32);
+        arr.copy_from(&self.positions);
+        arr
+    }
+
+    #[wasm_bindgen(getter)]
+    pub fn elements(&self) -> String {
+        self.elements.clone()
+    }
+
+    #[wasm_bindgen(getter)]
+    pub fn atom_names(&self) -> String {
+        self.atom_names.clone()
+    }
+
+    #[wasm_bindgen(getter)]
+    pub fn chain_ids(&self) -> String {
+        self.chain_ids.clone()
+    }
+
+    #[wasm_bindgen(getter)]
+    pub fn res_seqs(&self) -> js_sys::Int32Array {
+        let arr = js_sys::Int32Array::new_with_length(self.res_seqs.len() as u32);
+        arr.copy_from(&self.res_seqs);
+        arr
+    }
+
+    #[wasm_bindgen(getter)]
+    pub fn res_names(&self) -> String {
+        self.res_names.clone()
+    }
+
+    #[wasm_bindgen(getter)]
+    pub fn atom_count(&self) -> usize {
+        self.atom_count
+    }
+
+    #[wasm_bindgen(getter)]
+    pub fn error(&self) -> String {
+        self.error.clone()
+    }
+}
+
+/// Parse a PDB file (string content) into atom data.
+///
+/// This is a minimal parser optimized for speed and small WASM size.
+/// It extracts only the fields needed for 3D structure visualization:
+/// - Coordinates (x, y, z)
+/// - Element symbol
+/// - Atom name
+/// - Chain ID
+/// - Residue sequence number
+/// - Residue name
+///
+/// # Arguments
+/// * `pdb_content` - Raw PDB file content as string
+///
+/// # Returns
+/// PDBParseResult with flat arrays ready for bond detection and rendering.
+///
+/// # PDB Format Reference (fixed columns):
+/// - Columns 1-6: Record type ("ATOM  " or "HETATM")
+/// - Columns 13-16: Atom name
+/// - Column 18-20: Residue name
+/// - Column 22: Chain ID
+/// - Columns 23-26: Residue sequence number
+/// - Columns 31-38: X coordinate (Angstroms)
+/// - Columns 39-46: Y coordinate
+/// - Columns 47-54: Z coordinate
+/// - Columns 77-78: Element symbol (right-justified)
+#[wasm_bindgen]
+pub fn parse_pdb(pdb_content: &str) -> PDBParseResult {
+    let mut positions: Vec<f32> = Vec::new();
+    let mut elements = String::new();
+    let mut atom_names = String::new();
+    let mut chain_ids = String::new();
+    let mut res_seqs: Vec<i32> = Vec::new();
+    let mut res_names = String::new();
+    let error = String::new();
+
+    for line in pdb_content.lines() {
+        let bytes = line.as_bytes();
+
+        // Check for ATOM or HETATM records
+        if bytes.len() < 54 {
+            continue;
+        }
+
+        let record_type = if bytes.len() >= 6 { &line[0..6] } else { continue };
+        if record_type != "ATOM  " && record_type != "HETATM" {
+            continue;
+        }
+
+        // Parse coordinates (columns 31-38, 39-46, 47-54, 1-indexed, 0-indexed: 30-38, 38-46, 46-54)
+        let x = parse_float(&line, 30, 38);
+        let y = parse_float(&line, 38, 46);
+        let z = parse_float(&line, 46, 54);
+
+        // Skip atoms with invalid coordinates
+        let (x, y, z) = match (x, y, z) {
+            (Some(x), Some(y), Some(z)) => (x, y, z),
+            _ => continue,
+        };
+
+        positions.push(x);
+        positions.push(y);
+        positions.push(z);
+
+        // Atom name (columns 13-16, 0-indexed: 12-16)
+        let atom_name = if bytes.len() >= 16 {
+            &line[12..16]
+        } else {
+            "    "
+        };
+        atom_names.push_str(atom_name);
+
+        // Residue name (columns 18-20, 0-indexed: 17-20)
+        let res_name = if bytes.len() >= 20 {
+            &line[17..20]
+        } else {
+            "   "
+        };
+        res_names.push_str(res_name);
+
+        // Chain ID (column 22, 0-indexed: 21)
+        let chain_id = if bytes.len() >= 22 {
+            bytes[21] as char
+        } else {
+            ' '
+        };
+        chain_ids.push(chain_id);
+
+        // Residue sequence number (columns 23-26, 0-indexed: 22-26)
+        let res_seq = if bytes.len() >= 26 {
+            line[22..26].trim().parse::<i32>().unwrap_or(0)
+        } else {
+            0
+        };
+        res_seqs.push(res_seq);
+
+        // Element symbol (columns 77-78, 0-indexed: 76-78)
+        // If not available, derive from atom name
+        let element = if bytes.len() >= 78 {
+            let elem_str = line[76..78].trim();
+            if elem_str.is_empty() {
+                derive_element_from_atom_name(atom_name)
+            } else {
+                elem_str.chars().next().unwrap_or('C')
+            }
+        } else {
+            derive_element_from_atom_name(atom_name)
+        };
+        elements.push(element);
+    }
+
+    let atom_count = elements.len();
+
+    PDBParseResult {
+        positions,
+        elements,
+        atom_names,
+        chain_ids,
+        res_seqs,
+        res_names,
+        atom_count,
+        error,
+    }
+}
+
+/// Helper: parse a float from a fixed-width PDB column
+fn parse_float(line: &str, start: usize, end: usize) -> Option<f32> {
+    if line.len() < end {
+        return None;
+    }
+    line[start..end].trim().parse::<f32>().ok()
+}
+
+/// Helper: derive element from atom name (fallback when element column missing)
+fn derive_element_from_atom_name(atom_name: &str) -> char {
+    let name = atom_name.trim();
+    if name.is_empty() {
+        return 'C';
+    }
+
+    // First non-digit character is usually the element
+    for c in name.chars() {
+        match c {
+            'C' | 'N' | 'O' | 'S' | 'P' | 'H' | 'F' => return c,
+            _ => continue,
+        }
+    }
+
+    // Default to carbon if we can't determine
+    'C'
+}
+
+#[cfg(test)]
+mod pdb_parser_tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_simple_atom() {
+        let pdb = "ATOM      1  CA  ALA A   1       1.000   2.000   3.000  1.00  0.00           C";
+        let result = parse_pdb(pdb);
+
+        assert_eq!(result.atom_count, 1);
+        assert_eq!(result.positions.len(), 3);
+        assert!((result.positions[0] - 1.0).abs() < 0.001);
+        assert!((result.positions[1] - 2.0).abs() < 0.001);
+        assert!((result.positions[2] - 3.0).abs() < 0.001);
+        assert_eq!(result.elements, "C");
+        assert_eq!(result.chain_ids, "A");
+    }
+
+    #[test]
+    fn test_parse_hetatm() {
+        let pdb = "HETATM    1  O   HOH A   1       0.000   0.000   0.000  1.00  0.00           O";
+        let result = parse_pdb(pdb);
+
+        assert_eq!(result.atom_count, 1);
+        assert_eq!(result.elements, "O");
+    }
+
+    #[test]
+    fn test_skip_invalid_lines() {
+        let pdb = "HEADER some header\nATOM      1  CA  ALA A   1       1.000   2.000   3.000  1.00  0.00           C\nREMARK 100 some remark";
+        let result = parse_pdb(pdb);
+
+        assert_eq!(result.atom_count, 1);
+    }
+
+    #[test]
+    fn test_element_derivation() {
+        assert_eq!(derive_element_from_atom_name(" CA "), 'C');
+        assert_eq!(derive_element_from_atom_name(" N  "), 'N');
+        assert_eq!(derive_element_from_atom_name(" O  "), 'O');
+        assert_eq!(derive_element_from_atom_name("1HG2"), 'H');
+    }
+}
+
 #[cfg(test)]
 mod sequence_handle_tests {
     use super::*;

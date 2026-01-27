@@ -965,4 +965,65 @@ declare module '@phage/wasm-compute' {
      */
     dotplot_self(bins: number, window: number): DotPlotBuffers;
   }
+
+  // ============================================================================
+  // PDB Parser - Minimal prototype for structure parsing
+  // ============================================================================
+
+  /**
+   * Result of PDB parsing containing atom data.
+   *
+   * Returns flat arrays suitable for direct use with detect_bonds_spatial.
+   *
+   * IMPORTANT: Must call `.free()` when done to release WASM memory.
+   */
+  export class PDBParseResult {
+    free(): void;
+    /** Flat positions array [x0, y0, z0, x1, y1, z1, ...] */
+    readonly positions: Float32Array;
+    /** Element symbols as single chars "CCCCNNO..." */
+    readonly elements: string;
+    /** Atom names (4 chars each, space-padded) "CA  CB  N   O   ..." */
+    readonly atom_names: string;
+    /** Chain IDs as single chars "AAABBBB..." */
+    readonly chain_ids: string;
+    /** Residue sequence numbers */
+    readonly res_seqs: Int32Array;
+    /** Residue names (3 chars each) "ALAGLYVAL..." */
+    readonly res_names: string;
+    /** Number of atoms parsed */
+    readonly atom_count: number;
+    /** Parse errors or warnings (empty if clean) */
+    readonly error: string;
+  }
+
+  /**
+   * Parse a PDB file (string content) into atom data.
+   *
+   * This is a minimal parser optimized for speed and small WASM size.
+   * It extracts only the fields needed for 3D structure visualization:
+   * - Coordinates (x, y, z)
+   * - Element symbol
+   * - Atom name
+   * - Chain ID
+   * - Residue sequence number
+   * - Residue name
+   *
+   * @param pdb_content - Raw PDB file content as string
+   * @returns PDBParseResult with flat arrays ready for bond detection and rendering.
+   *
+   * @example
+   * ```ts
+   * const pdbContent = await fetch(pdbUrl).then(r => r.text());
+   * const result = wasm.parse_pdb(pdbContent);
+   * try {
+   *   const positions = result.positions; // Float32Array
+   *   const elements = result.elements;   // "CCCCNNO..."
+   *   // Ready for detect_bonds_spatial(positions, elements)
+   * } finally {
+   *   result.free();
+   * }
+   * ```
+   */
+  export function parse_pdb(pdb_content: string): PDBParseResult;
 }

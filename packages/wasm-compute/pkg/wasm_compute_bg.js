@@ -19,6 +19,11 @@ function getArrayF64FromWasm0(ptr, len) {
     return getFloat64ArrayMemory0().subarray(ptr / 8, ptr / 8 + len);
 }
 
+function getArrayI32FromWasm0(ptr, len) {
+    ptr = ptr >>> 0;
+    return getInt32ArrayMemory0().subarray(ptr / 4, ptr / 4 + len);
+}
+
 function getArrayU32FromWasm0(ptr, len) {
     ptr = ptr >>> 0;
     return getUint32ArrayMemory0().subarray(ptr / 4, ptr / 4 + len);
@@ -51,6 +56,14 @@ function getFloat64ArrayMemory0() {
         cachedFloat64ArrayMemory0 = new Float64Array(wasm.memory.buffer);
     }
     return cachedFloat64ArrayMemory0;
+}
+
+let cachedInt32ArrayMemory0 = null;
+function getInt32ArrayMemory0() {
+    if (cachedInt32ArrayMemory0 === null || cachedInt32ArrayMemory0.byteLength === 0) {
+        cachedInt32ArrayMemory0 = new Int32Array(wasm.memory.buffer);
+    }
+    return cachedInt32ArrayMemory0;
 }
 
 function getStringFromWasm0(ptr, len) {
@@ -188,6 +201,10 @@ const DotPlotBuffersFinalization = (typeof FinalizationRegistry === 'undefined')
     ? { register: () => {}, unregister: () => {} }
     : new FinalizationRegistry(ptr => wasm.__wbg_dotplotbuffers_free(ptr >>> 0, 1));
 
+const FunctionalGroupResultFinalization = (typeof FinalizationRegistry === 'undefined')
+    ? { register: () => {}, unregister: () => {} }
+    : new FinalizationRegistry(ptr => wasm.__wbg_functionalgroupresult_free(ptr >>> 0, 1));
+
 const GridResultFinalization = (typeof FinalizationRegistry === 'undefined')
     ? { register: () => {}, unregister: () => {} }
     : new FinalizationRegistry(ptr => wasm.__wbg_gridresult_free(ptr >>> 0, 1));
@@ -223,6 +240,10 @@ const PCAResultFinalization = (typeof FinalizationRegistry === 'undefined')
 const PCAResultF32Finalization = (typeof FinalizationRegistry === 'undefined')
     ? { register: () => {}, unregister: () => {} }
     : new FinalizationRegistry(ptr => wasm.__wbg_pcaresultf32_free(ptr >>> 0, 1));
+
+const PDBParseResultFinalization = (typeof FinalizationRegistry === 'undefined')
+    ? { register: () => {}, unregister: () => {} }
+    : new FinalizationRegistry(ptr => wasm.__wbg_pdbparseresult_free(ptr >>> 0, 1));
 
 const RepeatResultFinalization = (typeof FinalizationRegistry === 'undefined')
     ? { register: () => {}, unregister: () => {} }
@@ -520,6 +541,95 @@ export class DotPlotBuffers {
     }
 }
 if (Symbol.dispose) DotPlotBuffers.prototype[Symbol.dispose] = DotPlotBuffers.prototype.free;
+
+/**
+ * Result of functional group detection.
+ * Contains flat arrays of atom indices for each functional group type.
+ */
+export class FunctionalGroupResult {
+    static __wrap(ptr) {
+        ptr = ptr >>> 0;
+        const obj = Object.create(FunctionalGroupResult.prototype);
+        obj.__wbg_ptr = ptr;
+        FunctionalGroupResultFinalization.register(obj, obj.__wbg_ptr, obj);
+        return obj;
+    }
+    __destroy_into_raw() {
+        const ptr = this.__wbg_ptr;
+        this.__wbg_ptr = 0;
+        FunctionalGroupResultFinalization.unregister(this);
+        return ptr;
+    }
+    free() {
+        const ptr = this.__destroy_into_raw();
+        wasm.__wbg_functionalgroupresult_free(ptr, 0);
+    }
+    /**
+     * Get sizes of each aromatic ring.
+     * @returns {Uint32Array}
+     */
+    get ring_sizes() {
+        const ret = wasm.functionalgroupresult_ring_sizes(this.__wbg_ptr);
+        var v1 = getArrayU32FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
+        return v1;
+    }
+    /**
+     * Number of aromatic rings.
+     * @returns {number}
+     */
+    get aromatic_count() {
+        const ret = wasm.functionalgroupresult_aromatic_count(this.__wbg_ptr);
+        return ret >>> 0;
+    }
+    /**
+     * Get phosphate group data.
+     * @returns {Uint32Array}
+     */
+    get phosphate_data() {
+        const ret = wasm.functionalgroupresult_phosphate_data(this.__wbg_ptr);
+        var v1 = getArrayU32FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
+        return v1;
+    }
+    /**
+     * Number of disulfide bonds.
+     * @returns {number}
+     */
+    get disulfide_count() {
+        const ret = wasm.functionalgroupresult_disulfide_count(this.__wbg_ptr);
+        return ret >>> 0;
+    }
+    /**
+     * Get disulfide bond pairs as flat array [s1, s2, s1, s2, ...].
+     * @returns {Uint32Array}
+     */
+    get disulfide_pairs() {
+        const ret = wasm.functionalgroupresult_disulfide_pairs(this.__wbg_ptr);
+        var v1 = getArrayU32FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
+        return v1;
+    }
+    /**
+     * Number of phosphate groups.
+     * @returns {number}
+     */
+    get phosphate_count() {
+        const ret = wasm.functionalgroupresult_phosphate_count(this.__wbg_ptr);
+        return ret >>> 0;
+    }
+    /**
+     * Get aromatic ring atom indices as flat array.
+     * @returns {Uint32Array}
+     */
+    get aromatic_indices() {
+        const ret = wasm.functionalgroupresult_aromatic_indices(this.__wbg_ptr);
+        var v1 = getArrayU32FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
+        return v1;
+    }
+}
+if (Symbol.dispose) FunctionalGroupResult.prototype[Symbol.dispose] = FunctionalGroupResult.prototype.free;
 
 /**
  * Result of grid building for sequence viewport
@@ -934,7 +1044,7 @@ export class MyersDiffResult {
      * @returns {number}
      */
     get insertions() {
-        const ret = wasm.myersdiffresult_insertions(this.__wbg_ptr);
+        const ret = wasm.functionalgroupresult_aromatic_count(this.__wbg_ptr);
         return ret >>> 0;
     }
     /**
@@ -1021,7 +1131,7 @@ export class MyersDiffResult {
      * @returns {number}
      */
     get deletions() {
-        const ret = wasm.myersdiffresult_deletions(this.__wbg_ptr);
+        const ret = wasm.functionalgroupresult_disulfide_count(this.__wbg_ptr);
         return ret >>> 0;
     }
     /**
@@ -1167,6 +1277,129 @@ export class PCAResultF32 {
     }
 }
 if (Symbol.dispose) PCAResultF32.prototype[Symbol.dispose] = PCAResultF32.prototype.free;
+
+/**
+ * Result of PDB parsing containing atom data.
+ *
+ * Returns flat arrays suitable for direct use with detect_bonds_spatial.
+ * This parser is intentionally minimal (no external crates) to keep WASM size small.
+ */
+export class PDBParseResult {
+    static __wrap(ptr) {
+        ptr = ptr >>> 0;
+        const obj = Object.create(PDBParseResult.prototype);
+        obj.__wbg_ptr = ptr;
+        PDBParseResultFinalization.register(obj, obj.__wbg_ptr, obj);
+        return obj;
+    }
+    __destroy_into_raw() {
+        const ptr = this.__wbg_ptr;
+        this.__wbg_ptr = 0;
+        PDBParseResultFinalization.unregister(this);
+        return ptr;
+    }
+    free() {
+        const ptr = this.__destroy_into_raw();
+        wasm.__wbg_pdbparseresult_free(ptr, 0);
+    }
+    /**
+     * @returns {number}
+     */
+    get atom_count() {
+        const ret = wasm.pdbparseresult_atom_count(this.__wbg_ptr);
+        return ret >>> 0;
+    }
+    /**
+     * @returns {string}
+     */
+    get atom_names() {
+        let deferred1_0;
+        let deferred1_1;
+        try {
+            const ret = wasm.pdbparseresult_atom_names(this.__wbg_ptr);
+            deferred1_0 = ret[0];
+            deferred1_1 = ret[1];
+            return getStringFromWasm0(ret[0], ret[1]);
+        } finally {
+            wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
+        }
+    }
+    /**
+     * @returns {string}
+     */
+    get error() {
+        let deferred1_0;
+        let deferred1_1;
+        try {
+            const ret = wasm.pdbparseresult_error(this.__wbg_ptr);
+            deferred1_0 = ret[0];
+            deferred1_1 = ret[1];
+            return getStringFromWasm0(ret[0], ret[1]);
+        } finally {
+            wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
+        }
+    }
+    /**
+     * @returns {string}
+     */
+    get elements() {
+        let deferred1_0;
+        let deferred1_1;
+        try {
+            const ret = wasm.pdbparseresult_elements(this.__wbg_ptr);
+            deferred1_0 = ret[0];
+            deferred1_1 = ret[1];
+            return getStringFromWasm0(ret[0], ret[1]);
+        } finally {
+            wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
+        }
+    }
+    /**
+     * @returns {Int32Array}
+     */
+    get res_seqs() {
+        const ret = wasm.pdbparseresult_res_seqs(this.__wbg_ptr);
+        return ret;
+    }
+    /**
+     * @returns {string}
+     */
+    get chain_ids() {
+        let deferred1_0;
+        let deferred1_1;
+        try {
+            const ret = wasm.pdbparseresult_chain_ids(this.__wbg_ptr);
+            deferred1_0 = ret[0];
+            deferred1_1 = ret[1];
+            return getStringFromWasm0(ret[0], ret[1]);
+        } finally {
+            wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
+        }
+    }
+    /**
+     * @returns {Float32Array}
+     */
+    get positions() {
+        const ret = wasm.pdbparseresult_positions(this.__wbg_ptr);
+        return ret;
+    }
+    /**
+     * @returns {string}
+     */
+    get res_names() {
+        let deferred1_0;
+        let deferred1_1;
+        try {
+            const ret = wasm.pdbparseresult_res_names(this.__wbg_ptr);
+            deferred1_0 = ret[0];
+            deferred1_1 = ret[1];
+            return getStringFromWasm0(ret[0], ret[1]);
+        } finally {
+            wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
+        }
+    }
+}
+if (Symbol.dispose) PDBParseResult.prototype[Symbol.dispose] = PDBParseResult.prototype.free;
 
 /**
  * Result of repeat detection
@@ -1919,6 +2152,35 @@ export function detect_bonds_spatial(positions, elements) {
 }
 
 /**
+ * Detect functional groups (aromatic rings, disulfides, phosphates) using WASM.
+ *
+ * This replaces the O(N²) JavaScript implementation with an optimized Rust version.
+ * The adjacency list is built once and reused for all detection algorithms.
+ *
+ * # Arguments
+ * * `positions` - Flat array of atom positions [x0, y0, z0, x1, y1, z1, ...]
+ * * `elements` - String of element symbols (one char per atom: "CCCCNNO...")
+ * * `bonds` - Flat array of bond pairs [a0, b0, a1, b1, ...] from detect_bonds_spatial
+ *
+ * # Returns
+ * FunctionalGroupResult with typed arrays for each group type.
+ * @param {Float32Array} positions
+ * @param {string} elements
+ * @param {Uint32Array} bonds
+ * @returns {FunctionalGroupResult}
+ */
+export function detect_functional_groups(positions, elements, bonds) {
+    const ptr0 = passArrayF32ToWasm0(positions, wasm.__wbindgen_malloc);
+    const len0 = WASM_VECTOR_LEN;
+    const ptr1 = passStringToWasm0(elements, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len1 = WASM_VECTOR_LEN;
+    const ptr2 = passArray32ToWasm0(bonds, wasm.__wbindgen_malloc);
+    const len2 = WASM_VECTOR_LEN;
+    const ret = wasm.detect_functional_groups(ptr0, len0, ptr1, len1, ptr2, len2);
+    return FunctionalGroupResult.__wrap(ret);
+}
+
+/**
  * Detect palindromic (inverted repeat) sequences in DNA.
  *
  * A palindrome in DNA is a sequence that reads the same on the complementary
@@ -2408,6 +2670,44 @@ export function myers_diff_with_limit(seq_a, seq_b, max_d) {
 }
 
 /**
+ * Parse a PDB file (string content) into atom data.
+ *
+ * This is a minimal parser optimized for speed and small WASM size.
+ * It extracts only the fields needed for 3D structure visualization:
+ * - Coordinates (x, y, z)
+ * - Element symbol
+ * - Atom name
+ * - Chain ID
+ * - Residue sequence number
+ * - Residue name
+ *
+ * # Arguments
+ * * `pdb_content` - Raw PDB file content as string
+ *
+ * # Returns
+ * PDBParseResult with flat arrays ready for bond detection and rendering.
+ *
+ * # PDB Format Reference (fixed columns):
+ * - Columns 1-6: Record type ("ATOM  " or "HETATM")
+ * - Columns 13-16: Atom name
+ * - Column 18-20: Residue name
+ * - Column 22: Chain ID
+ * - Columns 23-26: Residue sequence number
+ * - Columns 31-38: X coordinate (Angstroms)
+ * - Columns 39-46: Y coordinate
+ * - Columns 47-54: Z coordinate
+ * - Columns 77-78: Element symbol (right-justified)
+ * @param {string} pdb_content
+ * @returns {PDBParseResult}
+ */
+export function parse_pdb(pdb_content) {
+    const ptr0 = passStringToWasm0(pdb_content, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len0 = WASM_VECTOR_LEN;
+    const ret = wasm.parse_pdb(ptr0, len0);
+    return PDBParseResult.__wrap(ret);
+}
+
+/**
  * Compute PCA using power iteration method.
  *
  * # Arguments
@@ -2677,8 +2977,18 @@ export function __wbg_length_89c3414ed7f0594d(arg0) {
     return ret;
 };
 
+export function __wbg_length_ab53989976907f11(arg0) {
+    const ret = arg0.length;
+    return ret;
+};
+
 export function __wbg_new_8a6f238a6ece86ea() {
     const ret = new Error();
+    return ret;
+};
+
+export function __wbg_new_with_length_1e8603a5c71d4e06(arg0) {
+    const ret = new Int32Array(arg0 >>> 0);
     return ret;
 };
 
@@ -2703,6 +3013,10 @@ export function __wbg_set_169e13b608078b7b(arg0, arg1, arg2) {
 
 export function __wbg_set_cb0e657d1901c8d8(arg0, arg1, arg2) {
     arg0.set(getArrayF32FromWasm0(arg1, arg2));
+};
+
+export function __wbg_set_e3b17dd3e024e6de(arg0, arg1, arg2) {
+    arg0.set(getArrayI32FromWasm0(arg1, arg2));
 };
 
 export function __wbg_set_e7cd108182596b7f(arg0, arg1, arg2) {
