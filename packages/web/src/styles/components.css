@@ -617,6 +617,17 @@ textarea:focus-visible,
   color: var(--color-text-dim);
 }
 
+/* Content crossfade on phage switch - keyed remount triggers animation */
+.detail-card--enter {
+  animation: content-reveal 400ms var(--ease-out, ease-out) forwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .detail-card--enter {
+    animation: none;
+  }
+}
+
 /* Mobile adjustments */
 @media (max-width: 640px) {
   .detail-card {
@@ -3374,6 +3385,32 @@ kbd:hover,
   }
 }
 
+/* Entrance animation for empty states */
+.empty-state--animate-in > * {
+  opacity: 0;
+  animation: slide-up var(--duration-normal, 300ms) var(--ease-out, ease-out) forwards;
+}
+
+.empty-state--animate-in > .empty-state__icon {
+  animation-delay: 100ms;
+}
+
+.empty-state--animate-in > .empty-state__title {
+  animation-delay: 180ms;
+}
+
+.empty-state--animate-in > .empty-state__description {
+  animation-delay: 260ms;
+}
+
+.empty-state--animate-in > .empty-state__content {
+  animation-delay: 300ms;
+}
+
+.empty-state--animate-in > .empty-state__actions {
+  animation-delay: 340ms;
+}
+
 @media (max-width: 640px) {
   .empty-state {
     padding: var(--space-6);
@@ -3401,6 +3438,40 @@ kbd:hover,
   .empty-state__actions .btn {
     width: 100%;
   }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .empty-state--animate-in > * {
+    animation: none;
+    opacity: 1;
+  }
+}
+
+/* =============================================================================
+   CURSOR VARIETY - Context-appropriate cursors for interactive surfaces
+   ============================================================================= */
+
+.three-container {
+  cursor: grab;
+}
+
+.three-container:active {
+  cursor: grabbing;
+}
+
+.gene-map-canvas,
+.gene-map-canvas canvas {
+  cursor: crosshair;
+}
+
+.zoomable-image,
+img[data-zoomable] {
+  cursor: zoom-in;
+}
+
+.zoomable-image--zoomed,
+img[data-zoomable].zoomed {
+  cursor: zoom-out;
 }
 
 /* =============================================================================

@@ -150,6 +150,12 @@ export function Overlay({
   const showScanlines = getEffectiveScanlines(scanlinesEnabled, { reducedMotion, coarsePointer, safeMode: fxSafeMode });
 
   const overlayIsOpen = isOpen(id);
+  // Exit animation state machine: when overlayIsOpen goes false, we briefly keep
+  // the component mounted with exit CSS classes before removing from DOM.
+  const [isExiting, setIsExiting] = useState(false);
+  const exitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const wasOpenRef = useRef(overlayIsOpen);
+
   // Track the *latest* open state so effect cleanups can distinguish between:
   // - overlay actually closing (restore focus)
   // - overlay swapping mounts (e.g. Suspense fallback -> loaded overlay) while still open
@@ -161,6 +167,24 @@ export function Overlay({
   // Use context-provided mobile detection for consistency
   const effectivePosition: OverlayPosition = isMobile && position === 'center' ? 'bottom' : position;
   const shouldUseBottomSheet = isMobile && effectivePosition === 'bottom';
+
+  useEffect(() => {
+    if (wasOpenRef.current && !overlayIsOpen && !shouldUseBottomSheet) {
+      setIsExiting(true);
+      const duration = reducedMotion ? 0 : 200;
+      exitTimerRef.current = setTimeout(() => {
+        setIsExiting(false);
+        exitTimerRef.current = null;
+      }, duration);
+    }
+    wasOpenRef.current = overlayIsOpen;
+    return () => {
+      if (exitTimerRef.current) {
+        clearTimeout(exitTimerRef.current);
+        exitTimerRef.current = null;
+      }
+    };
+  }, [overlayIsOpen, reducedMotion, shouldUseBottomSheet]);
   const overlayBorderRadius = shouldUseBottomSheet ? 'var(--overlay-border-radius-mobile)' : 'var(--overlay-border-radius)';
   const resolvedIcon = typeof icon === 'string' ? OVERLAY_HEADER_ICONS[id] ?? icon : icon;
 
@@ -279,10 +303,14 @@ export function Overlay({
     };
   }, [overlayIsOpen, handleClose, closeOnEscape]);
 
-  // Don't render if not open - AFTER all hooks
-  if (!overlayIsOpen) {
+  // Don't render if not open AND not exiting - AFTER all hooks
+  if (!overlayIsOpen && !isExiting) {
     return null;
   }
+
+  // Determine animation class: enter on open, exit on exiting
+  const backdropAnimClass = isExiting ? 'overlay-backdrop-exit' : 'overlay-backdrop-enter';
+  const panelAnimClass = isExiting ? 'overlay-panel-exit' : 'overlay-panel-enter';
 
   // Styles
   const backdropStyle: CSSProperties = {
@@ -308,7 +336,7 @@ export function Overlay({
           : 0,
     zIndex,
     cursor: showBackdrop && closeOnBackdrop && isBackdropHovered ? 'pointer' : 'default',
-    // Hover transition handled separately from entry animation
+    pointerEvents: isExiting ? 'none' : undefined,
   };
 
   const overlayStyle: CSSProperties = {
@@ -383,15 +411,15 @@ export function Overlay({
   return (
     <div
       style={backdropStyle}
-      className="overlay-backdrop-enter"
-      onClick={handleBackdropClick}
-      onMouseMove={handleBackdropMouseMove}
-      onMouseLeave={handleBackdropMouseLeave}
+      className={backdropAnimClass}
+      onClick={isExiting ? undefined : handleBackdropClick}
+      onMouseMove={isExiting ? undefined : handleBackdropMouseMove}
+      onMouseLeave={isExiting ? undefined : handleBackdropMouseLeave}
     >
       <div
         ref={overlayRef}
         style={overlayStyle}
-        className={`overlay overlay-${id} overlay-panel-enter ${className}`}
+        className={`overlay overlay-${id} ${panelAnimClass} ${className}`}
         tabIndex={-1}
         role="dialog"
         aria-modal="true"

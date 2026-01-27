@@ -3,5 +3,70 @@
    Complements mobile-overrides.css with landscape-specific adjustments
    ============================================================================= */
 
-/* Note: Primary landscape styles are in mobile-overrides.css
-   This file only contains additional fine-tuning if needed */
+/* Landscape + compact height: optimize layout for limited vertical space */
+@media (orientation: landscape) and (max-height: 500px) and (pointer: coarse) {
+  /* Move control deck to right edge as vertical strip */
+  .control-deck {
+    position: fixed;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    left: auto;
+    width: 48px;
+    height: 100%;
+    flex-direction: column;
+    justify-content: center;
+    padding: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px) env(safe-area-inset-bottom, 0px) 0;
+    border-top: none;
+    border-left: 1px solid var(--color-border-subtle);
+  }
+
+  /* Reduce app body right padding for control deck */
+  .app-body {
+    padding-right: calc(48px + env(safe-area-inset-right, 0px));
+    padding-bottom: 0;
+  }
+
+  /* Cap bottom sheet height in landscape */
+  .bottom-sheet__container {
+    max-height: 70dvh;
+  }
+
+  /* Optimize gene map canvas height for limited vertical space */
+  .gene-map-canvas {
+    max-height: 40dvh;
+  }
+
+  /* Compact header and footer */
+  .app-header {
+    padding-top: 0;
+    padding-bottom: 0;
+    min-height: 36px;
+  }
+
+  .app-footer {
+    padding-top: var(--space-1);
+    padding-bottom: var(--space-1);
+    min-height: 24px;
+    font-size: var(--text-2xs, 0.64rem);
+  }
+
+  /* Reduce detail card vertical spacing */
+  .detail-card {
+    padding: var(--space-3);
+    gap: var(--space-3);
+  }
+
+  /* Stack metrics horizontally with tighter spacing */
+  .metrics {
+    gap: var(--space-2);
+  }
+}
+
+/* Safety: ensure control deck is visible in all landscape orientations */
+@media (orientation: landscape) and (max-height: 500px) and (pointer: coarse) {
+  .control-deck .control-deck__btn {
+    min-width: 44px;
+    min-height: 44px;
+  }
+}

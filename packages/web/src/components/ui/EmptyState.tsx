@@ -31,6 +31,8 @@ export interface EmptyStateProps {
   size?: EmptyStateSize;
   /** Visual style variant */
   variant?: EmptyStateVariant;
+  /** Animate entrance with staggered children */
+  animate?: boolean;
   /** Additional className */
   className?: string;
   /** Children content (rendered below description) */
@@ -57,6 +59,7 @@ function getIconSize(size: EmptyStateSize): number {
 function getEmptyStateClasses(
   size: EmptyStateSize,
   variant: EmptyStateVariant,
+  animate?: boolean,
   className?: string
 ): string {
   const classes = ['empty-state'];
@@ -67,6 +70,10 @@ function getEmptyStateClasses(
 
   if (variant !== 'default') {
     classes.push(`empty-state--${variant}`);
+  }
+
+  if (animate) {
+    classes.push('empty-state--animate-in');
   }
 
   if (className) {
@@ -84,10 +91,11 @@ export function EmptyState({
   secondaryAction,
   size = 'default',
   variant = 'default',
+  animate,
   className,
   children,
 }: EmptyStateProps): React.ReactElement {
-  const containerClass = getEmptyStateClasses(size, variant, className);
+  const containerClass = getEmptyStateClasses(size, variant, animate, className);
   const iconSize = getIconSize(size);
 
   return (

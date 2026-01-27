@@ -18,6 +18,8 @@
 @import './styles/phage-picker.css';
 @import './styles/action-drawer.css';
 @import './styles/desktop-ui.css';
+@import './styles/toast.css';
+@import './styles/tooltip.css';
 
 /* =============================================================================
    APP SHELL - Full viewport layout with refined spacing

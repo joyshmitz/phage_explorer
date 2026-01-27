@@ -255,12 +255,31 @@ kbd {
 a {
   color: var(--color-primary, #00ffff);
   text-decoration: none;
-  transition: color 0.15s ease;
+  text-decoration-color: transparent;
+  text-underline-offset: 2px;
+  text-decoration-thickness: 1px;
+  transition:
+    color var(--duration-fast, 0.15s) ease,
+    text-decoration-color var(--duration-fast, 0.15s) ease;
 }
 
 a:hover {
   color: var(--color-accent, #ffff00);
   text-decoration: underline;
+  text-decoration-color: currentColor;
+  text-underline-offset: 2px;
+  text-decoration-thickness: 1px;
+}
+
+a:active {
+  opacity: 0.8;
+}
+
+/* Exclude button-like links from underline decoration */
+a[role="button"],
+a.btn {
+  text-decoration: none !important;
+  text-decoration-color: transparent !important;
 }
 
 /* Lists */
