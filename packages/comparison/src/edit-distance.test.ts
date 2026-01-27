@@ -1,7 +1,19 @@
 import { expect, test, describe } from "bun:test";
-import { levenshteinDistance } from "./edit-distance";
+import {
+  levenshteinDistance,
+  approximateLevenshtein,
+  levenshteinWithOperations,
+  normalizedLevenshtein,
+  levenshteinSimilarity,
+  hammingDistance,
+  percentIdentity,
+  longestCommonSubsequence,
+  lcsSimilarity,
+  analyzeEditDistance,
+  quickSimilarityEstimate,
+} from "./edit-distance";
 
-describe("Levenshtein Distance", () => {
+describe("levenshteinDistance", () => {
   test("calculates distance correctly", () => {
     expect(levenshteinDistance("kitten", "sitting").distance).toBe(3);
     expect(levenshteinDistance("flaw", "lawn").distance).toBe(2);
@@ -12,10 +24,368 @@ describe("Levenshtein Distance", () => {
   test("handles identical strings", () => {
     expect(levenshteinDistance("hello", "hello").distance).toBe(0);
   });
-  
+
   test("handles long strings (likely Rust path)", () => {
-      const a = "A".repeat(1000) + "C";
-      const b = "A".repeat(1000) + "G";
-      expect(levenshteinDistance(a, b).distance).toBe(1);
+    const a = "A".repeat(1000) + "C";
+    const b = "A".repeat(1000) + "G";
+    expect(levenshteinDistance(a, b).distance).toBe(1);
+  });
+
+  test("handles empty strings", () => {
+    expect(levenshteinDistance("", "").distance).toBe(0);
+  });
+
+  test("handles single character differences", () => {
+    expect(levenshteinDistance("a", "b").distance).toBe(1);
+    expect(levenshteinDistance("a", "").distance).toBe(1);
+    expect(levenshteinDistance("", "a").distance).toBe(1);
+  });
+
+  test("swaps shorter string for optimization", () => {
+    // Should produce same result regardless of order
+    const a = "short";
+    const b = "this is much longer";
+    expect(levenshteinDistance(a, b).distance).toBe(levenshteinDistance(b, a).distance);
+  });
+});
+
+describe("approximateLevenshtein", () => {
+  test("returns approximate result for long sequences", () => {
+    const a = "ACGT".repeat(5000);
+    const b = "ACGT".repeat(5000);
+    const result = approximateLevenshtein(a, b, 1000, 20);
+
+    expect(result.isApproximate).toBe(true);
+    expect(result.windowSize).toBe(1000);
+    expect(result.windowCount).toBeGreaterThan(0);
+  });
+
+  test("handles sequences with differences", () => {
+    const a = "ACGT".repeat(3000);
+    const b = "TGCA".repeat(3000);
+    const result = approximateLevenshtein(a, b, 1000, 10);
+
+    expect(result.isApproximate).toBe(true);
+    expect(result.distance).toBeGreaterThan(0);
+  });
+
+  test("handles length differences", () => {
+    const a = "A".repeat(5000);
+    const b = "A".repeat(6000);
+    const result = approximateLevenshtein(a, b, 1000, 10);
+
+    // Distance should include the length difference
+    expect(result.distance).toBeGreaterThanOrEqual(1000);
+  });
+
+  test("handles invalid windowSize", () => {
+    const a = "ACGT".repeat(1000);
+    const b = "ACGT".repeat(1000);
+    const result = approximateLevenshtein(a, b, 0, 10); // Invalid windowSize
+
+    // Should default to 1000
+    expect(result.windowSize).toBe(1000);
+  });
+
+  test("falls back to exact for short sequences", () => {
+    const a = "ACGT";
+    const b = "TGCA";
+    const result = approximateLevenshtein(a, b, 1000, 10);
+
+    // Short sequences trigger fallback
+    expect(result.windowCount).toBe(1);
+  });
+});
+
+describe("levenshteinWithOperations", () => {
+  test("counts operations correctly for simple cases", () => {
+    // "kitten" -> "sitting": 3 operations (s->k, e->i, +g)
+    const result = levenshteinWithOperations("kitten", "sitting");
+    expect(result.distance).toBe(3);
+    expect(result.insertions + result.deletions + result.substitutions).toBe(3);
+  });
+
+  test("handles pure insertions", () => {
+    const result = levenshteinWithOperations("", "abc");
+    expect(result.distance).toBe(3);
+    expect(result.insertions).toBe(3);
+    expect(result.deletions).toBe(0);
+    expect(result.substitutions).toBe(0);
+  });
+
+  test("handles pure deletions", () => {
+    const result = levenshteinWithOperations("abc", "");
+    expect(result.distance).toBe(3);
+    expect(result.deletions).toBe(3);
+    expect(result.insertions).toBe(0);
+    expect(result.substitutions).toBe(0);
+  });
+
+  test("handles pure substitutions", () => {
+    const result = levenshteinWithOperations("abc", "xyz");
+    expect(result.distance).toBe(3);
+    expect(result.substitutions).toBe(3);
+    expect(result.insertions).toBe(0);
+    expect(result.deletions).toBe(0);
+  });
+
+  test("handles identical strings", () => {
+    const result = levenshteinWithOperations("hello", "hello");
+    expect(result.distance).toBe(0);
+    expect(result.insertions).toBe(0);
+    expect(result.deletions).toBe(0);
+    expect(result.substitutions).toBe(0);
+  });
+
+  test("uses approximate method for long sequences", () => {
+    const a = "ACGT".repeat(2000);
+    const b = "TGCA".repeat(2000);
+    const result = levenshteinWithOperations(a, b, 1000);
+
+    expect(result.distance).toBeGreaterThan(0);
+    // Operations are estimated
+    expect(result.insertions + result.deletions + result.substitutions).toBeGreaterThanOrEqual(0);
+  });
+});
+
+describe("normalizedLevenshtein", () => {
+  test("returns 0 for identical strings", () => {
+    expect(normalizedLevenshtein("hello", "hello")).toBe(0);
+  });
+
+  test("returns 1 for completely different equal-length strings", () => {
+    expect(normalizedLevenshtein("abc", "xyz")).toBe(1);
+  });
+
+  test("handles empty strings", () => {
+    expect(normalizedLevenshtein("", "")).toBe(0);
+    expect(normalizedLevenshtein("abc", "")).toBe(1);
+    expect(normalizedLevenshtein("", "abc")).toBe(1);
+  });
+
+  test("returns value between 0 and 1", () => {
+    const result = normalizedLevenshtein("kitten", "sitting");
+    expect(result).toBeGreaterThanOrEqual(0);
+    expect(result).toBeLessThanOrEqual(1);
+  });
+
+  test("is symmetric", () => {
+    const a = "hello";
+    const b = "world";
+    expect(normalizedLevenshtein(a, b)).toBe(normalizedLevenshtein(b, a));
+  });
+});
+
+describe("levenshteinSimilarity", () => {
+  test("returns 1 for identical strings", () => {
+    expect(levenshteinSimilarity("hello", "hello")).toBe(1);
+  });
+
+  test("returns 0 for completely different equal-length strings", () => {
+    expect(levenshteinSimilarity("abc", "xyz")).toBe(0);
+  });
+
+  test("is inverse of normalizedLevenshtein", () => {
+    const a = "kitten";
+    const b = "sitting";
+    const normalized = normalizedLevenshtein(a, b);
+    const similarity = levenshteinSimilarity(a, b);
+    expect(similarity).toBeCloseTo(1 - normalized, 10);
+  });
+});
+
+describe("hammingDistance", () => {
+  test("counts character differences", () => {
+    expect(hammingDistance("karolin", "kathrin")).toBe(3);
+    expect(hammingDistance("1011101", "1001001")).toBe(2);
+  });
+
+  test("returns 0 for identical strings", () => {
+    expect(hammingDistance("hello", "hello")).toBe(0);
+  });
+
+  test("throws error for unequal length strings", () => {
+    expect(() => hammingDistance("abc", "abcd")).toThrow("Hamming distance requires equal-length strings");
+  });
+
+  test("handles empty strings", () => {
+    expect(hammingDistance("", "")).toBe(0);
+  });
+});
+
+describe("percentIdentity", () => {
+  test("returns 100 for identical strings", () => {
+    expect(percentIdentity("hello", "hello")).toBe(100);
+  });
+
+  test("returns 0 for completely different strings", () => {
+    expect(percentIdentity("abc", "xyz")).toBe(0);
+  });
+
+  test("handles different lengths", () => {
+    // "abc" vs "abcd": 3 matches out of 4 positions
+    const result = percentIdentity("abc", "abcd");
+    expect(result).toBe(75);
+  });
+
+  test("is case insensitive", () => {
+    expect(percentIdentity("ABC", "abc")).toBe(100);
+    expect(percentIdentity("Hello", "HELLO")).toBe(100);
+  });
+
+  test("handles empty strings", () => {
+    expect(percentIdentity("", "")).toBe(100);
+    expect(percentIdentity("abc", "")).toBe(0);
+    expect(percentIdentity("", "abc")).toBe(0);
+  });
+
+  test("penalizes length difference", () => {
+    // "ab" vs "abcd": 2 matches out of 4 max length = 50%
+    expect(percentIdentity("ab", "abcd")).toBe(50);
+  });
+});
+
+describe("longestCommonSubsequence", () => {
+  test("finds LCS for simple cases", () => {
+    expect(longestCommonSubsequence("ABCDGH", "AEDFHR")).toBe(3); // ADH
+    expect(longestCommonSubsequence("AGGTAB", "GXTXAYB")).toBe(4); // GTAB
+  });
+
+  test("returns 0 for no common characters", () => {
+    expect(longestCommonSubsequence("ABC", "XYZ")).toBe(0);
+  });
+
+  test("returns full length for identical strings", () => {
+    expect(longestCommonSubsequence("hello", "hello")).toBe(5);
+  });
+
+  test("handles empty strings", () => {
+    expect(longestCommonSubsequence("", "abc")).toBe(0);
+    expect(longestCommonSubsequence("abc", "")).toBe(0);
+    expect(longestCommonSubsequence("", "")).toBe(0);
+  });
+
+  test("handles single characters", () => {
+    expect(longestCommonSubsequence("A", "A")).toBe(1);
+    expect(longestCommonSubsequence("A", "B")).toBe(0);
+  });
+
+  test("uses approximation for long sequences", () => {
+    const a = "ACGT".repeat(3000);
+    const b = "ACGT".repeat(3000);
+    const result = longestCommonSubsequence(a, b, 1000);
+
+    // Should find common subsequence
+    expect(result).toBeGreaterThan(0);
+  });
+});
+
+describe("lcsSimilarity", () => {
+  test("returns 1 for identical strings", () => {
+    expect(lcsSimilarity("hello", "hello")).toBe(1);
+  });
+
+  test("returns 0 for no common characters", () => {
+    expect(lcsSimilarity("ABC", "XYZ")).toBe(0);
+  });
+
+  test("handles empty strings", () => {
+    expect(lcsSimilarity("", "")).toBe(1);
+  });
+
+  test("returns value between 0 and 1", () => {
+    const result = lcsSimilarity("ABCDGH", "AEDFHR");
+    expect(result).toBeGreaterThanOrEqual(0);
+    expect(result).toBeLessThanOrEqual(1);
+  });
+});
+
+describe("analyzeEditDistance", () => {
+  test("returns complete metrics structure", () => {
+    const result = analyzeEditDistance("kitten", "sitting");
+
+    expect(result).toHaveProperty("levenshteinDistance");
+    expect(result).toHaveProperty("normalizedLevenshtein");
+    expect(result).toHaveProperty("levenshteinSimilarity");
+    expect(result).toHaveProperty("insertions");
+    expect(result).toHaveProperty("deletions");
+    expect(result).toHaveProperty("substitutions");
+    expect(result).toHaveProperty("isApproximate");
+  });
+
+  test("calculates correct values for short sequences", () => {
+    const result = analyzeEditDistance("abc", "xyz");
+
+    expect(result.levenshteinDistance).toBe(3);
+    expect(result.normalizedLevenshtein).toBe(1);
+    expect(result.levenshteinSimilarity).toBe(0);
+    expect(result.isApproximate).toBe(false);
+  });
+
+  test("uses approximate method for long sequences", () => {
+    const a = "ACGT".repeat(3000);
+    const b = "TGCA".repeat(3000);
+    const result = analyzeEditDistance(a, b, { maxExactLength: 1000 });
+
+    expect(result.isApproximate).toBe(true);
+    expect(result.windowSize).toBeDefined();
+    expect(result.windowCount).toBeDefined();
+  });
+
+  test("handles identical sequences", () => {
+    const result = analyzeEditDistance("hello", "hello");
+
+    expect(result.levenshteinDistance).toBe(0);
+    expect(result.normalizedLevenshtein).toBe(0);
+    expect(result.levenshteinSimilarity).toBe(1);
+    expect(result.insertions).toBe(0);
+    expect(result.deletions).toBe(0);
+    expect(result.substitutions).toBe(0);
+  });
+
+  test("respects config options", () => {
+    const a = "ACGT".repeat(3000);
+    const b = "ACGT".repeat(3000);
+    const result = analyzeEditDistance(a, b, {
+      maxExactLength: 5000,
+      windowSize: 500,
+      windowCount: 5,
+    });
+
+    expect(result.isApproximate).toBe(true);
+  });
+});
+
+describe("quickSimilarityEstimate", () => {
+  test("returns 1 for identical strings", () => {
+    const result = quickSimilarityEstimate("hello", "hello");
+    expect(result).toBeCloseTo(1, 1);
+  });
+
+  test("returns low value for very different length strings", () => {
+    const result = quickSimilarityEstimate("a", "abcdefghij");
+    expect(result).toBeLessThan(0.5);
+  });
+
+  test("handles short strings with percentIdentity", () => {
+    const a = "abc";
+    const b = "abc";
+    const result = quickSimilarityEstimate(a, b, 1000, 10);
+    expect(result).toBe(1);
+  });
+
+  test("returns value between 0 and 1", () => {
+    const result = quickSimilarityEstimate("ACGTACGT", "TGCATGCA");
+    expect(result).toBeGreaterThanOrEqual(0);
+    expect(result).toBeLessThanOrEqual(1);
+  });
+
+  test("uses sampling for long sequences", () => {
+    const a = "ACGT".repeat(500);
+    const b = "ACGT".repeat(500);
+    const result = quickSimilarityEstimate(a, b, 100, 5);
+
+    // Similar sequences should have high similarity
+    expect(result).toBeGreaterThan(0.8);
   });
 });
