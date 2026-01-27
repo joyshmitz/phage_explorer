@@ -379,6 +379,8 @@ export function CGROverlay({ repository, currentPhage }: CGROverlayProps): React
             >
               <canvas
                 ref={canvasRef}
+                role="img"
+                aria-label="Chaos Game Representation showing nucleotide sequence patterns"
                 style={{ width: '100%', height: 'auto', aspectRatio: '1 / 1', display: 'block' }}
               />
               <div

@@ -156,7 +156,7 @@ export function SelectionPressureOverlay({ repository, currentPhage }: Selection
                 overflow: 'hidden',
                 height: '150px',
              }}>
-                <canvas ref={canvasRef} style={{ width: '100%', height: '100%', display: 'block' }} />
+                <canvas ref={canvasRef} role="img" aria-label="Selection pressure heatmap showing dN/dS ratios across genes" style={{ width: '100%', height: '100%', display: 'block' }} />
              </div>
              <div>
                  Global ω: <span style={{ fontWeight: 'bold', color: analysis.globalOmega > 1 ? colors.error : colors.success }}>

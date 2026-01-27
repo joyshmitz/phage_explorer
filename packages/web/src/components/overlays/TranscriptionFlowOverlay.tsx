@@ -264,6 +264,8 @@ export function TranscriptionFlowOverlay({
           }}>
             <canvas
               ref={canvasRef}
+              role="img"
+              aria-label="Transcription flow diagram showing gene expression patterns and regulatory connections"
               style={{
                 width: '100%',
                 height: '100%',

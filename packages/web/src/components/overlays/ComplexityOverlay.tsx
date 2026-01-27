@@ -320,6 +320,8 @@ export function ComplexityOverlay({
           }}>
             <canvas
               ref={canvasRef}
+              role="img"
+              aria-label="Sequence complexity graph showing Shannon entropy across genome position"
               style={{ width: '100%', height: '200px', display: 'block' }}
             />
           </div>

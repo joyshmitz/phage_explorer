@@ -297,6 +297,8 @@ export function GCSkewOverlay({
           }}>
             <canvas
               ref={canvasRef}
+              role="img"
+              aria-label="GC skew graph showing cumulative nucleotide bias across genome position"
               style={{
                 width: '100%',
                 height: '200px',

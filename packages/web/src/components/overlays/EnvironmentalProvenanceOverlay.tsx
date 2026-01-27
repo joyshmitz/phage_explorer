@@ -628,7 +628,7 @@ export function EnvironmentalProvenanceOverlay({
                   overflow: 'hidden',
                 }}
               >
-                <canvas ref={biomeCanvasRef} style={{ width: '100%', height: '100%', display: 'block' }} />
+                <canvas ref={biomeCanvasRef} role="img" aria-label="Biome distribution chart showing environmental source predictions" style={{ width: '100%', height: '100%', display: 'block' }} />
               </div>
             )}
 
@@ -641,7 +641,7 @@ export function EnvironmentalProvenanceOverlay({
                   overflow: 'hidden',
                 }}
               >
-                <canvas ref={geoCanvasRef} style={{ width: '100%', height: '100%', display: 'block' }} />
+                <canvas ref={geoCanvasRef} role="img" aria-label="Geographic distribution map showing sample locations" style={{ width: '100%', height: '100%', display: 'block' }} />
               </div>
             )}
 

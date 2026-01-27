@@ -322,6 +322,8 @@ export function KmerAnomalyOverlay({
           }}>
             <canvas
               ref={canvasRef}
+              role="img"
+              aria-label="K-mer anomaly graph showing unusual sequence patterns. Click to view details."
               onClick={handleCanvasClick}
               style={{ width: '100%', height: '120px', display: 'block', cursor: 'crosshair' }}
             />

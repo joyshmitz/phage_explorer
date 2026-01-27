@@ -389,6 +389,8 @@ export function HilbertOverlay({ repository, currentPhage }: HilbertOverlayProps
             >
               <canvas
                 ref={canvasRef}
+                role="img"
+                aria-label="Hilbert curve visualization showing genome sequence as a space-filling curve"
                 style={{ width: '100%', height: 'auto', aspectRatio: '1 / 1', display: 'block' }}
               />
               <div

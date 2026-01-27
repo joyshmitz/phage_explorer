@@ -264,6 +264,8 @@ export function BendabilityOverlay({
           <OverlaySection>
             <canvas
               ref={canvasRef}
+              role="img"
+              aria-label="DNA bendability graph showing flexibility profile across genome position"
               style={{ width: '100%', height: '150px', display: 'block' }}
             />
             <div
