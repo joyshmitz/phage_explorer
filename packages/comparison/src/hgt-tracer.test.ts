@@ -11,8 +11,6 @@ import type { GeneInfo } from '@phage-explorer/core';
 
 // Test sequences
 const UNIFORM_GC_SEQ = 'ATGCATGCATGCATGCATGCATGCATGCATGC'.repeat(100); // ~50% GC
-const _HIGH_GC_REGION = 'GCGCGCGCGCGCGCGCGCGCGCGCGCGCGCGC'; // ~100% GC (reserved for future tests)
-const _LOW_GC_REGION = 'ATATATAT'.repeat(50); // ~0% GC (reserved for future tests)
 
 // Create a sequence with a distinct GC island
 function createSequenceWithIsland(
