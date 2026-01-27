@@ -728,6 +728,8 @@ export function PhylodynamicsOverlay({
           >
             <canvas
               ref={treeCanvasRef}
+              role="img"
+              aria-label="UPGMA phylogenetic tree showing evolutionary relationships between phage sequences"
               style={{
                 width: '100%',
                 height: '100%',
@@ -736,6 +738,8 @@ export function PhylodynamicsOverlay({
             />
             <canvas
               ref={clockCanvasRef}
+              role="img"
+              aria-label="Root-to-tip regression plot for molecular clock analysis showing divergence over time"
               style={{
                 width: '100%',
                 height: '100%',
@@ -744,6 +748,8 @@ export function PhylodynamicsOverlay({
             />
             <canvas
               ref={skylineCanvasRef}
+              role="img"
+              aria-label="Coalescent skyline plot showing estimated effective population size over time"
               style={{
                 width: '100%',
                 height: '100%',

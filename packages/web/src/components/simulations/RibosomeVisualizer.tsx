@@ -244,6 +244,8 @@ export function RibosomeVisualizer({
       {/* Visualization */}
       <canvas
         ref={canvasRef}
+        role="img"
+        aria-label="Ribosome traffic simulation showing translation dynamics"
         style={{
           width: `${width}px`,
           height: `${height}px`,

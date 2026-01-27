@@ -95,6 +95,8 @@ export function PlaqueVisualizer({
       {/* Grid */}
       <canvas
         ref={canvasRef}
+        role="img"
+        aria-label="Plaque formation simulation showing bacterial lawn infection spread"
         style={{
           width: `${size}px`,
           height: `${size}px`,

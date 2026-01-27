@@ -528,6 +528,8 @@ export function NicheNetworkOverlay(): React.ReactElement | null {
               <canvas
                 ref={canvasRef}
                 onClick={handleCanvasClick}
+                role="img"
+                aria-label="Metagenomic co-occurrence network showing ecological niche relationships with force-directed layout"
                 style={{
                   width: '100%',
                   height: '350px',

@@ -127,6 +127,8 @@ export function PackagingMotorVisualizer({
   return (
     <canvas
       ref={canvasRef}
+      role="img"
+      aria-label="DNA packaging motor simulation showing pressure, force, and fill fraction over time"
       style={{ width: `${width}px`, height: `${height}px`, display: 'block' }}
     />
   );

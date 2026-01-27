@@ -243,6 +243,8 @@ export function ResistanceVisualizer({
       >
         <canvas
           ref={canvasRef}
+          role="img"
+          aria-label="Resistance evolution simulation showing bacterial and phage population dynamics"
           style={{ width: '100%', height: '100%', display: 'block' }}
         />
       </div>

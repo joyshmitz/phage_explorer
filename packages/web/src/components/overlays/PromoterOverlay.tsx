@@ -307,6 +307,8 @@ export function PromoterOverlay({
             {showConstellation && (
               <canvas
                 ref={constellationRef}
+                role="img"
+                aria-label="Regulatory constellation diagram showing operon relationships and transcriptional connections between genes"
                 style={{
                   width: '100%',
                   height: '140px',

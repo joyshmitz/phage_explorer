@@ -151,6 +151,8 @@ export function EvolutionVisualizer({
       {/* Chart */}
       <canvas
         ref={canvasRef}
+        role="img"
+        aria-label="Evolution simulation showing fitness and mutation dynamics over generations"
         style={{
           width: `${width}px`,
           height: `${height}px`,

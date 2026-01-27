@@ -390,6 +390,8 @@ function DotPlotViewBase({
       {/* Canvas */}
       <canvas
         ref={canvasRef}
+        role="img"
+        aria-label="Dot plot showing sequence self-similarity patterns"
         style={{
           width: '100%',
           height,

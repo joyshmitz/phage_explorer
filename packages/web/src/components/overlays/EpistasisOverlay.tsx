@@ -194,6 +194,8 @@ function EpistasisHeatmap({
       </div>
       <canvas
         ref={canvasRef}
+        role="img"
+        aria-label="Epistasis heatmap showing pairwise position interactions with antagonistic mutations in green and synergistic in red"
         style={{
           border: `1px solid ${colors.border}`,
           borderRadius: '4px',
@@ -333,6 +335,8 @@ function MutantDistribution({
       </div>
       <canvas
         ref={canvasRef}
+        role="img"
+        aria-label="Position-wise average fitness chart showing mutational effects as bars, red for deleterious and green for beneficial"
         style={{
           border: `1px solid ${colors.border}`,
           borderRadius: '4px',

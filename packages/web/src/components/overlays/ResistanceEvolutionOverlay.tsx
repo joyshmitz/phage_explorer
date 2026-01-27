@@ -488,6 +488,8 @@ export function ResistanceEvolutionOverlay(): React.ReactElement | null {
           </div>
           <canvas
             ref={canvasRef}
+            role="img"
+            aria-label="Population dynamics chart showing bacterial and phage counts over time on logarithmic scale"
             style={{
               width: '100%',
               height: '200px',

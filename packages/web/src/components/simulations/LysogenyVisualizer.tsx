@@ -179,6 +179,8 @@ export function LysogenyVisualizer({
       {/* Chart */}
       <canvas
         ref={canvasRef}
+        role="img"
+        aria-label="Lysogeny decision circuit showing CI and Cro protein levels"
         style={{
           width: `${width}px`,
           height: `${height}px`,
