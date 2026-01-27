@@ -39,7 +39,9 @@ let wasmPcaInitStarted = false;
 
 // Heuristic: only use WASM when the matrix is large enough to amortize boundary/copy overhead.
 // `nSamples * nFeatures` roughly corresponds to the hot-loop work per power-iteration step.
-const PCA_WASM_MIN_ELEMENTS = 80_000;
+// Lowered from 80k to 20k: WASM wins even for smaller matrices due to vectorized loops.
+// For typical 256-dim k-mer vectors, this enables WASM at ~78 samples (vs ~312 before).
+const PCA_WASM_MIN_ELEMENTS = 20_000;
 
 async function initWasmPca(): Promise<void> {
   if (wasmPcaInitStarted) return;
