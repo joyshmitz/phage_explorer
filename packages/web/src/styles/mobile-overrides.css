@@ -218,6 +218,16 @@
     min-height: 200px;
   }
 
+  /* Sequence view header controls - ensure minimum touch targets on phones */
+  .sequence-view .btn.compact {
+    min-height: 44px;
+    min-width: 44px;
+  }
+
+  .sequence-view__zoom-label {
+    height: 44px;
+  }
+
   /* View mode toggle - Compact but usable on mobile */
   .view-mode-toggle {
     padding: 3px;
@@ -230,9 +240,8 @@
 
   .view-mode-segment {
     padding: 6px 10px;
-    min-height: 36px;
-    /* Override the 44px min-width from touch targets - these are tightly grouped */
-    min-width: unset !important;
+    min-height: 44px;
+    min-width: 44px;
     font-size: 13px;
     font-weight: 600;
     /* Prevent text wrapping */
