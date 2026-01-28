@@ -222,9 +222,10 @@
   .view-mode-toggle {
     padding: 3px;
     gap: 2px;
-    /* Ensure it doesn't overflow on narrow screens */
     width: fit-content;
-    max-width: 100%;
+    /* Let it size to its content; the surrounding controls row is horizontally scrollable. */
+    max-width: none;
+    flex: 0 0 auto;
   }
 
   .view-mode-segment {

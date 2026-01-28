@@ -33,7 +33,7 @@ let wasmMinHashJaccard: ((a: string, b: string, k: number, numHashes: number) =>
 let wasmAvailable = false;
 
 // Attempt to load WASM module dynamically
-async function initWasm(): Promise<void> {
+export async function initKmerAnalysisWasm(): Promise<void> {
   if (wasmAvailable) return;
   try {
     const wasm = await import('@phage/wasm-compute');
@@ -53,8 +53,8 @@ async function initWasm(): Promise<void> {
   }
 }
 
-// Initialize WASM on module load (non-blocking)
-initWasm().catch(() => { /* WASM unavailable, using JS fallback */ });
+// Initialize WASM on module load (non-blocking) - REMOVED
+// initWasm().catch(() => { /* WASM unavailable, using JS fallback */ });
 
 /**
  * Extract all k-mers from a sequence as a Set (for presence/absence).

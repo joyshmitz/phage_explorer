@@ -5,7 +5,7 @@
  * Handles canvas ref, resize events, and state updates.
  */
 
-import { useRef, useEffect, useCallback, useState, useMemo } from 'react';
+import { useRef, useEffect, useLayoutEffect, useCallback, useState, useMemo } from 'react';
 import type React from 'react';
 import type { Theme, ViewMode, ReadingFrame } from '@phage-explorer/core';
 import { translateSequence, reverseComplement } from '@phage-explorer/core';
@@ -483,7 +483,12 @@ export function useSequenceGrid(options: UseSequenceGridOptions): UseSequenceGri
   }, [useWorkerRenderer]);
 
   // Initialize renderer when canvas is available
-  useEffect(() => {
+  //
+  // IMPORTANT: useLayoutEffect so the renderer + touch handlers are ready before
+  // the first paint. Using useEffect leaves a brief window where the canvas is
+  // visible but inert (wheel/touch does nothing), which feels like "stuck" scroll
+  // on initial load—especially on mobile where the page itself may not scroll.
+  useLayoutEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     if (useWorkerRenderer) return;

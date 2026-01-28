@@ -29,8 +29,9 @@ const textEncoder = typeof TextEncoder !== 'undefined' ? new TextEncoder() : nul
 
 /**
  * Initialize WASM MinHash functions (non-blocking).
+ * Exported so consumers can await it if desired.
  */
-async function initMinHashWasm(): Promise<void> {
+export async function initMinHashWasm(): Promise<void> {
   if (wasmMinHashAvailable) return;
   try {
     const wasm = await import('@phage/wasm-compute');
@@ -51,8 +52,8 @@ async function initMinHashWasm(): Promise<void> {
   }
 }
 
-// Initialize on module load (non-blocking)
-initMinHashWasm().catch(() => { /* WASM unavailable */ });
+// Initialize on module load (non-blocking) - REMOVED to prevent side effects/crashes
+// initMinHashWasm().catch(() => { /* WASM unavailable */ });
 
 /**
  * Internal helper to compute signature from a normalized sequence.
@@ -146,6 +147,15 @@ function std(values: number[], m: number): number {
   return Math.sqrt(v);
 }
 
+// Lookup table for GC calculation
+// Bit 0 (1): Valid base (A,C,G,T)
+// Bit 1 (2): GC base (G,C)
+const GC_TABLE = new Uint8Array(128);
+// A=65, T=84, a=97, t=116 -> Valid (1)
+[65, 84, 97, 116].forEach(c => GC_TABLE[c] = 1);
+// C=67, G=71, c=99, g=103 -> Valid (1) + GC (2) = 3
+[67, 71, 99, 103].forEach(c => GC_TABLE[c] = 3);
+
 function computeGC(seq: string, start = 0, end?: number): { percent: number; total: number } {
   let gc = 0;
   let total = 0;
@@ -153,14 +163,12 @@ function computeGC(seq: string, start = 0, end?: number): { percent: number; tot
   
   for (let i = start; i < limit; i++) {
     const code = seq.charCodeAt(i);
-    // G=71, C=67, A=65, T=84, g=103, c=99, a=97, t=116
-    // Check for G/C (case-insensitive)
-    if (code === 71 || code === 67 || code === 103 || code === 99) {
-      gc++;
-      total++;
-    } 
-    // Check for A/T (case-insensitive)
-    else if (code === 65 || code === 84 || code === 97 || code === 116) {
+    // Use lookup table for speed (avoids 8 comparisons per char)
+    // Checks valid ASCII range implicitly (undefined for >127, undefined & mask is 0)
+    const flags = GC_TABLE[code];
+    
+    if (flags) {
+      if (flags & 2) gc++;
       total++;
     }
   }
@@ -335,7 +343,7 @@ function inferDonorsMinHash(
   referenceSignatures: Record<string, Uint32Array>,
   k = MINHASH_K,
   refineTopN = 0, // 0 = no refinement, 3 = refine top 3 with exact
-  referenceSets?: Record<string, Set<string>> // For optional exact refinement
+  referenceSketches?: Record<string, string> // For optional exact refinement (lazy)
 ): DonorCandidate[] {
   if (!wasmMinHashJaccardFromSignatures) return [];
 
@@ -360,15 +368,19 @@ function inferDonorsMinHash(
   candidates.sort((a, b) => b.similarity - a.similarity);
 
   // Optional: refine top-N with exact Jaccard for accuracy
-  if (refineTopN > 0 && referenceSets) {
+  // We only compute k-mer sets for the top N candidates to save memory/time
+  if (refineTopN > 0 && referenceSketches) {
     const islandSet = extractKmerSet(islandSeq, k);
     if (islandSet.size > 0) {
       for (let i = 0; i < Math.min(refineTopN, candidates.length); i++) {
         const c = candidates[i];
-        const refSet = referenceSets[c.taxon];
-        if (refSet && refSet.size > 0) {
-          c.similarity = jaccardIndex(islandSet, refSet);
-          c.evidence = 'kmer'; // Mark as exact
+        const refSeq = referenceSketches[c.taxon];
+        if (refSeq) {
+          const refSet = extractKmerSet(refSeq, k);
+          if (refSet.size > 0) {
+            c.similarity = jaccardIndex(islandSet, refSet);
+            c.evidence = 'kmer'; // Mark as exact
+          }
         }
       }
       // Re-sort in case exact refinement changed order
@@ -446,10 +458,10 @@ export function analyzeHGTProvenance(
   const referenceSignatures = precomputeReferenceSignatures(referenceSketches, MINHASH_K);
   const useMinHash = referenceSignatures !== null;
 
-  // Fallback: pre-compute reference k-mer sets for exact Jaccard
-  // Also used for optional top-N refinement in MinHash path
+  // Fallback: pre-compute reference k-mer sets for exact Jaccard if NOT using MinHash
   const k = useMinHash ? MINHASH_K : 15;
   let referenceSets: Record<string, Set<string>> | undefined;
+  
   if (!useMinHash) {
     referenceSets = {};
     for (const [taxon, seq] of Object.entries(referenceSketches)) {
@@ -461,8 +473,9 @@ export function analyzeHGTProvenance(
     const seq = genomeSequence.slice(island.start, island.end);
 
     // Use MinHash path when available (fast approximate), else exact Jaccard
+    // Pass referenceSketches to MinHash path for optional lazy refinement
     const donors = useMinHash
-      ? inferDonorsMinHash(seq, referenceSignatures, MINHASH_K, 0, referenceSets)
+      ? inferDonorsMinHash(seq, referenceSignatures!, MINHASH_K, 0, referenceSketches)
       : inferDonors(seq, referenceSets!, k);
 
     const best = donors[0] ?? null;

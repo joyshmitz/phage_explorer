@@ -1546,6 +1546,12 @@ textarea:focus-visible,
     mask-size: 100% 100%;
   }
 
+  /* Critical: prevent flex items from shrinking to fit. We want real overflow so
+     the row can scroll horizontally instead of clipping controls (esp. view-mode toggle). */
+  .sequence-view__controls > * {
+    flex: 0 0 auto;
+  }
+
   .sequence-view__controls::-webkit-scrollbar {
     display: none;
   }

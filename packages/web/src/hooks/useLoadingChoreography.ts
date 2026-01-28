@@ -37,6 +37,8 @@ export function useLoadingChoreography(
   const { isLoading, skeletonDelay = 100, revealGap = 50 } = options;
   const reducedMotion = useReducedMotion();
   const [phase, setPhase] = useState<ChoreographyPhase>(isLoading ? 'idle' : 'content');
+  const phaseRef = useRef(phase);
+  phaseRef.current = phase;
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -57,7 +59,7 @@ export function useLoadingChoreography(
       }, skeletonDelay);
     } else {
       // Loading finished
-      if (phase === 'idle') {
+      if (phaseRef.current === 'idle') {
         // Load was fast enough that skeleton never showed - skip straight to content
         setPhase('content');
         return;
@@ -79,7 +81,6 @@ export function useLoadingChoreography(
         timerRef.current = null;
       }
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- phase is intentionally excluded to prevent loops
   }, [isLoading, skeletonDelay, revealGap, reducedMotion]);
 
   const showSkeleton = phase === 'skeleton' || phase === 'gap';

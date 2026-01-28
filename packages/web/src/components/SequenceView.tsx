@@ -5,7 +5,7 @@
  * Displays DNA or amino acid sequences with diff highlighting.
  */
 
-import React, { memo, useCallback, useEffect, useState, useRef, useMemo } from 'react';
+import React, { memo, useCallback, useEffect, useLayoutEffect, useState, useRef, useMemo } from 'react';
 import { usePhageStore } from '@phage-explorer/state';
 import { translateCodon, type ViewMode } from '@phage-explorer/core';
 import { useTheme } from '../hooks/useTheme';
@@ -26,6 +26,7 @@ import { IconDna, IconFlask, IconLayers } from './ui';
 type ViewModeOption = {
   id: ViewMode;
   label: string;
+  shortLabel?: string;
   icon: React.ReactNode;
   description: string;
 };
@@ -33,15 +34,16 @@ type ViewModeOption = {
 const VIEW_MODE_OPTIONS: ViewModeOption[] = [
   { id: 'dna', label: 'DNA', icon: <IconDna size={18} />, description: 'Nucleotide view' },
   { id: 'dual', label: 'Dual', icon: <IconLayers size={18} />, description: 'DNA + Amino Acids stacked' },
-  { id: 'aa', label: 'Amino Acids', icon: <IconFlask size={18} />, description: 'Protein view' },
+  { id: 'aa', label: 'Amino Acids', shortLabel: 'AA', icon: <IconFlask size={18} />, description: 'Protein view' },
 ];
 
 interface ViewModeToggleProps {
   value: ViewMode;
   onChange: (mode: ViewMode) => void;
+  compactLabels?: boolean;
 }
 
-function ViewModeToggle({ value, onChange }: ViewModeToggleProps): React.ReactElement {
+function ViewModeToggle({ value, onChange, compactLabels }: ViewModeToggleProps): React.ReactElement {
   const containerRef = useRef<HTMLDivElement>(null);
   const segmentRefs = useRef<(HTMLButtonElement | null)[]>([]);
   const [indicatorStyle, setIndicatorStyle] = useState<{ x: number; width: number } | null>(null);
@@ -128,6 +130,7 @@ function ViewModeToggle({ value, onChange }: ViewModeToggleProps): React.ReactEl
       )}
       {VIEW_MODE_OPTIONS.map((option, idx) => {
         const active = value === option.id;
+        const displayLabel = compactLabels && option.shortLabel ? option.shortLabel : option.label;
         return (
           <button
             key={option.id}
@@ -145,7 +148,7 @@ function ViewModeToggle({ value, onChange }: ViewModeToggleProps): React.ReactEl
             <span className="view-mode-icon" aria-hidden="true">
               {option.icon}
             </span>
-            <span className="view-mode-label">{option.label}</span>
+            <span className="view-mode-label">{displayLabel}</span>
           </button>
         );
       })}
@@ -387,7 +390,7 @@ function SequenceViewBase({
 
   // Desktop wheel/trackpad scroll: attach ONLY to the canvas wrapper so page scroll
   // works when pointer is over header controls. This fixes mousewheel page scroll.
-  useEffect(() => {
+  useLayoutEffect(() => {
     const wrapper = canvasWrapperRef.current;
     if (!wrapper) return;
 
@@ -396,9 +399,18 @@ function SequenceViewBase({
       if (event.ctrlKey) return;
       const visibleRangeLatest = latestVisibleRangeRef.current;
       const totalLength = sequenceLengthRef.current;
-      if (!totalLength || !visibleRangeLatest) return;
+      if (!totalLength) return;
 
       const deltaY = event.deltaY;
+
+      // If visibleRange hasn't committed to React state yet (common right after mount),
+      // still forward wheel deltas to the renderer so the *first* scroll attempt works.
+      // Without this, the wheel event does nothing and the UI feels "stuck" on first load.
+      if (!visibleRangeLatest) {
+        event.preventDefault();
+        handleWheelDelta(event.deltaX, event.deltaY, event.deltaMode as 0 | 1 | 2);
+        return;
+      }
       const atTop = visibleRangeLatest.startIndex <= 0;
       const atEnd = visibleRangeLatest.endIndex >= totalLength;
 
@@ -781,7 +793,11 @@ function SequenceViewBase({
           </div>
 
           {/* View mode control */}
-          <ViewModeToggle value={viewMode} onChange={setViewMode} />
+          <ViewModeToggle
+            value={viewMode}
+            onChange={setViewMode}
+            compactLabels={isMobile && typeof window !== 'undefined' && window.innerWidth <= 640}
+          />
           {/* Reading frame badge */}
           {viewMode !== 'dna' && (
             <button
@@ -818,7 +834,9 @@ function SequenceViewBase({
             width: '100%',
             height: resolvedHeight,
             display: 'block',
-            touchAction: sequence ? 'none' : 'auto', // Allow page scroll while loading; enable custom gestures once ready
+            // Allow page scroll while loading/warming up; enable custom gestures once renderer is ready.
+            // This prevents the "stuck scroll on first load" feel on mobile (when the page itself may not scroll).
+            touchAction: sequence && visibleRange ? 'none' : 'auto',
             backgroundColor: colors.background, // Prevent black flash during scroll
           }}
         />

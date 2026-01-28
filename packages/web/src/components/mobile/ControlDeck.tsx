@@ -36,7 +36,8 @@ export function ControlDeck({ onPrevPhage, onNextPhage }: ControlDeckProps): Rea
   const phages = usePhageStore(s => s.phages);
   const { open } = useOverlay();
 
-  const viewModeLabel = viewMode === 'dna' ? 'DNA' : viewMode === 'aa' ? 'Amino Acids' : 'Dual';
+  const viewModeLabelLong = viewMode === 'dna' ? 'DNA' : viewMode === 'aa' ? 'Amino Acids' : 'Dual';
+  const viewModeLabelShort = viewMode === 'aa' ? 'AA' : viewModeLabelLong;
   const canNavigate = phages.length > 0 && onPrevPhage && onNextPhage;
 
   // Wrap actions with haptic feedback
@@ -89,12 +90,12 @@ export function ControlDeck({ onPrevPhage, onNextPhage }: ControlDeckProps): Rea
         type="button"
         className="tab-btn"
         onClick={handleViewMode}
-        aria-label={`View mode: ${viewModeLabel}. Tap to cycle.`}
+        aria-label={`View mode: ${viewModeLabelLong}. Tap to cycle.`}
       >
         <span className="tab-icon">
           <IconLayers size={20} />
         </span>
-        <span className="tab-label">{viewModeLabel}</span>
+        <span className="tab-label">{viewModeLabelShort}</span>
       </button>
 
       {/* 3D Toggle */}
