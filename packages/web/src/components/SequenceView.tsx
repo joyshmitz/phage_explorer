@@ -834,9 +834,10 @@ function SequenceViewBase({
             width: '100%',
             height: resolvedHeight,
             display: 'block',
-            // Allow page scroll while loading/warming up; enable custom gestures once renderer is ready.
-            // This prevents the "stuck scroll on first load" feel on mobile (when the page itself may not scroll).
-            touchAction: sequence && visibleRange ? 'none' : 'auto',
+            // Allow page scroll while no sequence loaded; enable custom gestures once we have data.
+            // Previously we waited for visibleRange, but that's React state which updates async.
+            // This caused a "stuck scroll on first load" race condition on mobile.
+            touchAction: sequence ? 'none' : 'auto',
             backgroundColor: colors.background, // Prevent black flash during scroll
           }}
         />
