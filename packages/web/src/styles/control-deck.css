@@ -18,12 +18,17 @@
     padding-bottom: env(safe-area-inset-bottom, 0px);
     background: var(--color-background-elevated);
     border-top: 1px solid var(--color-border);
-    z-index: var(--z-fixed);
+    /* CRITICAL: Use higher z-index than modals to ensure taps always work.
+       The control deck must be the topmost tappable element on mobile. */
+    z-index: calc(var(--z-modal) + 100);
     justify-content: space-around;
     align-items: stretch;
     /* GPU layer hint for fixed positioning */
     will-change: transform;
     transform: translateZ(0);
+    /* Ensure touch events reach the buttons */
+    pointer-events: auto;
+    touch-action: manipulation;
   }
 
   /* Hide footer when control deck is active */
@@ -55,8 +60,12 @@
   padding: 8px 4px;
   min-width: 0;
   cursor: pointer;
+  /* CRITICAL: Ensure touch events work on mobile */
   touch-action: manipulation;
   -webkit-tap-highlight-color: transparent;
+  pointer-events: auto !important;
+  -webkit-user-select: none;
+  user-select: none;
   transition: color var(--duration-fast) var(--ease-out);
 }
 

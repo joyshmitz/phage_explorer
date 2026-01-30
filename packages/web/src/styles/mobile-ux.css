@@ -1143,12 +1143,14 @@ html {
   }
 
   /* Fix: Prevent iOS callout/zoom on the sequence canvas */
+  /* NOTE: touch-action is set dynamically via inline style in SequenceView.tsx
+     to prevent blocking scroll before the renderer is ready. DO NOT set touch-action here. */
   .sequence-grid-canvas {
     -webkit-touch-callout: none;
     -webkit-user-select: none;
     user-select: none;
     -webkit-tap-highlight-color: transparent;
-    touch-action: none;
+    /* touch-action is controlled via inline style - see SequenceView.tsx line 843 */
   }
 
   /* Fix: iOS Safari sometimes shows focus outline after tap */

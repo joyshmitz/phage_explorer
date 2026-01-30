@@ -731,6 +731,9 @@ function SequenceViewBase({
   // Use dvh (dynamic viewport height) when supported, fallback to vh for older browsers.
   // dvh accounts for mobile browser chrome (address bar), vh does not.
   const vhUnit = supportsDvh ? 'dvh' : 'vh';
+  // On mobile, subtract the control deck height (56px + safe area) to prevent canvas from
+  // extending under the fixed tab bar and capturing touch events meant for navigation.
+  const mobileTabBarHeight = 'calc(56px + env(safe-area-inset-bottom, 0px))';
   const resolvedHeight =
     typeof normalizedHeight === 'number'
       ? normalizedHeight
@@ -738,8 +741,8 @@ function SequenceViewBase({
         ? normalizedHeight
         : isMobile
           ? orientation === 'portrait'
-            ? `78${vhUnit}` // taller in portrait to show more bases
-            : `calc(100${vhUnit} - 120px)` // landscape: more usable height
+            ? `calc(65${vhUnit} - ${mobileTabBarHeight})` // Account for control deck
+            : `calc(85${vhUnit} - ${mobileTabBarHeight})` // landscape: more usable height
           : orientation === 'portrait'
             ? `60${vhUnit}`
             : `70${vhUnit}`;
