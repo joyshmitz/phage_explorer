@@ -711,8 +711,8 @@ export const usePhageStore = create<PhageExplorerStore>((set, get) => ({
   launchSimulation: (simId, initialState) => {
     // Merge overlay change with simulation state to avoid race condition
     set(state => {
-      const filtered = state.overlays.filter(o => o !== 'simulationView');
-      const next = [...filtered, 'simulationView'];
+      const filtered = state.overlays.filter(o => o !== 'simulationView') as OverlayId[];
+      const next: OverlayId[] = [...filtered, 'simulationView'];
       return {
         activeSimulationId: simId,
         simulationState: initialState,
@@ -730,7 +730,7 @@ export const usePhageStore = create<PhageExplorerStore>((set, get) => ({
       simulationState: null,
       simulationPaused: true,
       simulationSpeed: 1,
-      overlays: state.overlays.filter(o => o !== 'simulationView'),
+      overlays: state.overlays.filter(o => o !== 'simulationView') as OverlayId[],
     }));
   },
 
