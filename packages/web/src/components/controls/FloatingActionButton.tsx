@@ -25,13 +25,15 @@ export function FloatingActionButton({
   onToggle,
   onLongPress,
 }: FloatingActionButtonProps): React.ReactElement {
-  const portalRootRef = useRef<HTMLElement | null>(null);
+  // Use state instead of ref to trigger re-render when portal root is ready
+  const [portalRoot, setPortalRoot] = useState<HTMLElement | null>(null);
   const longPressTimer = useRef<number | null>(null);
   const reducedMotion = useReducedMotion();
   const [showHint, setShowHint] = useState(false);
 
   useEffect(() => {
-    portalRootRef.current = document.body;
+    // Set portal root - this triggers a re-render so createPortal works on subsequent render
+    setPortalRoot(document.body);
 
     // Show hint for new users who haven't dismissed it
     try {
@@ -109,8 +111,8 @@ export function FloatingActionButton({
     </>
   );
 
-  if (portalRootRef.current) {
-    return createPortal(content, portalRootRef.current);
+  if (portalRoot) {
+    return createPortal(content, portalRoot);
   }
 
   return content;

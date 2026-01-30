@@ -1457,6 +1457,12 @@ export class CanvasSequenceGridRenderer {
         );
       } else {
         // Render row directly (no cache available or disabled)
+        // IMPORTANT: Fill row background first to prevent black areas during scrolling.
+        // When tiles aren't available (isScrolling=true skips tile creation), individual
+        // glyph draws may leave gaps if glyph atlas doesn't cover entire cell area.
+        ctx.fillStyle = this.theme.colors.background;
+        ctx.fillRect(0, rowY, layout.cols * this.cellWidth, rowHeight);
+
         const rowStart = row * layout.cols;
         const rowEnd = Math.min(rowStart + layout.cols, sequence.length);
 
