@@ -215,6 +215,16 @@ export function Overlay({
     setIsBackdropHovered(false);
   }, []);
 
+  // Clean up focus tracking on unmount to prevent memory leaks
+  // This runs once on unmount regardless of overlay state
+  useEffect(() => {
+    const overlayId = id;
+    return () => {
+      // Always clean up on unmount to prevent DOM element leaks
+      PREVIOUS_FOCUS_BY_OVERLAY_ID.delete(overlayId);
+    };
+  }, [id]);
+
   // Focus trap - must be called unconditionally before any early return
   useLayoutEffect(() => {
     if (!overlayIsOpen) return;

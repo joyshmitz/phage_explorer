@@ -2345,6 +2345,13 @@ export class CanvasSequenceGridRenderer {
     }
     this.postProcess?.dispose?.();
     this.scroller.dispose();
+
+    // Clear row tile cache to release canvas memory
+    this.rowTileCache.clear();
+
+    // Release back buffer resources
+    this.backCtx = null;
+    this.backBuffer = null;
   }
 
   private requestRaf(callback: FrameRequestCallback): number | ReturnType<typeof setTimeout> {
