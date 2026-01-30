@@ -119,6 +119,12 @@ html {
     min-width: 45px !important;
   }
 
+  input:not([type="checkbox"]):not([type="radio"]),
+  select,
+  textarea {
+    min-height: 45px !important;
+  }
+
   /* Exception: view-mode segments are grouped controls - combined width provides touch target */
   .view-mode-segment {
     min-height: 45px !important;
@@ -161,6 +167,12 @@ html {
   [role="menuitem"] {
     min-height: 45px !important;
     min-width: 45px !important;
+  }
+
+  input:not([type="checkbox"]):not([type="radio"]),
+  select,
+  textarea {
+    min-height: 45px !important;
   }
 
   /* Exception: view-mode segments are grouped controls */

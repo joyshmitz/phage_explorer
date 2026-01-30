@@ -364,8 +364,8 @@
   color: var(--color-text-muted);
 }
 
-/* Hide hints on very small screens */
-@media (max-width: 480px) {
+/* Hide keyboard hints on mobile/tablet (thumb-first UI; hints are redundant and eat space). */
+@media (max-width: 768px) {
   .footer-hints {
     display: none;
   }

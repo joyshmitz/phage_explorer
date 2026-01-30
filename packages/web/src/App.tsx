@@ -78,6 +78,7 @@ import { QuickStats } from './components/QuickStats';
 import { haptics } from './utils/haptics';
 
 const BREAKPOINT_PHONE_PX = 640;
+const BREAKPOINT_TOUCH_UI_PX = 900;
 const BREAKPOINT_NARROW_PX = 1100;
 const BREAKPOINT_WIDE_PX = 1400; // Show analysis sidebar on wide screens
 
@@ -206,20 +207,30 @@ export default function App(): React.ReactElement {
   }, [currentPhage?.id]);
   const getLayoutSnapshot = useCallback(() => {
     if (typeof window === 'undefined') {
-      return { isNarrow: false, isMobile: false, isLandscape: false, isWide: false, isCoarsePointer: false };
+      return {
+        isNarrow: false,
+        isMobile: false,
+        isTouchUi: false,
+        isLandscape: false,
+        isWide: false,
+        isCoarsePointer: false,
+      };
     }
     const width = window.innerWidth;
     const height = window.innerHeight || 1;
     return {
       isNarrow: width <= BREAKPOINT_NARROW_PX,
       isMobile: width <= BREAKPOINT_PHONE_PX,
+      isTouchUi: width <= BREAKPOINT_TOUCH_UI_PX,
       isLandscape: width > height,
       isWide: width >= BREAKPOINT_WIDE_PX,
       isCoarsePointer: detectCoarsePointerDevice(),
     };
   }, []);
 
-  const [{ isNarrow, isMobile, isLandscape, isWide, isCoarsePointer }, setLayout] = useState(() => getLayoutSnapshot());
+  const [{ isNarrow, isMobile, isTouchUi, isLandscape, isWide, isCoarsePointer }, setLayout] = useState(() =>
+    getLayoutSnapshot()
+  );
   const enableBackgroundEffects = useMemo(
     () =>
       getEffectiveBackgroundEffects(backgroundEffects, {
@@ -356,6 +367,7 @@ export default function App(): React.ReactElement {
     };
 
     const mobileMql = window.matchMedia(`(max-width: ${BREAKPOINT_PHONE_PX}px)`);
+    const touchUiMql = window.matchMedia(`(max-width: ${BREAKPOINT_TOUCH_UI_PX}px)`);
     const narrowMql = window.matchMedia(`(max-width: ${BREAKPOINT_NARROW_PX}px)`);
     const wideMql = window.matchMedia(`(min-width: ${BREAKPOINT_WIDE_PX}px)`);
     const landscapeMql = window.matchMedia('(orientation: landscape)');
@@ -366,6 +378,7 @@ export default function App(): React.ReactElement {
       setLayout({
         isNarrow: narrowMql.matches,
         isMobile: mobileMql.matches,
+        isTouchUi: touchUiMql.matches,
         isLandscape: landscapeMql.matches,
         isWide: wideMql.matches,
         isCoarsePointer: detectCoarsePointerDevice(),
@@ -376,6 +389,7 @@ export default function App(): React.ReactElement {
 
     const unsubscribers = [
       subscribeMediaQuery(mobileMql, updateLayout),
+      subscribeMediaQuery(touchUiMql, updateLayout),
       subscribeMediaQuery(narrowMql, updateLayout),
       subscribeMediaQuery(wideMql, updateLayout),
       subscribeMediaQuery(landscapeMql, updateLayout),
@@ -1404,17 +1418,19 @@ export default function App(): React.ReactElement {
       {/* All toasts (beginner mode, fx safe mode, blocked hotkey) rendered via ToastProvider */}
       <BlockedHotkeyToast info={blockedHotkey} onDismiss={dismissBlockedHotkey} showToast={showToast} />
       <ControlDeck onPrevPhage={handlePrevPhage} onNextPhage={handleNextPhage} />
-      {isMobile && (
+      {isTouchUi && (
         <>
-          <SwipeIndicators
-            isFirst={currentPhageIndex === 0}
-            isLast={currentPhageIndex === phages.length - 1}
-            isVisible={phages.length > 1}
-            showPulse={!hasLearnedMobileSwipe}
-            isSubtle={hasLearnedMobileSwipe}
-            onPrev={handlePrevPhage}
-            onNext={handleNextPhage}
-          />
+          {isMobile && (
+            <SwipeIndicators
+              isFirst={currentPhageIndex === 0}
+              isLast={currentPhageIndex === phages.length - 1}
+              isVisible={phages.length > 1}
+              showPulse={!hasLearnedMobileSwipe}
+              isSubtle={hasLearnedMobileSwipe}
+              onPrev={handlePrevPhage}
+              onNext={handleNextPhage}
+            />
+          )}
           <FloatingActionButton
             isOpen={actionDrawerOpen}
             onToggle={handleToggleActionDrawer}
@@ -1423,17 +1439,19 @@ export default function App(): React.ReactElement {
             isOpen={actionDrawerOpen}
             onClose={handleCloseActionDrawer}
           />
-          <PhagePickerSheet
-            isOpen={phagePickerOpen}
-            onClose={() => setPhagePickerOpen(false)}
-            phages={phages}
-            currentIndex={currentPhageIndex}
-            onSelectPhage={(index) => {
-              if (repository) {
-                void loadPhage(repository, index);
-              }
-            }}
-          />
+          {isMobile && (
+            <PhagePickerSheet
+              isOpen={phagePickerOpen}
+              onClose={() => setPhagePickerOpen(false)}
+              phages={phages}
+              currentIndex={currentPhageIndex}
+              onSelectPhage={(index) => {
+                if (repository) {
+                  void loadPhage(repository, index);
+                }
+              }}
+            />
+          )}
         </>
       )}
       <DataFreshnessIndicator isCached={isCached} isLoading={isLoading} />

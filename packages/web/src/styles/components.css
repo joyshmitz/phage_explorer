@@ -1865,12 +1865,14 @@ textarea:focus-visible,
    ============================================================================= */
 
 @media (max-width: 640px) {
-  /* Full-width lists on mobile */
+  /* Full-width lists on phones */
   .list {
     max-height: 300px;
   }
+}
 
-  /* Simplify metrics on mobile */
+@media (max-width: 768px) {
+  /* Simplify metrics on mobile/tablet */
   .metrics {
     grid-template-columns: repeat(2, 1fr);
     gap: var(--space-3);
@@ -2149,7 +2151,7 @@ textarea:focus-visible,
   justify-content: flex-end;
 }
 
-@media (max-width: 640px) {
+@media (max-width: 768px) {
   .settings-row {
     flex-direction: column;
     align-items: stretch;
