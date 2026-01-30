@@ -63,10 +63,14 @@
   /* CRITICAL: Ensure touch events work on mobile */
   touch-action: manipulation;
   -webkit-tap-highlight-color: transparent;
-  pointer-events: auto !important;
   -webkit-user-select: none;
   user-select: none;
   transition: color var(--duration-fast) var(--ease-out);
+}
+
+/* Ensure enabled buttons receive touch events (disabled buttons override this below) */
+.tab-btn:not(:disabled):not([disabled]) {
+  pointer-events: auto;
 }
 
 .tab-btn:focus-visible {
