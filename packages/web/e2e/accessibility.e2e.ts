@@ -143,3 +143,95 @@ test('WCAG 2.1 A/AA: base + key overlays', async ({ page }) => {
   await page.keyboard.press('Escape');
   await settings.waitFor({ state: 'detached', timeout: 5000 }).catch(() => null);
 });
+
+// Helper to test an overlay with a simple hotkey
+async function testOverlayA11y(
+  page: Page,
+  hotkey: string,
+  overlayId: string,
+  label: string
+): Promise<void> {
+  await page.keyboard.press(hotkey);
+  const overlay = page.locator(`.overlay-${overlayId}`);
+  await overlay.waitFor({ state: 'visible', timeout: 8000 });
+  await expectNoA11yViolations(page, label);
+  await page.keyboard.press('Escape');
+  await overlay.waitFor({ state: 'detached', timeout: 5000 }).catch(() => null);
+  await page.waitForTimeout(150);
+}
+
+test('WCAG 2.1 A/AA: analysis overlays', async ({ page }) => {
+  await page.goto('/', { waitUntil: 'domcontentloaded', timeout: 60000 });
+  await waitForAppReady(page);
+
+  // Dismiss Welcome modal if present
+  const welcome = page.locator('.overlay-welcome');
+  const welcomeVisible = await welcome
+    .waitFor({ state: 'visible', timeout: 2500 })
+    .then(() => true)
+    .catch(() => false);
+  if (welcomeVisible) {
+    await page.keyboard.press('Escape');
+    await welcome.waitFor({ state: 'detached', timeout: 5000 }).catch(() => null);
+    await page.waitForTimeout(200);
+  }
+
+  // GC Skew (g)
+  await testOverlayA11y(page, 'g', 'gcSkew', 'GC Skew overlay');
+
+  // Complexity (x)
+  await testOverlayA11y(page, 'x', 'complexity', 'Complexity overlay');
+
+  // Bendability (b)
+  await testOverlayA11y(page, 'b', 'bendability', 'Bendability overlay');
+
+  // Promoter (Shift+P)
+  await testOverlayA11y(page, 'Shift+P', 'promoter', 'Promoter overlay');
+
+  // Repeats (r)
+  await testOverlayA11y(page, 'r', 'repeats', 'Repeats overlay');
+
+  // K-mer Anomaly (Shift+V)
+  await testOverlayA11y(page, 'Shift+V', 'kmerAnomaly', 'K-mer Anomaly overlay');
+
+  // Hilbert (Shift+H)
+  await testOverlayA11y(page, 'Shift+H', 'hilbert', 'Hilbert curve overlay');
+
+  // Gel (Shift+G)
+  await testOverlayA11y(page, 'Shift+G', 'gel', 'Gel electrophoresis overlay');
+
+  // Dot Plot (.)
+  await testOverlayA11y(page, '.', 'dotPlot', 'Dot plot overlay');
+
+  // Bias Decomposition (Shift+J)
+  await testOverlayA11y(page, 'Shift+J', 'biasDecomposition', 'Bias Decomposition overlay');
+});
+
+test('WCAG 2.1 A/AA: reference overlays', async ({ page }) => {
+  await page.goto('/', { waitUntil: 'domcontentloaded', timeout: 60000 });
+  await waitForAppReady(page);
+
+  // Dismiss Welcome modal if present
+  const welcome = page.locator('.overlay-welcome');
+  const welcomeVisible = await welcome
+    .waitFor({ state: 'visible', timeout: 2500 })
+    .then(() => true)
+    .catch(() => false);
+  if (welcomeVisible) {
+    await page.keyboard.press('Escape');
+    await welcome.waitFor({ state: 'detached', timeout: 5000 }).catch(() => null);
+    await page.waitForTimeout(200);
+  }
+
+  // AA Key (k)
+  await testOverlayA11y(page, 'k', 'aaKey', 'Amino Acid Key overlay');
+
+  // AA Legend (l)
+  await testOverlayA11y(page, 'l', 'aaLegend', 'Amino Acid Legend overlay');
+
+  // Goto (Ctrl+g)
+  await testOverlayA11y(page, 'Control+g', 'goto', 'Goto overlay');
+
+  // HGT (Shift+Y)
+  await testOverlayA11y(page, 'Shift+Y', 'hgt', 'HGT detection overlay');
+});
