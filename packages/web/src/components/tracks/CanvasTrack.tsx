@@ -286,7 +286,7 @@ function CanvasTrackBase({
 
       const idx = Math.floor(basePosition / data.windowSize);
       const value = data.values[idx];
-      if (value == null) {
+      if (value === undefined || value === null) {
         setTooltip((prev) => (prev.visible ? { ...prev, visible: false } : prev));
         return;
       }

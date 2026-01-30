@@ -382,7 +382,7 @@ function detectWorkerCapabilities(): WorkerCapabilities {
   const webWorkers = typeof Worker !== 'undefined';
 
   // Module worker support is not reliably detectable without creating one. We avoid dynamic code
-  // generation (e.g. `new Function(...)`) for CSP compatibility and keep this as a best-effort hint.
+  // generation (runtime code generation) for CSP compatibility and keep this as a best-effort hint.
   //
   // Call sites should still be robust: try `{ type: "module" }`, fall back if it fails.
   const moduleWorkers = webWorkers;

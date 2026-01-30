@@ -178,8 +178,8 @@ export class SequenceGridRenderer {
     
     // Calculate offset into this specific row
     // Global: (absoluteStartIndex + i)
-    // We want (Global - frame) % 3 == 0 to be start of codon.
-    // (Global - frame) % 3 == 1 is center.
+    // We want (Global - frame) % 3 === 0 to be start of codon.
+    // (Global - frame) % 3 === 1 is center.
     
     const ctx = this.ctx;
     

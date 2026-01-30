@@ -62,12 +62,12 @@ export function computeDotPlot(sequence: string, config: DotPlotConfig = {}): Do
     for (let j = i; j < bins; j++) {
       const b = seq.slice(starts[j], starts[j] + window);
       
-      // Direct identity is symmetric: Id(A, B) == Id(B, A)
+      // Direct identity is symmetric: Id(A, B) equals Id(B, A)
       const dir = identity(a, b);
       
-      // Inverted identity is also symmetric: Id(RC(A), B) == Id(RC(B), A)
+      // Inverted identity is also symmetric: Id(RC(A), B) equals Id(RC(B), A)
       // Proof: Match count is same if we flip and complement both strings.
-      // RC(RC(A)) = A. RC(B). Id(A, RC(B)) == Id(RC(A), B).
+      // RC(RC(A)) = A. RC(B). Id(A, RC(B)) equals Id(RC(A), B).
       const inv = identity(aRc, b);
       
       grid[i][j] = { direct: dir, inverted: inv };

@@ -26,6 +26,7 @@ import { useOverlay, type OverlayId } from './OverlayProvider';
 import { usePhageStore } from '@phage-explorer/state';
 import { formatFasta, downloadString, copyToClipboard, buildSequenceClipboardPayload } from '../../utils/export';
 import { getSearchWorker, type SearchWorkerAPI, type FuzzySearchEntry, type FuzzySearchResult } from '../../workers';
+import { useToast } from '../ui/Toast';
 import {
   IconAperture,
   IconArrowRight,
@@ -234,6 +235,7 @@ export function CommandPalette({ commands: customCommands, context: propContext 
   const { theme, setTheme, availableThemes } = useTheme();
   const colors = theme.colors;
   const { isOpen, toggle, open, close, isMobile } = useOverlay();
+  const { toast: showToast } = useToast();
   const paletteOpen = isOpen('commandPalette');
   const shortcutPlatform = useMemo(() => detectShortcutPlatform(), []);
   const [query, setQuery] = useState('');
@@ -402,7 +404,7 @@ export function CommandPalette({ commands: customCommands, context: propContext 
       const { currentPhage, diffReferenceSequence } = usePhageStore.getState();
       const seq = diffReferenceSequence;
       if (!seq || seq.length === 0) {
-        alert('No sequence available to export.');
+        showToast({ variant: 'warning', message: 'No sequence available to export.' });
         return;
       }
       const name = currentPhage?.name || 'phage';
@@ -413,14 +415,14 @@ export function CommandPalette({ commands: customCommands, context: propContext 
       const { currentPhage, diffReferenceSequence } = usePhageStore.getState();
       const seq = diffReferenceSequence;
       if (!seq || seq.length === 0) {
-        alert('No sequence loaded to copy.');
+        showToast({ variant: 'warning', message: 'No sequence loaded to copy.' });
         return;
       }
       const header = currentPhage ? `${currentPhage.name} | ${currentPhage.accession}` : 'phage-sequence';
       const payload = buildSequenceClipboardPayload({ header, sequence: seq, wrap: 80 });
       copyToClipboard(payload.text, payload.html)
-        .then(() => alert('Sequence copied (text + HTML).'))
-        .catch(() => alert('Failed to copy sequence.'));
+        .then(() => showToast({ variant: 'success', message: 'Sequence copied (text + HTML).' }))
+        .catch(() => showToast({ variant: 'error', message: 'Failed to copy sequence.' }));
     },
     [ActionIds.ExportJson]: () => {
       const state = usePhageStore.getState();
@@ -445,7 +447,7 @@ export function CommandPalette({ commands: customCommands, context: propContext 
   }), [
     availableThemes, beginnerModeEnabled, currentPhage, currentPhageIndex,
     openGlossary, phageSummaries, readingFrame, setBeginnerModeEnabled, setCurrentPhageIndex,
-    setReadingFrame, setScrollPosition, setTheme, startTour, theme.id,
+    setReadingFrame, setScrollPosition, setTheme, showToast, startTour, theme.id,
     toggle3DModel, toggleBeginnerMode, toggleSequenceViewMode
   ]);
 

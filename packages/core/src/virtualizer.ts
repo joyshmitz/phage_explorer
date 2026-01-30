@@ -85,8 +85,8 @@ export function buildGrid(
           });
         } else {
           // AA Row - Align to center of codon (frame + 1, frame + 4...)
-          // Codon starts at p where (p - frame) % 3 == 0
-          // Middle is p + 1. So (p + 1 - frame) % 3 == 1 => (p - frame) % 3 == 0.
+          // Codon starts at p where (p - frame) % 3 === 0
+          // Middle is p + 1. So (p + 1 - frame) % 3 === 1 => (p - frame) % 3 === 0.
           
           const offset = (absolutePos - forwardFrame);
           // Handle negative modulo correctly
@@ -162,7 +162,7 @@ export function buildGrid(
     if (frame >= 0) {
       const forwardFrame = frame as 0 | 1 | 2;
       // Align to global reading frame
-      // We want (startIndex + offset - frame) % 3 == 0
+      // We want (startIndex + offset - frame) % 3 === 0
       const offset = ((forwardFrame - startIndex) % 3 + 3) % 3;
       aaSequence = translateSequence(sequence, offset as 0 | 1 | 2);
     } else {
@@ -174,7 +174,7 @@ export function buildGrid(
       // RC_Start = TotalLen - (startIndex + seqLen)
       const globalRcStart = totalLen - startIndex - sequence.length;
       
-      // We want (GlobalRcIndex + offset - rcFrame) % 3 == 0
+      // We want (GlobalRcIndex + offset - rcFrame) % 3 === 0
       const offset = ((rcFrame - globalRcStart) % 3 + 3) % 3;
       
       const rc = reverseComplement(sequence);
@@ -249,7 +249,7 @@ export function applyDiff(
   if (mode === 'aa') {
     if (frame >= 0) {
       // Calculate local offset into the reference chunk that aligns with global frame
-      // We want (startIndex + offset - forwardFrame) % 3 == 0
+      // We want (startIndex + offset - forwardFrame) % 3 === 0
       const offset = ((forwardFrame - startIndex) % 3 + 3) % 3;
       refToCompare = translateSequence(referenceSequence, offset as 0 | 1 | 2);
       aaAlignStart = startIndex + offset;

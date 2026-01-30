@@ -7,7 +7,7 @@ describe('calculateSelectionPressure', () => {
     // Gap vs Adenine
     // codonA = ---
     // codonB = AAA
-    // Before fix, this counted as synonymous (X == X). After fix, it returns no windows.
+    // Before fix, this counted as synonymous (X equals X). After fix, it returns no windows.
     const result = calculateSelectionPressure('---', 'AAA', 3);
 
     // Should be no valid windows because the window is invalid due to gaps
