@@ -571,6 +571,9 @@ export function BottomSheet({
 
   if (!shouldRender) return null;
 
+  // Guard against SSR or early render before document.body exists
+  if (typeof document === 'undefined' || !document.body) return null;
+
   const dragBind = bindDrag();
 
   return createPortal(

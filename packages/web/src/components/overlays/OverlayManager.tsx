@@ -142,6 +142,36 @@ function OverlayFallback({ id }: { id: OverlayId }): React.ReactElement {
   );
 }
 
+/**
+ * Wrapper for eager overlays - provides isolated error handling so a single
+ * overlay crash doesn't take down the whole app.
+ */
+function EagerOverlayBoundary({
+  id,
+  children,
+}: {
+  id: OverlayId;
+  children: React.ReactNode;
+}): React.ReactElement {
+  const { isMobile } = useOverlay();
+  const size = isMobile ? 'sm' : 'lg';
+  return (
+    <ErrorBoundary
+      fallback={({ error, errorInfo, reset }) => (
+        <Overlay id={id} title={formatOverlayTitle(id)} size={size}>
+          <OverlayErrorState
+            message="This overlay hit an unexpected error."
+            details={import.meta.env.DEV ? formatOverlayErrorDetails(error, errorInfo) : undefined}
+            onRetry={reset}
+          />
+        </Overlay>
+      )}
+    >
+      {children}
+    </ErrorBoundary>
+  );
+}
+
 export function OverlayManager({ repository, currentPhage }: OverlayManagerProps): React.ReactElement | null {
   const { stack, isMobile } = useOverlay();
   const size = isMobile ? 'sm' : 'lg';
@@ -159,15 +189,17 @@ export function OverlayManager({ repository, currentPhage }: OverlayManagerProps
   return (
     <>
       {/* EAGER: Essential overlays that must be instantly available */}
-      <WelcomeModal />
-      <HelpOverlay />
-      <AnalysisMenu />
-      <SearchOverlay repository={repository} currentPhage={currentPhage} />
-      <GotoOverlay />
-      <AAKeyOverlay />
-      <AALegend />
-      <SettingsOverlay />
-      <CommandPalette />
+      {/* Wrapped in ErrorBoundary to isolate failures on mobile where
+          BottomSheet rendering can encounter device-specific issues */}
+      <EagerOverlayBoundary id="welcome"><WelcomeModal /></EagerOverlayBoundary>
+      <EagerOverlayBoundary id="help"><HelpOverlay /></EagerOverlayBoundary>
+      <EagerOverlayBoundary id="analysisMenu"><AnalysisMenu /></EagerOverlayBoundary>
+      <EagerOverlayBoundary id="search"><SearchOverlay repository={repository} currentPhage={currentPhage} /></EagerOverlayBoundary>
+      <EagerOverlayBoundary id="goto"><GotoOverlay /></EagerOverlayBoundary>
+      <EagerOverlayBoundary id="aaKey"><AAKeyOverlay /></EagerOverlayBoundary>
+      <EagerOverlayBoundary id="aaLegend"><AALegend /></EagerOverlayBoundary>
+      <EagerOverlayBoundary id="settings"><SettingsOverlay /></EagerOverlayBoundary>
+      <EagerOverlayBoundary id="commandPalette"><CommandPalette /></EagerOverlayBoundary>
 
       {/* LAZY: Analysis overlays loaded only when open */}
       {lazyOverlays.map(({ id, element }) => (
