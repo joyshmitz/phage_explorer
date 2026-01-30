@@ -891,16 +891,46 @@ export class CanvasSequenceGridRenderer {
 
   /**
    * Evict oldest tiles when cache exceeds limit (LRU)
+   * Uses O(n) selection instead of O(n log n) sort since we typically
+   * only evict 1-2 entries at a time (cache grows incrementally).
    */
   private evictOldTiles(): void {
-    if (this.rowTileCache.size <= this.maxCachedRows) return;
+    const toEvict = this.rowTileCache.size - this.maxCachedRows;
+    if (toEvict <= 0) return;
 
-    // Sort by timestamp and remove oldest
-    const entries = Array.from(this.rowTileCache.entries());
-    entries.sort((a, b) => a[1].timestamp - b[1].timestamp);
+    // Fast path: evicting 1 entry (common case) - just find minimum
+    if (toEvict === 1) {
+      let oldestKey: number | null = null;
+      let oldestTime = Infinity;
+      for (const [key, tile] of this.rowTileCache) {
+        if (tile.timestamp < oldestTime) {
+          oldestTime = tile.timestamp;
+          oldestKey = key;
+        }
+      }
+      if (oldestKey !== null) {
+        this.rowTileCache.delete(oldestKey);
+      }
+      return;
+    }
 
-    const toRemove = entries.slice(0, entries.length - this.maxCachedRows);
-    for (const [key] of toRemove) {
+    // General case: evicting multiple entries - collect k oldest in O(n*k)
+    // For small k (typically 1-3), this is effectively O(n)
+    const toRemove: number[] = [];
+    for (let i = 0; i < toEvict; i++) {
+      let oldestKey: number | null = null;
+      let oldestTime = Infinity;
+      for (const [key, tile] of this.rowTileCache) {
+        if (tile.timestamp < oldestTime && !toRemove.includes(key)) {
+          oldestTime = tile.timestamp;
+          oldestKey = key;
+        }
+      }
+      if (oldestKey !== null) {
+        toRemove.push(oldestKey);
+      }
+    }
+    for (const key of toRemove) {
       this.rowTileCache.delete(key);
     }
   }

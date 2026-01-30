@@ -74,8 +74,11 @@ export function TrackContainer({
   const colors = theme.colors;
 
   // Get scroll state from global store
+  const viewMode = usePhageStore((s) => s.viewMode);
+  const readingFrame = usePhageStore((s) => s.readingFrame);
   const scrollPosition = usePhageStore((s) => s.scrollPosition);
-  const setScrollPosition = usePhageStore((s) => s.setScrollPosition);
+  const setScrollPositionRaw = usePhageStore((s) => s.setScrollPosition);
+  const zoomScale = usePhageStore((s) => s.zoomScale) ?? 1.0;
 
   // Local state
   const [containerWidth, setContainerWidth] = useState(800);
@@ -83,18 +86,49 @@ export function TrackContainer({
   const [collapsed, setCollapsed] = useState(defaultCollapsed);
   const [containerEl, setContainerEl] = useState<HTMLDivElement | null>(null);
 
-  // Calculate derived values
-  // Base zoom scale - could be enhanced to sync with SequenceGrid's zoom
-  const zoomScale = 1.0;
+  // Convert store scroll units to base-pair coordinates for tracks.
+  const scrollPositionBp = useMemo(() => {
+    if (viewMode !== 'aa') return Math.max(0, Math.min(genomeLength, scrollPosition));
+    const frameOffset = (readingFrame < 0 ? Math.abs(readingFrame) - 1 : readingFrame) as 0 | 1 | 2;
+    const aaLength = Math.max(0, Math.floor((genomeLength - frameOffset) / 3));
+    const clampedAa = Math.max(0, Math.min(aaLength, scrollPosition));
+    if (readingFrame >= 0) {
+      return Math.max(0, Math.min(genomeLength, frameOffset + clampedAa * 3));
+    }
+    const remainder = (genomeLength - frameOffset) - aaLength * 3;
+    return Math.max(0, Math.min(genomeLength, remainder + clampedAa * 3));
+  }, [genomeLength, readingFrame, scrollPosition, viewMode]);
+
+  const setScrollPosition = useCallback(
+    (positionBp: number) => {
+      const clampedBp = Math.max(0, Math.min(genomeLength, positionBp));
+      if (viewMode !== 'aa') {
+        setScrollPositionRaw(clampedBp);
+        return;
+      }
+      const frameOffset = (readingFrame < 0 ? Math.abs(readingFrame) - 1 : readingFrame) as 0 | 1 | 2;
+      const aaLength = Math.max(0, Math.floor((genomeLength - frameOffset) / 3));
+      let aaIndex: number;
+      if (readingFrame >= 0) {
+        aaIndex = Math.floor((clampedBp - frameOffset) / 3);
+      } else {
+        const remainder = (genomeLength - frameOffset) - aaLength * 3;
+        aaIndex = Math.floor((clampedBp - remainder) / 3);
+      }
+      aaIndex = Math.max(0, Math.min(aaLength, aaIndex));
+      setScrollPositionRaw(aaIndex);
+    },
+    [genomeLength, readingFrame, setScrollPositionRaw, viewMode]
+  );
 
   // Calculate pixels per base based on container width and zoom
   // Assumes typical visible range is ~500 bases at zoom 1.0
-  const basesPerView = Math.round(500 / zoomScale);
+  const basesPerView = Math.max(1, Math.round((500 / Math.max(0.1, zoomScale)) * (viewMode === 'aa' ? 3 : 1)));
   const pixelsPerBase = containerWidth / basesPerView;
 
   // Calculate visible range
-  const visibleStart = scrollPosition;
-  const visibleEnd = Math.min(scrollPosition + basesPerView, genomeLength);
+  const visibleStart = scrollPositionBp;
+  const visibleEnd = Math.min(scrollPositionBp + basesPerView, genomeLength);
 
   // Container ref callback for measuring width
   const containerRef = useCallback((node: HTMLDivElement | null) => {
@@ -116,7 +150,7 @@ export function TrackContainer({
 
   // Build context value
   const contextValue = useMemo<TrackContextValue>(() => ({
-    scrollPosition,
+    scrollPosition: scrollPositionBp,
     visibleStart,
     visibleEnd,
     genomeLength,
@@ -127,7 +161,7 @@ export function TrackContainer({
     isLoading,
     setLoading,
   }), [
-    scrollPosition,
+    scrollPositionBp,
     visibleStart,
     visibleEnd,
     genomeLength,

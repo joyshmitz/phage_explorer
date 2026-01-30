@@ -413,6 +413,7 @@ export function BottomSheet({
   useEffect(() => {
     if (!shouldRender) return;
 
+    let isMounted = true;
     let rafId = 0;
     const handleViewportChange = () => {
       if (rafId) {
@@ -420,6 +421,9 @@ export function BottomSheet({
       }
       rafId = requestAnimationFrame(() => {
         rafId = 0;
+        // Guard against RAF firing after unmount (race condition where RAF
+        // fires and sets rafId=0 before cleanup runs)
+        if (!isMounted) return;
         animateToSnapPoint(snapPointRef.current, true, false);
       });
     };
@@ -433,6 +437,7 @@ export function BottomSheet({
     }
 
     return () => {
+      isMounted = false;
       if (rafId) {
         cancelAnimationFrame(rafId);
       }

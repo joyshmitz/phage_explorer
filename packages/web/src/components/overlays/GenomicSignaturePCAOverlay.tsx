@@ -247,6 +247,8 @@ export function GenomicSignaturePCAOverlay({
 
     let cancelled = false;
     setPcaLoading(true);
+    // Clear any stale errors so successful PCA results aren't masked.
+    setError(null);
 
     ComputeOrchestrator
       .getInstance()
@@ -254,6 +256,7 @@ export function GenomicSignaturePCAOverlay({
       .then((result) => {
         if (cancelled) return;
         setPcaResult(result);
+        setError(null);
       })
       .catch((err) => {
         if (cancelled) return;

@@ -5,7 +5,7 @@
  * Respects prefers-reduced-motion and provides haptic feedback.
  */
 
-import { useRef, useCallback } from 'react';
+import { useRef, useCallback, useEffect } from 'react';
 import { useDrag, usePinch, type Handler } from '@use-gesture/react';
 import { useReducedMotion } from './useReducedMotion';
 import { haptics } from '../utils/haptics';
@@ -351,6 +351,12 @@ export function useLongPress(options: UseLongPressOptions) {
       timerRef.current = null;
     }
   }, []);
+
+  useEffect(() => {
+    return () => {
+      clear();
+    };
+  }, [clear]);
 
   return useDrag(
     ({ xy: [x, y], first, active, canceled, movement: [mx, my] }) => {

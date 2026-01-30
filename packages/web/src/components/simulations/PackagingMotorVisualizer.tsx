@@ -24,11 +24,45 @@ export function PackagingMotorVisualizer({
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
   const history = useMemo(() => {
-    const hist = (state as any).history as Array<{ time: number; fill: number; pressure: number; force: number }> | undefined;
-    const points = hist && hist.length > 0
-      ? hist
-      : [{ time: state.time, fill: state.fillFraction, pressure: state.pressure, force: state.force }];
-    return [...points].sort((a, b) => a.time - b.time);
+    const hist = (state as unknown as {
+      history?: Array<
+        Partial<{
+          time: number;
+          t: number;
+          fill: number;
+          fillFraction: number;
+          pressure: number;
+          force: number;
+        }>
+      >;
+    }).history;
+
+    const points =
+      hist && hist.length > 0
+        ? hist
+        : [
+            {
+              time: state.time,
+              fillFraction: state.fillFraction,
+              pressure: state.pressure,
+              force: state.force,
+            },
+          ];
+
+    const normalizeNumber = (value: unknown, fallback: number): number =>
+      Number.isFinite(value as number) ? (value as number) : fallback;
+
+    const normalized = points.map((point) => {
+      const time = normalizeNumber(point.time ?? point.t, state.time);
+      const fillRaw = point.fillFraction ?? point.fill;
+      const fill = Math.max(0, Math.min(1, normalizeNumber(fillRaw, state.fillFraction)));
+      const pressure = normalizeNumber(point.pressure, state.pressure);
+      const force = normalizeNumber(point.force, state.force);
+      return { time, fill, pressure, force };
+    });
+
+    normalized.sort((a, b) => a.time - b.time);
+    return normalized;
   }, [state]);
 
   useEffect(() => {

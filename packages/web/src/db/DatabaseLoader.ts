@@ -505,10 +505,11 @@ export class DatabaseLoader {
       this.gzipWorkerRequests.clear();
 
       // Reset so future calls can attempt to recreate a fresh worker.
+      // Always null the reference unconditionally - the worker is terminated
+      // and cannot be reused. If a new worker was created concurrently, this
+      // will cause it to be recreated on next use, which is safe.
       worker.terminate();
-      if (this.gzipWorker === worker) {
-        this.gzipWorker = null;
-      }
+      this.gzipWorker = null;
     };
 
     this.gzipWorker = worker;
