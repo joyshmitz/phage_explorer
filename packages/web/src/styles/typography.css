@@ -95,6 +95,7 @@
    This intentionally overrides a subset of tokens (xs/sm/base) while preserving the rest of the scale. */
 @media (max-width: 900px) {
   :root {
+    --text-2xs: 10px;
     --text-xs: 12px;
     --text-sm: 14px;
     --text-base: 16px;

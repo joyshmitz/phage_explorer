@@ -187,17 +187,22 @@ export function SearchOverlay({ repository, currentPhage }: SearchOverlayProps):
   }, [workerInitKey]);
 
   const overlayOpen = isOpen('search');
+  const hasDatabase = Boolean(repository);
+  const hasPhage = Boolean(currentPhage);
+  const isInitializing = (!workerReady && !workerError) || status === 'loading';
+  const hasSequence = sequence.length > 0;
+  const showSearchUI = overlayOpen && hasDatabase && hasPhage && !workerError && !isInitializing && !loadError && hasSequence;
 
-  // Autofocus input when overlay opens
+  // Ensure input focus once the "real" search UI is available (worker + sequence loaded).
+  // Without this, the Overlay's initial focus (close button) can remain focused if the
+  // input isn't mounted yet (loading state), causing Enter to close the overlay.
   useEffect(() => {
-    if (overlayOpen) {
-      // Small delay to ensure the overlay is rendered
-      const timer = setTimeout(() => {
-        inputRef.current?.focus();
-      }, 50);
-      return () => clearTimeout(timer);
-    }
-  }, [overlayOpen]);
+    if (!showSearchUI) return;
+    const input = inputRef.current;
+    if (!input) return;
+    if (document.activeElement === input) return;
+    input.focus();
+  }, [showSearchUI]);
 
   // Reset selection when hits change
   useEffect(() => {
@@ -606,11 +611,6 @@ export function SearchOverlay({ repository, currentPhage }: SearchOverlayProps):
     return null;
   }
 
-  const hasDatabase = Boolean(repository);
-  const hasPhage = Boolean(currentPhage);
-  const isInitializing = (!workerReady && !workerError) || status === 'loading';
-  const hasSequence = sequence.length > 0;
-
   return (
     <Overlay id="search" title="SEARCH" hotkey="/" size="xl" onClose={() => close('search')}>
       <OverlayStack>
@@ -693,6 +693,7 @@ export function SearchOverlay({ repository, currentPhage }: SearchOverlayProps):
               <label style={{ color: colors.textDim, fontSize: '0.9rem' }}>Query</label>
               <input
                 ref={inputRef}
+                data-overlay-autofocus="true"
                 type="text"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}

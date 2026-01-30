@@ -37,6 +37,7 @@ import { CommandPalette } from './CommandPalette';
 import { HelpOverlay } from './HelpOverlay';
 import { WelcomeModal } from './WelcomeModal';
 import { SettingsOverlay } from './SettingsOverlay';
+import { GotoOverlay } from './GotoOverlay';
 import { AAKeyOverlay } from './AAKeyOverlay';
 import { AALegend } from './AALegend';
 
@@ -162,6 +163,7 @@ export function OverlayManager({ repository, currentPhage }: OverlayManagerProps
       <HelpOverlay />
       <AnalysisMenu />
       <SearchOverlay repository={repository} currentPhage={currentPhage} />
+      <GotoOverlay />
       <AAKeyOverlay />
       <AALegend />
       <SettingsOverlay />

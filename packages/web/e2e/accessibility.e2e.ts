@@ -19,6 +19,25 @@ type AxeResults = {
 
 const AXE_SCRIPT_URL = 'https://cdn.jsdelivr.net/npm/axe-core@4.11.0/axe.min.js';
 
+async function setExperienceLevel(page: Page, level: 'novice' | 'intermediate' | 'power'): Promise<void> {
+  await page.addInitScript((requestedLevel: string) => {
+    try {
+      const STORAGE_KEY = 'phage-explorer-main-prefs';
+      const raw = localStorage.getItem(STORAGE_KEY);
+      const parsed = raw ? (JSON.parse(raw) as Record<string, unknown>) : {};
+      localStorage.setItem(
+        STORAGE_KEY,
+        JSON.stringify({
+          ...parsed,
+          experienceLevel: requestedLevel,
+        })
+      );
+    } catch {
+      // Ignore storage failures in restricted environments
+    }
+  }, level);
+}
+
 function formatViolations(label: string, violations: AxeViolation[]): string {
   if (violations.length === 0) return '';
 
@@ -79,6 +98,9 @@ async function expectNoA11yViolations(page: Page, label: string): Promise<void> 
 }
 
 test('WCAG 2.1 A/AA: base + key overlays', async ({ page }) => {
+  // Keep this test stable even when experience level gating changes.
+  await setExperienceLevel(page, 'power');
+
   // `networkidle` can hang on Vite (HMR websocket).
   await page.goto('/', { waitUntil: 'domcontentloaded', timeout: 60000 });
   await waitForAppReady(page);
@@ -161,6 +183,9 @@ async function testOverlayA11y(
 }
 
 test('WCAG 2.1 A/AA: analysis overlays', async ({ page }) => {
+  // These overlays are gated behind Intermediate/Power hotkeys.
+  await setExperienceLevel(page, 'power');
+
   await page.goto('/', { waitUntil: 'domcontentloaded', timeout: 60000 });
   await waitForAppReady(page);
 
@@ -185,29 +210,32 @@ test('WCAG 2.1 A/AA: analysis overlays', async ({ page }) => {
   // Bendability (b)
   await testOverlayA11y(page, 'b', 'bendability', 'Bendability overlay');
 
-  // Promoter (Shift+P)
-  await testOverlayA11y(page, 'Shift+P', 'promoter', 'Promoter overlay');
+  // Promoter (p)
+  await testOverlayA11y(page, 'p', 'promoter', 'Promoter overlay');
 
   // Repeats (r)
   await testOverlayA11y(page, 'r', 'repeats', 'Repeats overlay');
 
-  // K-mer Anomaly (Shift+V)
-  await testOverlayA11y(page, 'Shift+V', 'kmerAnomaly', 'K-mer Anomaly overlay');
+  // K-mer Anomaly (Alt+J)
+  await testOverlayA11y(page, 'Alt+j', 'kmerAnomaly', 'K-mer Anomaly overlay');
 
-  // Hilbert (Shift+H)
-  await testOverlayA11y(page, 'Shift+H', 'hilbert', 'Hilbert curve overlay');
+  // Hilbert (Alt+Shift+H)
+  await testOverlayA11y(page, 'Alt+Shift+h', 'hilbert', 'Hilbert curve overlay');
 
-  // Gel (Shift+G)
-  await testOverlayA11y(page, 'Shift+G', 'gel', 'Gel electrophoresis overlay');
+  // Gel (Alt+G)
+  await testOverlayA11y(page, 'Alt+g', 'gel', 'Gel electrophoresis overlay');
 
-  // Dot Plot (.)
-  await testOverlayA11y(page, '.', 'dotPlot', 'Dot plot overlay');
+  // Dot Plot (Alt+O)
+  await testOverlayA11y(page, 'Alt+o', 'dotPlot', 'Dot plot overlay');
 
-  // Bias Decomposition (Shift+J)
-  await testOverlayA11y(page, 'Shift+J', 'biasDecomposition', 'Bias Decomposition overlay');
+  // Bias Decomposition (Alt+B)
+  await testOverlayA11y(page, 'Alt+b', 'biasDecomposition', 'Bias Decomposition overlay');
 });
 
 test('WCAG 2.1 A/AA: reference overlays', async ({ page }) => {
+  // Keep reference overlays audited under the same "power user" state.
+  await setExperienceLevel(page, 'power');
+
   await page.goto('/', { waitUntil: 'domcontentloaded', timeout: 60000 });
   await waitForAppReady(page);
 
@@ -223,15 +251,15 @@ test('WCAG 2.1 A/AA: reference overlays', async ({ page }) => {
     await page.waitForTimeout(200);
   }
 
-  // AA Key (k)
-  await testOverlayA11y(page, 'k', 'aaKey', 'Amino Acid Key overlay');
+  // AA Key (Shift+K)
+  await testOverlayA11y(page, 'Shift+K', 'aaKey', 'Amino Acid Key overlay');
 
-  // AA Legend (l)
-  await testOverlayA11y(page, 'l', 'aaLegend', 'Amino Acid Legend overlay');
+  // AA Legend (Shift+L)
+  await testOverlayA11y(page, 'Shift+L', 'aaLegend', 'Amino Acid Legend overlay');
 
   // Goto (Ctrl+g)
   await testOverlayA11y(page, 'Control+g', 'goto', 'Goto overlay');
 
-  // HGT (Shift+Y)
-  await testOverlayA11y(page, 'Shift+Y', 'hgt', 'HGT detection overlay');
+  // HGT (Alt+H)
+  await testOverlayA11y(page, 'Alt+h', 'hgt', 'HGT detection overlay');
 });

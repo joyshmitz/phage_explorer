@@ -18,9 +18,11 @@
     padding-bottom: env(safe-area-inset-bottom, 0px);
     background: var(--color-background-elevated);
     border-top: 1px solid var(--color-border);
-    /* CRITICAL: Use z-fixed (300) to sit above content but BELOW modals (500).
-       Previously was z-modal + 100 which broke overlay interactions. */
-    z-index: var(--z-fixed);
+    /* CRITICAL: Use z-index between modals and popovers.
+       - Below z-popover (600) to not block tooltips
+       - Above z-modal backdrop (500) when NO overlays are open
+       Note: When overlays ARE open, BottomSheet handles its own close UX */
+    z-index: calc(var(--z-modal) + 50);
     justify-content: space-around;
     align-items: stretch;
     /* GPU layer hint for fixed positioning */

@@ -15,8 +15,30 @@
  * - screenshot on failure
  */
 
-import { test, expect } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
 import { setupTestHarness } from './e2e-harness';
+
+async function dismissWelcomeIfPresent(page: Page): Promise<void> {
+  const welcome = page.locator('.overlay-welcome');
+  const isVisible = await welcome
+    .waitFor({ state: 'visible', timeout: 2500 })
+    .then(() => true)
+    .catch(() => false);
+  if (!isVisible) return;
+
+  const skip = page.locator('.welcome-footer__skip');
+  if (await skip.isVisible().catch(() => false)) {
+    await skip.click().catch(() => {});
+    await welcome.waitFor({ state: 'hidden', timeout: 5000 }).catch(() => null);
+    await page.waitForTimeout(150);
+    return;
+  }
+
+  // Fallback: ESC closes the welcome overlay if focus is trapped.
+  await page.keyboard.press('Escape').catch(() => {});
+  await welcome.waitFor({ state: 'hidden', timeout: 5000 }).catch(() => null);
+  await page.waitForTimeout(150);
+}
 
 test.describe('Phage Selection Determinism', () => {
   test('rapid selection results in last-selected phage displayed', async ({ page }, testInfo) => {
@@ -31,8 +53,9 @@ test.describe('Phage Selection Determinism', () => {
     }> = [];
 
     await test.step('Cold load and wait for hydration', async () => {
-      await page.goto('/');
+      await page.goto('/', { waitUntil: 'domcontentloaded' });
       await expect(page.locator('header')).toBeVisible();
+      await dismissWelcomeIfPresent(page);
       // Wait for phage list to populate
       await expect(page.locator('[data-testid="phage-list"]')).toBeVisible({ timeout: 10000 });
       // Wait for initial phage to load
@@ -130,8 +153,9 @@ test.describe('Phage Selection Determinism', () => {
     const { finalize, consoleErrors, pageErrors } = setupTestHarness(page, testInfo);
 
     await test.step('Cold load', async () => {
-      await page.goto('/');
+      await page.goto('/', { waitUntil: 'domcontentloaded' });
       await expect(page.locator('header')).toBeVisible();
+      await dismissWelcomeIfPresent(page);
       await expect(page.locator('[data-testid="phage-list"]')).toBeVisible({ timeout: 10000 });
       await page.waitForTimeout(1000);
     });
@@ -171,8 +195,9 @@ test.describe('Phage Selection Determinism', () => {
     const { finalize, consoleErrors, pageErrors } = setupTestHarness(page, testInfo);
 
     await test.step('Cold load', async () => {
-      await page.goto('/');
+      await page.goto('/', { waitUntil: 'domcontentloaded' });
       await expect(page.locator('header')).toBeVisible();
+      await dismissWelcomeIfPresent(page);
       await expect(page.locator('[data-testid="phage-list"]')).toBeVisible({ timeout: 10000 });
       await page.waitForTimeout(1000);
     });
