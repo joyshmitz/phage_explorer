@@ -211,7 +211,7 @@ function SequenceViewBase({
   diffPositions = [],
   diffEnabledOverride,
   className = '',
-  height = 300,
+  height, // undefined = use internal responsive calculation
   onControlsReady,
 }: SequenceViewProps): React.ReactElement {
   const { theme } = useTheme();
