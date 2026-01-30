@@ -45,6 +45,7 @@ let wasmCountKmersDense: WasmCountKmersFn | null = null;
 let wasmScanKLWindows: WasmScanKLFn | null = null;
 let wasmAvailable = false;
 let wasmKLScanAvailable = false;
+let wasmKmerInitPromise: Promise<void> | null = null;
 
 const textEncoder = typeof TextEncoder !== 'undefined' ? new TextEncoder() : null;
 
@@ -53,36 +54,46 @@ const textEncoder = typeof TextEncoder !== 'undefined' ? new TextEncoder() : nul
  */
 async function initWasmKmerCounter(): Promise<void> {
   if (wasmAvailable) return;
-  try {
-    const wasm = await import('@phage/wasm-compute');
-    // wasm-compute may require explicit async init (depending on build target).
-    // Keep this best-effort so we can fall back cleanly if init fails.
-    const maybeInit = (wasm as unknown as { default?: () => Promise<void> }).default;
-    if (typeof maybeInit === 'function') {
-      await maybeInit();
-    }
-    wasmCountKmersDense = wasm.count_kmers_dense;
-    wasmScanKLWindows = wasm.scan_kl_windows;
+  // Guard against concurrent initialization attempts (allow retry if WASM is unavailable).
+  if (wasmKmerInitPromise) return wasmKmerInitPromise;
+  wasmKmerInitPromise = (async () => {
+    try {
+      const wasm = await import('@phage/wasm-compute');
+      // wasm-compute may require explicit async init (depending on build target).
+      // Keep this best-effort so we can fall back cleanly if init fails.
+      const maybeInit = (wasm as unknown as { default?: () => Promise<void> }).default;
+      if (typeof maybeInit === 'function') {
+        await maybeInit();
+      }
+      wasmCountKmersDense = wasm.count_kmers_dense;
+      wasmScanKLWindows = wasm.scan_kl_windows;
 
-    // Quick test to verify dense k-mer counting works
-    if (textEncoder && wasmCountKmersDense) {
-      const testBytes = textEncoder.encode('ACGTACGT');
-      const result = wasmCountKmersDense(testBytes, 2);
-      wasmAvailable = result.counts.length === 16; // 4^2 = 16
-      result.free();
-    }
+      // Quick test to verify dense k-mer counting works
+      if (textEncoder && wasmCountKmersDense) {
+        const testBytes = textEncoder.encode('ACGTACGT');
+        const result = wasmCountKmersDense(testBytes, 2);
+        wasmAvailable = result.counts.length === 16; // 4^2 = 16
+        result.free();
+      }
 
-    // Test KL scan function
-    if (wasmAvailable && textEncoder && wasmScanKLWindows) {
-      const testBytes = textEncoder.encode('ACGTACGTACGTACGTACGT');
-      const klResult = wasmScanKLWindows(testBytes, 2, 8, 4);
-      wasmKLScanAvailable = klResult.window_count > 0;
-      klResult.free();
+      // Test KL scan function
+      if (wasmAvailable && textEncoder && wasmScanKLWindows) {
+        const testBytes = textEncoder.encode('ACGTACGTACGTACGTACGT');
+        const klResult = wasmScanKLWindows(testBytes, 2, 8, 4);
+        wasmKLScanAvailable = klResult.window_count > 0;
+        klResult.free();
+      }
+    } catch {
+      wasmAvailable = false;
+      wasmKLScanAvailable = false;
+      wasmCountKmersDense = null;
+      wasmScanKLWindows = null;
     }
-  } catch {
-    wasmAvailable = false;
-    wasmKLScanAvailable = false;
-  }
+  })().finally(() => {
+    wasmKmerInitPromise = null;
+  });
+
+  return wasmKmerInitPromise;
 }
 
 // Initialize on module load (non-blocking)
@@ -209,10 +220,18 @@ function calculateCompressionRatio(sequence: string): number {
   if (sequence.length === 0) return 1;
   try {
     const compressed = deflate(sequence);
+    // Guard against empty compressed output (shouldn't happen, but defensive)
+    if (compressed.length === 0) return 1;
     return sequence.length / compressed.length;
   } catch {
     return 1;
   }
+}
+
+function p95IndexForLength(length: number): number {
+  // Correct 95th percentile: for n items, index is floor((n-1) * 0.95).
+  // This ensures we select the 95th percentile element (0-based), not the 96th.
+  return Math.max(0, Math.floor((length - 1) * 0.95));
 }
 
 /**
@@ -333,7 +352,7 @@ function scanForAnomaliesDense(
   const sortedKL = Float32Array.from(klValuesArray).sort();
   const sortedComp = Float32Array.from(compressionValuesArray).sort();
 
-  const p95Index = Math.floor(windows.length * 0.95);
+  const p95Index = p95IndexForLength(windows.length);
 
   const thresholdKL = sortedKL[p95Index] || 0;
   const thresholdComp = sortedComp[p95Index] || 0;
@@ -417,7 +436,7 @@ function scanForAnomaliesSparse(
   const klValues = windows.map(w => w.klDivergence).sort((a, b) => a - b);
   const compValues = windows.map(w => w.compressionRatio).sort((a, b) => a - b);
 
-  const p95Index = Math.floor(windows.length * 0.95);
+  const p95Index = p95IndexForLength(windows.length);
 
   const thresholdKL = klValues[p95Index] || 0;
   const thresholdComp = compValues[p95Index] || 0;
@@ -514,7 +533,7 @@ function finishScanWithKLValues(
   const sortedKL = Float32Array.from(klValues).sort();
   const sortedComp = Float32Array.from(compressionValues).sort();
 
-  const p95Index = Math.floor(windows.length * 0.95);
+  const p95Index = p95IndexForLength(windows.length);
 
   const thresholdKL = sortedKL[p95Index] || 0;
   const thresholdComp = sortedComp[p95Index] || 0;
