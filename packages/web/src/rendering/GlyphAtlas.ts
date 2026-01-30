@@ -114,13 +114,22 @@ function calculateOptimalFontSize(cellWidth: number, cellHeight: number): number
   return Math.max(6, Math.min(heightBased, widthBased)); // Min 6px for any legibility
 }
 
+// O(1) lookup tables for nucleotide/amino acid indices
+const NUCLEOTIDE_INDEX: Record<string, number> = { A: 0, C: 1, G: 2, T: 3, N: 4 };
+const AMINO_ACID_INDEX: Record<string, number> = {
+  A: 0, C: 1, D: 2, E: 3, F: 4, G: 5, H: 6, I: 7, K: 8, L: 9,
+  M: 10, N: 11, P: 12, Q: 13, R: 14, S: 15, T: 16, V: 17, W: 18, Y: 19,
+  X: 20, '*': 21,
+};
+
 export class GlyphAtlas {
   private canvas: HTMLCanvasElement | OffscreenCanvas;
   private ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D;
   private options: GlyphAtlasOptions;
   private theme: Theme;
-  private nucleotideGlyphs: Map<Nucleotide, GlyphInfo> = new Map();
-  private aminoAcidGlyphs: Map<AminoAcid, GlyphInfo> = new Map();
+  // OPTIMIZATION: Arrays for O(1) index-based access instead of Map hash lookups
+  private nucleotideGlyphs: GlyphInfo[] = new Array(NUCLEOTIDES.length);
+  private aminoAcidGlyphs: GlyphInfo[] = new Array(AMINO_ACIDS.length);
   private metrics: GlyphMetrics;
   private dpr: number;
   private useMicroGlyphs: boolean;
@@ -201,19 +210,19 @@ export class GlyphAtlas {
 
     let index = 0;
 
-    // Render nucleotides
+    // Render nucleotides - store in array for O(1) access
     for (const char of NUCLEOTIDES) {
       const colors = this.theme.nucleotides[char];
       this.renderGlyph(char, colors, index, 'nucleotide');
-      this.nucleotideGlyphs.set(char, this.getGlyphInfo(char, colors, index));
+      this.nucleotideGlyphs[NUCLEOTIDE_INDEX[char]] = this.getGlyphInfo(char, colors, index);
       index++;
     }
 
-    // Render amino acids
+    // Render amino acids - store in array for O(1) access
     for (const char of AMINO_ACIDS) {
       const colors = this.theme.aminoAcids[char as keyof typeof this.theme.aminoAcids];
       this.renderGlyph(char, colors, index, 'amino');
-      this.aminoAcidGlyphs.set(char, this.getGlyphInfo(char, colors, index));
+      this.aminoAcidGlyphs[AMINO_ACID_INDEX[char]] = this.getGlyphInfo(char, colors, index);
       index++;
     }
   }
@@ -320,6 +329,7 @@ export class GlyphAtlas {
 
   /**
    * Draw a nucleotide to the destination canvas
+   * OPTIMIZATION: O(1) array index lookup instead of Map.get()
    */
   drawNucleotide(
     destCtx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D,
@@ -329,19 +339,16 @@ export class GlyphAtlas {
     destWidth?: number,
     destHeight?: number
   ): void {
-    const glyph = this.nucleotideGlyphs.get(char as Nucleotide);
-    if (!glyph) {
-      // Fall back to 'N' for unknown
-      const fallback = this.nucleotideGlyphs.get('N');
-      if (!fallback) return;
-      this.drawGlyph(destCtx, fallback, destX, destY, destWidth, destHeight);
-      return;
+    const idx = NUCLEOTIDE_INDEX[char];
+    const glyph = idx !== undefined ? this.nucleotideGlyphs[idx] : this.nucleotideGlyphs[4]; // N fallback
+    if (glyph) {
+      this.drawGlyph(destCtx, glyph, destX, destY, destWidth, destHeight);
     }
-    this.drawGlyph(destCtx, glyph, destX, destY, destWidth, destHeight);
   }
 
   /**
    * Draw an amino acid to the destination canvas
+   * OPTIMIZATION: O(1) array index lookup instead of Map.get()
    */
   drawAminoAcid(
     destCtx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D,
@@ -351,15 +358,11 @@ export class GlyphAtlas {
     destWidth?: number,
     destHeight?: number
   ): void {
-    const glyph = this.aminoAcidGlyphs.get(char as AminoAcid);
-    if (!glyph) {
-      // Fall back to 'X' for unknown
-      const fallback = this.aminoAcidGlyphs.get('X');
-      if (!fallback) return;
-      this.drawGlyph(destCtx, fallback, destX, destY, destWidth, destHeight);
-      return;
+    const idx = AMINO_ACID_INDEX[char];
+    const glyph = idx !== undefined ? this.aminoAcidGlyphs[idx] : this.aminoAcidGlyphs[20]; // X fallback
+    if (glyph) {
+      this.drawGlyph(destCtx, glyph, destX, destY, destWidth, destHeight);
     }
-    this.drawGlyph(destCtx, glyph, destX, destY, destWidth, destHeight);
   }
 
   /**
@@ -438,14 +441,16 @@ export class GlyphAtlas {
    * Get nucleotide glyph info
    */
   getNucleotideGlyph(char: string): GlyphInfo | undefined {
-    return this.nucleotideGlyphs.get(char as Nucleotide);
+    const idx = NUCLEOTIDE_INDEX[char];
+    return idx !== undefined ? this.nucleotideGlyphs[idx] : undefined;
   }
 
   /**
    * Get amino acid glyph info
    */
   getAminoAcidGlyph(char: string): GlyphInfo | undefined {
-    return this.aminoAcidGlyphs.get(char as AminoAcid);
+    const idx = AMINO_ACID_INDEX[char];
+    return idx !== undefined ? this.aminoAcidGlyphs[idx] : undefined;
   }
 
   /**

@@ -1430,6 +1430,7 @@ export class CanvasSequenceGridRenderer {
   /**
    * Optimized rendering using tile caching
    * Renders rows from cache when possible, only creating new tiles for uncached rows
+   * OPTIMIZATION: Batches uncached row backgrounds into single fillRect calls
    */
   private renderVisibleRangeOptimized(
     ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D,
@@ -1443,61 +1444,88 @@ export class CanvasSequenceGridRenderer {
     const { startRow, endRow, offsetY } = range;
     const { sequence, aminoSequence, diffSequence, diffEnabled, diffMask } = this.currentState;
 
+    // OPTIMIZATION: Pre-calculate invariants outside the loop
+    const rowWidth = layout.cols * this.cellWidth;
+    const drawAmino = viewMode === 'aa';
+    const validDiffMask = diffMask && diffMask.length === sequence.length ? diffMask : null;
+
+    // OPTIMIZATION: Batch uncached row backgrounds - find contiguous uncached row ranges
+    // and fill them with a single fillRect call instead of one per row
+    let uncachedBatchStart = -1;
+
     // Try to use cached tiles for each row
     for (let row = startRow; row < endRow; row++) {
       const rowY = (row - startRow) * rowHeight + offsetY;
       const tile = this.getRowTile(row, layout.cols, rowHeight, viewMode);
 
       if (tile) {
+        // Flush any pending uncached batch before drawing cached tile
+        if (uncachedBatchStart >= 0) {
+          const batchStartY = (uncachedBatchStart - startRow) * rowHeight + offsetY;
+          const batchHeight = (row - uncachedBatchStart) * rowHeight;
+          ctx.fillStyle = this.theme.colors.background;
+          ctx.fillRect(0, batchStartY, rowWidth, batchHeight);
+          uncachedBatchStart = -1;
+        }
         // Draw cached tile
         ctx.drawImage(
           tile.canvas,
           0, 0, tile.canvas.width, tile.canvas.height,
-          0, rowY, layout.cols * this.cellWidth, rowHeight
+          0, rowY, rowWidth, rowHeight
         );
       } else {
-        // Render row directly (no cache available or disabled)
-        // IMPORTANT: Fill row background first to prevent black areas during scrolling.
-        // When tiles aren't available (isScrolling=true skips tile creation), individual
-        // glyph draws may leave gaps if glyph atlas doesn't cover entire cell area.
-        ctx.fillStyle = this.theme.colors.background;
-        ctx.fillRect(0, rowY, layout.cols * this.cellWidth, rowHeight);
+        // Start or extend uncached batch
+        if (uncachedBatchStart < 0) {
+          uncachedBatchStart = row;
+        }
+      }
+    }
 
-        const rowStart = row * layout.cols;
-        const rowEnd = Math.min(rowStart + layout.cols, sequence.length);
+    // Flush final uncached batch
+    if (uncachedBatchStart >= 0) {
+      const batchStartY = (uncachedBatchStart - startRow) * rowHeight + offsetY;
+      const batchHeight = (endRow - uncachedBatchStart) * rowHeight;
+      ctx.fillStyle = this.theme.colors.background;
+      ctx.fillRect(0, batchStartY, rowWidth, batchHeight);
+    }
 
-        if (viewMode === 'dual') {
-          this.renderDualRows(
-            ctx, range, layout, sequence, aminoSequence ?? '',
-            diffSequence, diffEnabled, diffMask, row, row + 1
-          );
-        } else {
-          // Inline render for uncached rows
-          const drawAmino = viewMode === 'aa';
-          const validDiffMask = diffMask && diffMask.length === sequence.length ? diffMask : null;
+    // Second pass: render uncached rows (backgrounds already filled)
+    for (let row = startRow; row < endRow; row++) {
+      const tile = this.getRowTile(row, layout.cols, rowHeight, viewMode);
+      if (tile) continue; // Already drawn above
 
-          for (let i = rowStart; i < rowEnd; i++) {
-            const col = i - rowStart;
-            const x = col * this.cellWidth;
-            const char = this.encodedSequence ? CODE_TO_CHAR[this.encodedSequence[i]] : sequence[i];
+      const rowY = (row - startRow) * rowHeight + offsetY;
+      const rowStart = row * layout.cols;
+      const rowEnd = Math.min(rowStart + layout.cols, sequence.length);
 
-            let diffCode = 0;
-            if (diffEnabled) {
-              if (validDiffMask) {
-                diffCode = validDiffMask[i] ?? 0;
-              } else if (diffSequence) {
-                diffCode = diffSequence[i] && diffSequence[i] !== char ? 1 : 0;
-              }
+      if (viewMode === 'dual') {
+        this.renderDualRows(
+          ctx, range, layout, sequence, aminoSequence ?? '',
+          diffSequence, diffEnabled, diffMask, row, row + 1
+        );
+      } else {
+        // Inline render for uncached rows
+        for (let i = rowStart; i < rowEnd; i++) {
+          const col = i - rowStart;
+          const x = col * this.cellWidth;
+          const char = this.encodedSequence ? CODE_TO_CHAR[this.encodedSequence[i]] : sequence[i];
+
+          let diffCode = 0;
+          if (diffEnabled) {
+            if (validDiffMask) {
+              diffCode = validDiffMask[i] ?? 0;
+            } else if (diffSequence) {
+              diffCode = diffSequence[i] && diffSequence[i] !== char ? 1 : 0;
             }
+          }
 
-            if (diffCode > 0) {
-              this.drawDiffRect(ctx, x, rowY, this.cellWidth, this.cellHeight, diffCode);
+          if (diffCode > 0) {
+            this.drawDiffRect(ctx, x, rowY, this.cellWidth, this.cellHeight, diffCode);
+          } else {
+            if (drawAmino) {
+              this.glyphAtlas.drawAminoAcid(ctx, char, x, rowY, this.cellWidth, this.cellHeight);
             } else {
-              if (drawAmino) {
-                this.glyphAtlas.drawAminoAcid(ctx, char, x, rowY, this.cellWidth, this.cellHeight);
-              } else {
-                this.glyphAtlas.drawNucleotide(ctx, char, x, rowY, this.cellWidth, this.cellHeight);
-              }
+              this.glyphAtlas.drawNucleotide(ctx, char, x, rowY, this.cellWidth, this.cellHeight);
             }
           }
         }
