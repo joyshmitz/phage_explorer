@@ -18,9 +18,9 @@ dist/
 packages/wasm-compute/target/
 packages/tui/
 
-# Database files (only .gz needed for deployment, raw db built locally)
-*.db
-!packages/web/public/phage.db.gz
+# Database files (exclude root, but keep packages/web/public/phage.db for deployment)
+/phage.db
+!packages/web/public/phage.db
 
 # Documentation (not needed for deploy)
 *.md
@@ -48,6 +48,9 @@ docs/images/
 repro_*.ts
 test-*.ts
 phage_illustrations/
+
+# Local logs
+*.log
 
 # IDE/local
 .env.local
