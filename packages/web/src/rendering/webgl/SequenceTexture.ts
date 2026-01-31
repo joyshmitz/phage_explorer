@@ -35,7 +35,7 @@ const AMINO_ACID_CODE: Record<string, number> = {
 
 // Flags
 const FLAG_IS_DIFF = 1;
-const FLAG_IS_HIGHLIGHT = 2;
+// Bit 1 reserved for future highlights/selection.
 
 export interface SequenceTextureData {
   texture: WebGLTexture | null;

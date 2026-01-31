@@ -153,7 +153,7 @@ export function useSequenceGrid(options: UseSequenceGridOptions): UseSequenceGri
     return true;
   }, [options.useWorkerRenderer]);
 
-  // WebGL detection - cached once at mount time to avoid re-detection on every render
+  // WebGL detection - re-evaluated when rendering requirements change
   // Detect WebGL 2 support with instanced rendering for 60fps GPU-accelerated scrolling
   const webglSupport = useMemo(() => {
     if (typeof window === 'undefined') return { supported: false, webgl2: false };
@@ -163,6 +163,9 @@ export function useSequenceGrid(options: UseSequenceGridOptions): UseSequenceGri
     if (options.useWorkerRenderer === true) return { supported: false, webgl2: false };
     // Skip WebGL if post-processing effects are needed (WebGL renderer doesn't support them yet)
     if (scanlines || glow || postProcess) return { supported: false, webgl2: false };
+    // Skip WebGL for amino acid/dual modes (WebGL shader only renders nucleotides currently)
+    // Canvas 2D renderer handles AA coloring and dual-row layout properly
+    if (viewMode !== 'dna') return { supported: false, webgl2: false };
 
     try {
       const detection = detectWebGLSupport();
@@ -172,7 +175,7 @@ export function useSequenceGrid(options: UseSequenceGridOptions): UseSequenceGri
     } catch {
       return { supported: false, webgl2: false };
     }
-  }, [preferWebGL, options.useWorkerRenderer, scanlines, glow, postProcess]);
+  }, [preferWebGL, options.useWorkerRenderer, scanlines, glow, postProcess, viewMode]);
 
   const resolvedPostProcessOptions = useMemo<PostProcessOptions | null>(() => {
     if (postProcessOptions) return postProcessOptions;
