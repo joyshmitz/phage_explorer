@@ -16,27 +16,27 @@ curl -fsSL "https://raw.githubusercontent.com/Dicklesworthstone/phage_explorer/m
 ## Screenshots
 
 <p align="center">
-  <img src="docs/images/lambda_phage_full_interface.webp" alt="Lambda phage full interface" width="100%">
+  <img src="docs/images/lambda_phage_full_interface.webp" alt="Phage Explorer main interface" width="100%">
   <br>
-  <em>Lambda phage (λ) — Full desktop interface showing the 3D protein structure viewer, color-coded sequence grid with gene annotations, and navigation controls</em>
+  <em>Main dashboard — Phage selector with 24 genomes, Lambda phage illustration, color-coded sequence grid, 3D protein structure viewer, and Analysis Tools panel</em>
 </p>
 
 <p align="center">
-  <img src="docs/images/t5_phage_3d_structure.webp" alt="T5 phage 3D structure" width="100%">
+  <img src="docs/images/t5_phage_3d_structure.webp" alt="Sequence grid with 3D structure" width="100%">
   <br>
-  <em>T5 phage — WebGL-rendered 3D protein structure with cartoon rendering mode; structures fetched from RCSB PDB in real-time</em>
+  <em>Sequence + Structure view — Color-coded amino acid grid with gene map, alongside WebGL 3D protein structure (8ZVI, 28,618 atoms) fetched from RCSB PDB</em>
 </p>
 
 <p align="center">
-  <img src="docs/images/t5_phage_sequence_detail.webp" alt="T5 phage sequence detail" width="100%">
+  <img src="docs/images/t5_phage_sequence_detail.webp" alt="Virtual Gel Electrophoresis" width="100%">
   <br>
-  <em>Sequence detail view — Color-coded nucleotides (A/T/G/C) with amino acid translation; toggle reading frames with F key</em>
+  <em>Virtual Gel Electrophoresis [Alt+G] — Simulate restriction enzyme digestion with EcoRI, HindIII, BamHI and more; compare predicted band patterns against experimental gels</em>
 </p>
 
 <p align="center">
-  <img src="docs/images/t5_phage_zoomed_view.webp" alt="T5 phage zoomed view" width="100%">
+  <img src="docs/images/t5_phage_zoomed_view.webp" alt="Simulation Hub" width="100%">
   <br>
-  <em>Zoomed sequence grid — Individual nucleotides with position markers; smooth 60fps scrolling for genomes up to 500kb+</em>
+  <em>Simulation Hub [Shift+S] — Interactive phage biology simulations: Lysogeny Decision Circuit, Plaque Growth Automata, Ribosome Traffic, Burst Kinetics, and more</em>
 </p>
 
 ---
