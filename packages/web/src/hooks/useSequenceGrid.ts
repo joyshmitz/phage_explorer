@@ -9,7 +9,7 @@ import { useRef, useEffect, useLayoutEffect, useCallback, useState, useMemo } fr
 import type React from 'react';
 import type { Theme, ViewMode, ReadingFrame } from '@phage-explorer/core';
 import { translateSequence, reverseComplement } from '@phage-explorer/core';
-import { CanvasSequenceGridRenderer, type VisibleRange, type ZoomLevel, type ZoomPreset, type PostProcessPipeline } from '../rendering';
+import { CanvasSequenceGridRenderer, type VisibleRange, type ZoomLevel, type ZoomPreset, type PostProcessPipeline, WebGLSequenceRenderer, detectWebGLSupport } from '../rendering';
 import type { PostProcessOptions } from '../rendering/PostProcessPipeline';
 
 export interface UseSequenceGridOptions {
@@ -40,6 +40,12 @@ export interface UseSequenceGridOptions {
   useWorkerRenderer?: boolean;
   /** Post-process pipeline options (worker-safe) */
   postProcessOptions?: PostProcessOptions;
+  /**
+   * Prefer WebGL-based GPU-accelerated rendering when available.
+   * Falls back to Canvas 2D if WebGL is not supported.
+   * Default: true (use WebGL when available)
+   */
+  preferWebGL?: boolean;
 }
 
 /**
@@ -107,6 +113,9 @@ export interface UseSequenceGridResult {
   setZoomLevel: (level: ZoomLevel) => void;
 }
 
+// Type for unified renderer interface (Canvas or WebGL)
+type SequenceRenderer = CanvasSequenceGridRenderer | WebGLSequenceRenderer;
+
 export function useSequenceGrid(options: UseSequenceGridOptions): UseSequenceGridResult {
   const {
     theme,
@@ -128,6 +137,7 @@ export function useSequenceGrid(options: UseSequenceGridOptions): UseSequenceGri
     onVisibleRangeChange,
     onZoomChange,
     densityMode = detectMobileDevice() ? 'compact' : 'standard',
+    preferWebGL = true,  // Enable WebGL by default
   } = options;
 
   // Worker renderer disabled by default - OffscreenCanvas has DPI/sizing sync issues
@@ -142,6 +152,27 @@ export function useSequenceGrid(options: UseSequenceGridOptions): UseSequenceGri
     if ((navigator as Navigator).webdriver) return false;
     return true;
   }, [options.useWorkerRenderer]);
+
+  // WebGL detection - cached once at mount time to avoid re-detection on every render
+  // Detect WebGL 2 support with instanced rendering for 60fps GPU-accelerated scrolling
+  const webglSupport = useMemo(() => {
+    if (typeof window === 'undefined') return { supported: false, webgl2: false };
+    // Skip WebGL if explicitly disabled
+    if (!preferWebGL) return { supported: false, webgl2: false };
+    // Skip WebGL if using worker renderer (incompatible)
+    if (options.useWorkerRenderer === true) return { supported: false, webgl2: false };
+    // Skip WebGL if post-processing effects are needed (WebGL renderer doesn't support them yet)
+    if (scanlines || glow || postProcess) return { supported: false, webgl2: false };
+
+    try {
+      const detection = detectWebGLSupport();
+      // Require WebGL 2 or WebGL 1 with instanced arrays
+      const supported = detection.webgl2 || (detection.webgl1 && detection.maxInstances > 0);
+      return { supported, webgl2: detection.webgl2 };
+    } catch {
+      return { supported: false, webgl2: false };
+    }
+  }, [preferWebGL, options.useWorkerRenderer, scanlines, glow, postProcess]);
 
   const resolvedPostProcessOptions = useMemo<PostProcessOptions | null>(() => {
     if (postProcessOptions) return postProcessOptions;
@@ -169,7 +200,8 @@ export function useSequenceGrid(options: UseSequenceGridOptions): UseSequenceGri
   const initialZoomScale = initialZoomScaleRef.current;
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const rendererRef = useRef<CanvasSequenceGridRenderer | null>(null);
+  const rendererRef = useRef<SequenceRenderer | null>(null);
+  const isWebGLRendererRef = useRef<boolean>(false);
   const workerRef = useRef<Worker | null>(null);
   const displayLengthRef = useRef<number>(0);
   const workerStateRef = useRef<{
@@ -493,39 +525,98 @@ export function useSequenceGrid(options: UseSequenceGridOptions): UseSequenceGri
     if (!canvas) return;
     if (useWorkerRenderer) return;
 
-    // Create renderer with zoom options
-    const renderer = new CanvasSequenceGridRenderer({
-      canvas,
-      theme,
-      scanlines,
-      glow,
-      postProcess,
-      reducedMotion,
-      zoomScale: initialZoomScale,
-      enablePinchZoom,
-      onZoomChange: handleZoomChange,
-      onVisibleRangeChange: handleVisibleRangeFromRenderer,
-      snapToCodon,
-      densityMode,
-    });
+    let renderer: SequenceRenderer | null = null;
+    let usingWebGL = false;
+
+    // Try WebGL first if supported (60fps GPU-accelerated scrolling)
+    if (webglSupport.supported) {
+      try {
+        renderer = new WebGLSequenceRenderer({
+          canvas,
+          theme,
+          zoomScale: initialZoomScale,
+          enablePinchZoom,
+          snapToCodon,
+          onZoomChange: (scale) => {
+            // WebGL renderer doesn't have ZoomPreset concept, create a minimal one
+            const preset: ZoomPreset = {
+              cellWidth: Math.round(12 * scale),
+              cellHeight: Math.round(14 * scale),
+              showText: scale >= 0.7,
+              showAA: scale >= 0.7,
+              label: scale <= 0.25 ? 'Genome' : scale <= 0.55 ? 'Region' : scale <= 0.9 ? 'Micro' : scale <= 1.5 ? 'Codon' : 'Base',
+            };
+            handleZoomChange(scale, preset);
+          },
+          onVisibleRangeChange: handleVisibleRangeFromRenderer,
+        });
+        usingWebGL = true;
+        console.log('[SequenceGrid] Using WebGL renderer for GPU-accelerated scrolling');
+      } catch (error) {
+        console.warn('[SequenceGrid] WebGL renderer failed, falling back to Canvas 2D:', error);
+        renderer = null;
+        usingWebGL = false;
+      }
+    }
+
+    // Fall back to Canvas 2D renderer (always works)
+    if (!renderer) {
+      renderer = new CanvasSequenceGridRenderer({
+        canvas,
+        theme,
+        scanlines,
+        glow,
+        postProcess,
+        reducedMotion,
+        zoomScale: initialZoomScale,
+        enablePinchZoom,
+        onZoomChange: handleZoomChange,
+        onVisibleRangeChange: handleVisibleRangeFromRenderer,
+        snapToCodon,
+        densityMode,
+      });
+      usingWebGL = false;
+    }
 
     rendererRef.current = renderer;
+    isWebGLRendererRef.current = usingWebGL;
 
     // Initialize sequence and diff state on new renderer.
     // This is critical because the sequence/diff effects won't re-run
     // when renderer is recreated due to visual pipeline changes (scanlines, glow, etc).
     // Without this, the new renderer has currentState=null and render() exits early.
-    renderer.setSequence(displaySequence, viewMode, readingFrame, aminoSequence);
-    renderer.setDiffMode(diffSequence, diffEnabled, diffMask ?? null);
+    if (usingWebGL) {
+      // WebGL renderer uses setState()
+      (renderer as WebGLSequenceRenderer).setState({
+        sequence: displaySequence,
+        aminoSequence,
+        viewMode,
+        readingFrame,
+        diffSequence,
+        diffEnabled,
+        diffMask: diffMask ?? null,
+      });
+    } else {
+      // Canvas renderer uses setSequence() + setDiffMode()
+      (renderer as CanvasSequenceGridRenderer).setSequence(displaySequence, viewMode, readingFrame, aminoSequence);
+      (renderer as CanvasSequenceGridRenderer).setDiffMode(diffSequence, diffEnabled, diffMask ?? null);
+    }
 
     // Initialize zoom preset state
-    setZoomPreset(renderer.getZoomPreset());
+    if (!usingWebGL) {
+      setZoomPreset((renderer as CanvasSequenceGridRenderer).getZoomPreset());
+    }
     latestRangeRef.current = renderer.getVisibleRange();
     commitUiState();
 
-    // Handle resize
+    // Handle resize - both renderers support resize()
     const handleResize = () => {
-      renderer.resize();
+      if (usingWebGL) {
+        const rect = canvas.getBoundingClientRect();
+        (renderer as WebGLSequenceRenderer).resize(rect.width, rect.height);
+      } else {
+        (renderer as CanvasSequenceGridRenderer).resize();
+      }
     };
 
     const resizeObserver = new ResizeObserver(handleResize);
@@ -535,7 +626,7 @@ export function useSequenceGrid(options: UseSequenceGridOptions): UseSequenceGri
     const handleOrientationChange = () => {
       setOrientation(window.innerWidth >= window.innerHeight ? 'landscape' : 'portrait');
       setIsMobile(detectMobileDevice()); // Re-detect on orientation change
-      renderer.resize();
+      handleResize();
     };
     window.addEventListener('orientationchange', handleOrientationChange);
     window.addEventListener('resize', handleOrientationChange); // Also track resize
@@ -572,7 +663,7 @@ export function useSequenceGrid(options: UseSequenceGridOptions): UseSequenceGri
       renderer.dispose();
       rendererRef.current = null;
     };
-  }, [useWorkerRenderer, scanlines, glow, postProcess, reducedMotion, initialZoomScale, enablePinchZoom, handleZoomChange, handleVisibleRangeFromRenderer, commitUiState]); // Recreate when visual pipeline changes
+  }, [useWorkerRenderer, webglSupport.supported, scanlines, glow, postProcess, reducedMotion, initialZoomScale, enablePinchZoom, handleZoomChange, handleVisibleRangeFromRenderer, commitUiState]); // Recreate when visual pipeline changes
 
   // Stop rendering when canvas is offscreen (battery/GPU saver, especially on mobile)
   useEffect(() => {
@@ -653,7 +744,10 @@ export function useSequenceGrid(options: UseSequenceGridOptions): UseSequenceGri
 
   // Update density mode without reconstructing renderer
   useEffect(() => {
-    rendererRef.current?.setDensityMode(densityMode);
+    // Only Canvas renderer supports density mode
+    if (!isWebGLRendererRef.current && rendererRef.current) {
+      (rendererRef.current as CanvasSequenceGridRenderer).setDensityMode?.(densityMode);
+    }
   }, [densityMode]);
 
   // Compute sequences for rendering
@@ -692,32 +786,63 @@ export function useSequenceGrid(options: UseSequenceGridOptions): UseSequenceGri
 
   // Update sequence
   useEffect(() => {
-    rendererRef.current?.setSequence(displaySequence, viewMode, readingFrame, aminoSequence);
+    const renderer = rendererRef.current;
+    if (!renderer) return;
+    if (isWebGLRendererRef.current) {
+      // WebGL renderer uses setState()
+      (renderer as WebGLSequenceRenderer).setState({
+        sequence: displaySequence,
+        aminoSequence,
+        viewMode,
+        readingFrame,
+      });
+    } else {
+      // Canvas renderer uses setSequence()
+      (renderer as CanvasSequenceGridRenderer).setSequence(displaySequence, viewMode, readingFrame, aminoSequence);
+    }
   }, [displaySequence, viewMode, readingFrame, aminoSequence]);
 
   // Update diff mode
   useEffect(() => {
-    rendererRef.current?.setDiffMode(diffSequence, diffEnabled, diffMask ?? null);
+    const renderer = rendererRef.current;
+    if (!renderer) return;
+    if (isWebGLRendererRef.current) {
+      // WebGL renderer uses setState()
+      (renderer as WebGLSequenceRenderer).setState({
+        diffSequence,
+        diffEnabled,
+        diffMask: diffMask ?? null,
+      });
+    } else {
+      // Canvas renderer uses setDiffMode()
+      (renderer as CanvasSequenceGridRenderer).setDiffMode(diffSequence, diffEnabled, diffMask ?? null);
+    }
   }, [diffSequence, diffEnabled, diffMask]);
 
-  // Update reduced motion flag without reconstructing renderer
+  // Update reduced motion flag without reconstructing renderer (Canvas only)
   useEffect(() => {
-    rendererRef.current?.setReducedMotion(reducedMotion);
+    if (!isWebGLRendererRef.current && rendererRef.current) {
+      (rendererRef.current as CanvasSequenceGridRenderer).setReducedMotion?.(reducedMotion);
+    }
   }, [reducedMotion]);
 
-  // Update scanline/glow toggles without recreating renderer
+  // Update scanline/glow toggles without recreating renderer (Canvas only)
   useEffect(() => {
     if (useWorkerRenderer && workerRef.current) {
       workerRef.current.postMessage({ type: 'setEffects', scanlines, glow });
       return;
     }
-    rendererRef.current?.setScanlines?.(scanlines);
-    rendererRef.current?.setGlow?.(glow);
+    if (!isWebGLRendererRef.current && rendererRef.current) {
+      (rendererRef.current as CanvasSequenceGridRenderer).setScanlines?.(scanlines);
+      (rendererRef.current as CanvasSequenceGridRenderer).setGlow?.(glow);
+    }
   }, [scanlines, glow, useWorkerRenderer]);
 
-  // Update post-process pipeline without reconstructing renderer
+  // Update post-process pipeline without reconstructing renderer (Canvas only)
   useEffect(() => {
-    rendererRef.current?.setPostProcess(postProcess);
+    if (!isWebGLRendererRef.current && rendererRef.current) {
+      (rendererRef.current as CanvasSequenceGridRenderer).setPostProcess?.(postProcess);
+    }
   }, [postProcess]);
 
   // Scroll methods

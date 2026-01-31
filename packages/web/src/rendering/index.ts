@@ -8,3 +8,7 @@ export { CanvasSequenceGridRenderer, type SequenceGridOptions, type GridRenderSt
 export { GeneMapRenderer, type GeneMapOptions, type GeneMapState } from './GeneMapRenderer';
 export { PostProcessPipeline, type PostProcessOptions } from './PostProcessPipeline';
 export { DiffSequenceSource, type DiffCode, type DiffStats, type DiffPosition } from './DiffSequenceSource';
+
+// WebGL Renderer exports (GPU-accelerated rendering)
+export { WebGLSequenceRenderer, detectWebGLSupport } from './webgl';
+export type { WebGLRendererOptions, WebGLRenderState } from './webgl';
