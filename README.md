@@ -643,6 +643,274 @@ It's designed for the researcher who wants to *explore* a phage genome, not run 
 
 ---
 
+## Rendering Pipeline
+
+### Sequence Grid Virtualization
+
+Phage Explorer handles genomes up to 500kb+ without loading the entire sequence into memory.
+
+**How it works:**
+1. Sequences stored in 10kb chunks in SQLite
+2. Virtual window tracks visible region + 500bp overscan buffer
+3. Only visible chunks loaded and rendered
+4. Row tiles cached with content hashing—scroll reuses existing tiles
+5. Incremental blitting renders only newly visible rows
+
+**GlyphAtlas optimization:**
+- Pre-renders all nucleotides and amino acids to a texture atlas
+- 10x faster than calling `fillText()` per character
+- O(1) array-based glyph lookup (not `Map.get()`)
+- Automatic device pixel ratio scaling (1x to 3x)
+
+**Zoom levels:**
+| Preset | Cell Size | Use Case |
+|--------|-----------|----------|
+| Genome | 1px | Full genome overview |
+| Micro | 4px | Regional patterns |
+| Region | 8px | Gene-level navigation |
+| Codon | 12px | Reading codons |
+| Base | 18px | Individual nucleotides |
+
+### 3D Rendering
+
+**ASCII Renderer (TUI):**
+- 70-character gradient for smooth shading: `.'-",:;Il!i><~+_-?][}{1)(|\/tfjrxnuvczXYUJCLQ0OZmwqpdbkhao*#MW&8%B@$`
+- Float32 Z-buffer for proper occlusion
+- Cohen-Sutherland line clipping with z-interpolation
+- Front-to-back edge sorting for optimal depth writes
+- Brightness mapping: depth → 0.2-1.0 intensity range
+
+**WebGL Renderer (Web):**
+- Real PDB structures fetched from RCSB
+- Three render modes: cartoon ribbons, ball-and-stick, surface mesh
+- CRT post-processing: chromatic aberration, scanlines, bloom, vignette, film grain
+- O(N) spatial-hash bond detection for 50K+ atom structures
+
+---
+
+## Color Theme System
+
+8 scientifically-grounded themes, each with 40+ color tokens.
+
+### Amino Acid Color Logic
+
+Colors map to biochemical properties so structural patterns are visible while scrolling:
+
+| Property | Amino Acids | Color Family | Rationale |
+|----------|-------------|--------------|-----------|
+| **Hydrophobic** | V, L, I, M, F, W | Blues/Purples | Nonpolar, buried in core |
+| **Polar** | S, T, N, Q | Cyans/Teals | OH/NH₂ side chains |
+| **Positive** | K, R, H | Blues | Basic, cationic |
+| **Negative** | D, E | Reds | Acidic, anionic |
+| **Special** | C, P, G, A | Yellows/Silvers | Unique structural roles |
+| **Stop** | * | Bright Red | Termination signal |
+
+### Available Themes
+
+1. **Holographic** (default) — Glassmorphic cyan/magenta, electric accents
+2. **Cyberpunk** — Neon grid aesthetic (cyan/magenta/yellow)
+3. **Classic** — Traditional bioinformatics (green A, blue C, amber G, red T)
+4. **Ocean** — Cool water-inspired blues and teals
+5. **Matrix** — Green monochrome terminal aesthetic
+6. **Sunset** — Warm orange/red/gold gradient
+7. **Forest** — Natural greens and earth tones
+8. **Monochrome** — Accessibility-focused grayscale
+
+---
+
+## Mobile UX
+
+Phage Explorer is fully touch-optimized with gesture navigation and haptic feedback.
+
+### Touch Gestures
+
+| Gesture | Action |
+|---------|--------|
+| **Swipe left/right** | Navigate between phages (spring physics animation) |
+| **Pinch** | Zoom sequence grid between presets |
+| **Long press** | Context menu with progressive haptic buildup |
+| **Pull down** | Refresh/reload data |
+
+### Haptic Feedback Patterns
+
+9 distinct vibration patterns for tactile feedback:
+
+| Pattern | Duration | Use |
+|---------|----------|-----|
+| `light` | 10ms | Selections, toggles |
+| `medium` | 25ms | Button presses |
+| `heavy` | 50ms | Important actions |
+| `success` | 15-50-25ms | Task completion |
+| `warning` | 30-80-30ms | Destructive action alert |
+| `error` | 50-100-50-100-50ms | Triple buzz for errors |
+| `tick` | 3ms | Slider/picker scrubbing |
+
+Haptics respect `prefers-reduced-motion` and gracefully degrade on unsupported devices.
+
+### Bottom Sheets
+
+Mobile overlays use iOS-style bottom sheets:
+- Snap points: 25%, 50%, 90% of screen height
+- Drag handle with visual feedback
+- Swipe-to-dismiss with velocity detection
+- Safe area insets for notched devices
+
+---
+
+## Overlay Architecture
+
+30+ analysis overlays, architected for performance and maintainability.
+
+### Code Splitting
+
+**Eager-loaded (instant):** Search, Help, Settings, Command Palette
+**Lazy-loaded (on-demand):** All analysis overlays via React Suspense
+
+This keeps initial bundle small (~200KB) while supporting 30+ feature-rich overlays.
+
+### Overlay Categories
+
+| Category | Overlays |
+|----------|----------|
+| **Sequence** | GC Skew, Complexity, Bendability, Promoter, Repeats, K-mer Anomaly |
+| **Visualization** | CGR Fractal, Hilbert Curve, Dot Plot, Phase Portrait, Logo Plot |
+| **Genomic** | HGT Detection, CRISPR Systems, Non-B DNA, Prophage Excision |
+| **Protein** | Codon Bias, Domains, Fold Viewer, RNA Structure |
+| **Ecology** | Host Tropism, Defense Arms Race, AMG Pathways, Cocktail Compatibility |
+| **Simulation** | All 7 interactive simulations |
+
+### Composable UI Primitives
+
+Overlays share 12+ reusable components:
+- `OverlaySection` / `OverlaySectionHeader` — Consistent section styling
+- `OverlayGrid` / `OverlayRow` — Responsive layouts
+- `OverlayStatCard` / `OverlayStatGrid` — Metric displays
+- `OverlayKeyValue` / `OverlayBadge` — Data presentation
+- `OverlayLegend` — Color key explanations
+
+---
+
+## State Management
+
+Zustand powers all UI state, shared between TUI and web platforms.
+
+### Store Structure
+
+The `PhageExplorerStore` manages ~170 state properties:
+
+| Domain | Properties |
+|--------|------------|
+| **Navigation** | Current phage, scroll position, zoom level |
+| **View** | DNA/AA mode, reading frame, active theme |
+| **Overlays** | Overlay stack (max 3), overlay-specific data |
+| **Simulations** | Active simulation, parameters, history |
+| **User** | Experience level, completed tours, preferences |
+
+### Key Patterns
+
+**Overlay stack limit:**
+```typescript
+overlays: [...filtered, newOverlay].slice(-3) // Max 3 active
+```
+
+**View mode scroll preservation:**
+- DNA→AA: `scrollPosition / 3` (codons are 3bp)
+- AA→DNA: `scrollPosition * 3`
+
+**LocalStorage persistence:** Beginner mode, tour completion, theme preference
+
+---
+
+## Data Pipeline
+
+### NCBI Integration
+
+The data pipeline fetches sequences from NCBI's Entrez API:
+
+1. **ESearch** — Query nucleotide database with filters
+2. **ESummary** — Batch metadata retrieval (50 items/request)
+3. **EFetch** — Full GenBank records with gene annotations
+
+**Filters applied:**
+- `viruses[filter] OR phage[Title]`
+- Sequence length constraints
+- Collection date for temporal analysis
+
+### Transformations
+
+| Step | Input | Output |
+|------|-------|--------|
+| **Normalization** | Raw FASTA | Uppercase, N-padded |
+| **Chunking** | Full sequence | 10kb segments |
+| **Translation** | DNA chunks | 6-frame amino acids |
+| **Annotation** | GenBank features | Structured gene records |
+| **Domain scan** | Protein sequences | Pfam/InterPro hits |
+| **Embedding** | Protein sequences | ESM2 fold vectors |
+
+### Phylodynamics Support
+
+For temporal analysis, the pipeline:
+- Parses collection dates (ISO, "May-2020", "2020", etc.)
+- Bins sequences by month/year
+- Extracts geographic metadata
+- Computes temporal coverage histograms
+
+---
+
+## Use Cases
+
+### Research Workflows
+
+**Comparative genomics:**
+1. Load two phages (e.g., Lambda and P22)
+2. Toggle Diff mode (`D`) to highlight sequence differences
+3. Use Dot Plot overlay to visualize synteny
+4. Identify conserved vs. variable regions
+
+**Gene function prediction:**
+1. Navigate to gene of interest with `[`/`]`
+2. Open Protein Domains overlay
+3. Check fold embedding neighbors for structural homologs
+4. Cross-reference with AMG Pathway overlay
+
+**Phage therapy candidate screening:**
+1. Use Host Tropism overlay to verify target range
+2. Check Defense Arms Race for anti-CRISPR genes
+3. Run Cocktail Compatibility for multi-phage therapy
+4. Simulate Resistance Evolution to predict durability
+
+### Educational Use
+
+**Teaching the genetic code:**
+- Toggle reading frames (`F`) to show frameshift effects
+- Compare DNA vs. amino acid views (`N`/`C`)
+- Run Ribosome Traffic simulation to visualize translation
+
+**Demonstrating phage biology:**
+- Lysogeny Decision Circuit shows Lambda switch mechanics
+- Plaque Growth Automata visualizes infection spread
+- Packaging Motor demonstrates DNA condensation physics
+
+---
+
+## Comparison with Other Tools
+
+| Feature | Phage Explorer | NCBI Viewer | Geneious | SnapGene |
+|---------|---------------|-------------|----------|----------|
+| **Startup time** | <100ms | 5-10s | 30s+ | 10s |
+| **3D structures** | Real PDB | None | Plugin | None |
+| **Analysis tools** | 30+ built-in | 3-5 | 20+ (paid) | 10+ |
+| **Offline** | Full | No | Yes | Yes |
+| **Mobile** | Full touch UI | Limited | No | No |
+| **Simulations** | 7 interactive | None | None | None |
+| **Price** | Free | Free | $2,500/yr | $695 |
+| **Open source** | Yes | No | No | No |
+
+**Best for:** Rapid exploration, education, phage therapy research
+**Not ideal for:** High-throughput pipelines (use command-line tools), primer design (use SnapGene)
+
+---
+
 ## License
 
 MIT License - see [LICENSE](LICENSE) for details.
