@@ -106,3 +106,10 @@ packages/wasm-compute/node_modules/
 
 # bv (beads viewer) local config and caches
 .bv/
+
+# Development screenshots
+screenshots/
+
+# Backup files
+*.bak
+api/*.bak
